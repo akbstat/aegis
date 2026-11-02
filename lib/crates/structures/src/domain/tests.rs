@@ -1,6 +1,7 @@
 use super::error::DomainError;
 use super::migration::Migration;
 use super::node::{Node, NodeAttributes};
+use super::structure::Structure;
 use super::structure_level::StructureLevel;
 
 #[test]
@@ -110,6 +111,65 @@ fn node_new_accepts_a_directory_with_a_migration() {
         }),
     };
     let node = Node::new("n1".into(), attrs).unwrap();
-    assert_eq!(node.directory, true);
+    assert!(node.directory);
     assert_eq!(node.migration.unwrap().filter, vec![".sas".to_string()]);
+}
+
+#[test]
+fn structure_new_accepts_a_template_with_no_owner() {
+    let structure = Structure::new(
+        "Standard".into(),
+        StructureLevel::Template,
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(structure.level, StructureLevel::Template);
+    assert_eq!(structure.project_code, None);
+    assert_eq!(structure.template_id, None);
+    assert_eq!(structure.id, 0);
+}
+
+#[test]
+fn structure_new_accepts_a_project_with_an_owner_and_a_template() {
+    let structure = Structure::new(
+        "Study ABC".into(),
+        StructureLevel::Project,
+        Some("ABC".into()),
+        Some(7),
+    )
+    .unwrap();
+    assert_eq!(structure.project_code.as_deref(), Some("ABC"));
+    assert_eq!(structure.template_id, Some(7));
+}
+
+#[test]
+fn structure_new_rejects_a_blank_name() {
+    let err = Structure::new("   ".into(), StructureLevel::Template, None, None).unwrap_err();
+    assert!(matches!(err, DomainError::EmptyName));
+}
+
+#[test]
+fn structure_new_rejects_a_template_with_an_owner() {
+    let err = Structure::new(
+        "Standard".into(),
+        StructureLevel::Template,
+        Some("ABC".into()),
+        None,
+    )
+    .unwrap_err();
+    assert!(matches!(err, DomainError::UnexpectedOwner));
+}
+
+#[test]
+fn structure_new_rejects_a_project_without_a_project_code() {
+    let err = Structure::new("Study".into(), StructureLevel::Project, None, Some(7)).unwrap_err();
+    assert!(matches!(err, DomainError::MissingProjectCode));
+}
+
+#[test]
+fn structure_new_rejects_a_project_without_a_template() {
+    let err = Structure::new("Study".into(), StructureLevel::Project, Some("ABC".into()), None)
+        .unwrap_err();
+    assert!(matches!(err, DomainError::MissingTemplate));
 }
