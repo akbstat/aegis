@@ -66,7 +66,6 @@ impl Structure {
 
     /// Bypasses validation. Reserved for the adapter layer when
     /// materialising rows from persistence.
-    #[allow(dead_code)]
     pub(crate) fn for_repository(
         id: i64,
         name: String,

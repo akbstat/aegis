@@ -84,9 +84,6 @@ impl Node {
 
     /// Skip validation. Reserved for the adapter layer — the data has
     /// already been validated on the way in.
-    // The adapter layer lands in a later task; until then nothing in
-    // the crate calls this, and the dead-code lint would fire.
-    #[allow(dead_code)]
     pub(crate) fn for_repository(node_id: String, attrs: NodeAttributes) -> Self {
         Self {
             node_id,
