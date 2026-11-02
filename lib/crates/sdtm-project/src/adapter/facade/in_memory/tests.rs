@@ -82,7 +82,7 @@ impl InMemoryRepo {
             .find(|o| o.domain_id == d.id)
             .cloned();
         SdtmProjectDomain {
-            r#override: ov,
+            domain_override: ov,
             ..d
         }
     }
@@ -97,7 +97,7 @@ impl InMemoryRepo {
             .find(|o| o.variable_id == v.id)
             .cloned();
         SdtmProjectVariable {
-            r#override: ov,
+            variable_override: ov,
             ..v
         }
     }

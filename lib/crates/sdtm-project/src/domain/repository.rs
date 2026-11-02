@@ -38,7 +38,7 @@ pub trait SdtmProjectVersionRepository: Send + Sync {
 /// Outbound port for persistence of `SdtmProjectDomain` aggregates.
 /// The only list path is scoped to a version (no bare `list()`).
 ///
-/// The read methods hydrate the domain's `r#override` from
+/// The read methods hydrate the domain's `domain_override` from
 /// `sdtm_project_domain_overrides`; the write methods do not touch
 /// that table — the override repository owns it.
 #[async_trait]
@@ -81,7 +81,7 @@ pub trait SdtmProjectDomainOverrideRepository: Send + Sync {
 /// Outbound port for persistence of `SdtmProjectVariable` aggregates.
 /// The only list path is scoped to a domain (no bare `list()`).
 ///
-/// The read methods hydrate the variable's `r#override` from
+/// The read methods hydrate the variable's `variable_override` from
 /// `sdtm_project_variable_overrides`; the write methods do not touch
 /// that table — the override repository owns it.
 #[async_trait]

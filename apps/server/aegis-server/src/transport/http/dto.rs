@@ -2770,11 +2770,10 @@ pub struct SdtmProjectDomainViewResponse {
     pub domain_code: String,
     /// The variable codes, in the order the caller supplied them.
     pub key_variables: Vec<String>,
-    /// The domain's one override, when it has one. `override` is a
-    /// Rust keyword, so the field is spelled `override_` and renamed
-    /// on the wire.
+    /// The domain's one override, when it has one. The wire key is
+    /// `override`, so the field is renamed on the way out.
     #[serde(rename = "override")]
-    pub override_: Option<SdtmProjectDomainOverrideViewResponse>,
+    pub domain_override: Option<SdtmProjectDomainOverrideViewResponse>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -2801,7 +2800,7 @@ pub struct SdtmProjectDomainOverrideViewResponse {
 #[serde(rename_all = "camelCase")]
 pub struct SdtmProjectDomainOverrideResponse {
     #[serde(rename = "override")]
-    pub override_: Option<SdtmProjectDomainOverrideViewResponse>,
+    pub domain_override: Option<SdtmProjectDomainOverrideViewResponse>,
 }
 
 /// The body of `GET /variables/{variable_id}/override` — the variable
@@ -2810,7 +2809,7 @@ pub struct SdtmProjectDomainOverrideResponse {
 #[serde(rename_all = "camelCase")]
 pub struct SdtmProjectVariableOverrideResponse {
     #[serde(rename = "override")]
-    pub override_: Option<SdtmProjectVariableOverrideViewResponse>,
+    pub variable_override: Option<SdtmProjectVariableOverrideViewResponse>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -2821,7 +2820,7 @@ pub struct SdtmProjectVariableViewResponse {
     pub variable_code: String,
     pub variable_sequence: i64,
     #[serde(rename = "override")]
-    pub override_: Option<SdtmProjectVariableOverrideViewResponse>,
+    pub variable_override: Option<SdtmProjectVariableOverrideViewResponse>,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -2876,7 +2875,7 @@ impl From<apis::sdtm_project::SdtmProjectDomainView> for SdtmProjectDomainViewRe
             version_id: v.version_id,
             domain_code: v.domain_code,
             key_variables: v.key_variables,
-            override_: v.r#override.map(Into::into),
+            domain_override: v.domain_override.map(Into::into),
             created_at: v.created_at,
             updated_at: v.updated_at,
         }
@@ -2905,7 +2904,7 @@ impl From<apis::sdtm_project::SdtmProjectVariableView> for SdtmProjectVariableVi
             domain_id: v.domain_id,
             variable_code: v.variable_code,
             variable_sequence: v.variable_sequence,
-            override_: v.r#override.map(Into::into),
+            variable_override: v.variable_override.map(Into::into),
             created_at: v.created_at,
             updated_at: v.updated_at,
         }
@@ -2962,10 +2961,11 @@ mod tests {
         );
     }
 
-    /// The `override` key is a Rust keyword, so the wire DTO spells the
-    /// field `override_` and renames it on the wire. The nested
-    /// override must appear as `"override"`, and the key variables
-    /// must keep the caller's order.
+    /// The Rust field is `domain_override`, but the wire key is
+    /// `override` — the explicit `#[serde(rename)]` wins over the
+    /// struct's `camelCase` rule, so `domainOverride` must never
+    /// appear. The nested override must serialise as `"override"`, and
+    /// the key variables must keep the caller's order.
     #[test]
     fn sdtm_project_domain_view_serialises_the_override_and_key_order() {
         let ts = chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
@@ -2976,7 +2976,7 @@ mod tests {
             version_id: 3,
             domain_code: "AE".into(),
             key_variables: vec!["AESEV".into(), "AETERM".into()],
-            override_: Some(SdtmProjectDomainOverrideViewResponse {
+            domain_override: Some(SdtmProjectDomainOverrideViewResponse {
                 id: 1,
                 domain_id: 7,
                 category: SdtmProjectDomainCategory::Events,
@@ -2993,8 +2993,8 @@ mod tests {
             "missing `override` key: {json}"
         );
         assert!(
-            json.get("override_").is_none(),
-            "leaked `override_` key: {json}"
+            json.get("domainOverride").is_none(),
+            "leaked `domainOverride` key: {json}"
         );
         assert_eq!(json["override"]["category"], serde_json::json!("Events"));
         assert_eq!(json["override"]["domainId"], serde_json::json!(7));
@@ -3002,12 +3002,55 @@ mod tests {
         assert_eq!(json["keyVariables"], serde_json::json!(["AESEV", "AETERM"]));
     }
 
+    /// The variable view is the twin of the domain view: the Rust field
+    /// is `variable_override`, the wire key is `override`.
+    #[test]
+    fn sdtm_project_variable_view_serialises_the_override_under_the_override_key() {
+        let ts = chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let view = SdtmProjectVariableViewResponse {
+            id: 8,
+            domain_id: 7,
+            variable_code: "AETERM".into(),
+            variable_sequence: 11,
+            variable_override: Some(SdtmProjectVariableOverrideViewResponse {
+                id: 2,
+                variable_id: 8,
+                variable_type: SdtmProjectVariableType::Character,
+                variable_core: SdtmProjectVariableCore::Req,
+                variable_role: None,
+                descriptions: Vec::new(),
+                created_at: ts,
+                updated_at: ts,
+            }),
+            created_at: ts,
+            updated_at: ts,
+        };
+        let json = serde_json::to_value(&view).unwrap();
+        assert!(
+            json.get("override").is_some(),
+            "missing `override` key: {json}"
+        );
+        assert!(
+            json.get("variableOverride").is_none(),
+            "leaked `variableOverride` key: {json}"
+        );
+        assert_eq!(
+            json["override"]["variableType"],
+            serde_json::json!("Character")
+        );
+        assert_eq!(json["override"]["variableId"], serde_json::json!(8));
+    }
+
     /// The `GET …/override` envelope always carries an `override` key:
     /// `null` when there is no override, the override when there is
     /// one. It is never a bare `null` body.
     #[test]
     fn sdtm_project_override_response_wraps_the_override_in_an_override_key() {
-        let absent = SdtmProjectDomainOverrideResponse { override_: None };
+        let absent = SdtmProjectDomainOverrideResponse {
+            domain_override: None,
+        };
         let json = serde_json::to_value(&absent).unwrap();
         assert_eq!(json, serde_json::json!({ "override": null }));
 
@@ -3015,7 +3058,7 @@ mod tests {
             .unwrap()
             .with_timezone(&chrono::Utc);
         let present = SdtmProjectDomainOverrideResponse {
-            override_: Some(SdtmProjectDomainOverrideViewResponse {
+            domain_override: Some(SdtmProjectDomainOverrideViewResponse {
                 id: 1,
                 domain_id: 7,
                 category: SdtmProjectDomainCategory::Events,
@@ -3028,11 +3071,13 @@ mod tests {
         assert_eq!(json["override"]["category"], serde_json::json!("Events"));
         assert_eq!(json["override"]["domainId"], serde_json::json!(7));
         assert!(
-            json.get("override_").is_none(),
-            "leaked `override_` key: {json}"
+            json.get("domainOverride").is_none(),
+            "leaked `domainOverride` key: {json}"
         );
 
-        let absent = SdtmProjectVariableOverrideResponse { override_: None };
+        let absent = SdtmProjectVariableOverrideResponse {
+            variable_override: None,
+        };
         let json = serde_json::to_value(&absent).unwrap();
         assert_eq!(json, serde_json::json!({ "override": null }));
     }

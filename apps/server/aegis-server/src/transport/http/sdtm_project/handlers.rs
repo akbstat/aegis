@@ -370,7 +370,7 @@ pub async fn get_domain_override(
 ) -> Result<Json<dto::SdtmProjectDomainOverrideResponse>, ApiError> {
     let view = state.sdtm_project.get_domain_override(domain_id).await?;
     Ok(Json(dto::SdtmProjectDomainOverrideResponse {
-        override_: view.map(Into::into),
+        domain_override: view.map(Into::into),
     }))
 }
 
@@ -651,7 +651,7 @@ pub async fn get_variable_override(
         .get_variable_override(variable_id)
         .await?;
     Ok(Json(dto::SdtmProjectVariableOverrideResponse {
-        override_: view.map(Into::into),
+        variable_override: view.map(Into::into),
     }))
 }
 
@@ -866,7 +866,7 @@ mod tests {
             version_id: 1,
             domain_code: "AE".into(),
             key_variables: vec!["AETERM".into()],
-            r#override: None,
+            domain_override: None,
             created_at: ts(),
             updated_at: ts(),
         }
@@ -889,7 +889,7 @@ mod tests {
             domain_id: 2,
             variable_code: "AETERM".into(),
             variable_sequence: 11,
-            r#override: None,
+            variable_override: None,
             created_at: ts(),
             updated_at: ts(),
         }

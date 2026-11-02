@@ -143,7 +143,7 @@ pub struct SdtmProjectDomain {
     pub version_id: i64,                 // -> SdtmProjectVersion.id
     pub domain_code: String,             // unique per (version_id, domain_code)
     pub key_variables: Vec<String>,      // variable codes, in user-supplied order
-    pub r#override: Option<SdtmProjectDomainOverride>,
+    pub domain_override: Option<SdtmProjectDomainOverride>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -164,7 +164,7 @@ pub struct SdtmProjectVariable {
     pub domain_id: i64,                 // -> SdtmProjectDomain.id
     pub variable_code: String,          // unique per (domain_id, variable_code)
     pub variable_sequence: i64,
-    pub r#override: Option<SdtmProjectVariableOverride>,
+    pub variable_override: Option<SdtmProjectVariableOverride>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -182,13 +182,24 @@ pub struct SdtmProjectVariableOverride {
 }
 ```
 
-### `r#override` — a raw identifier
+### `domain_override` / `variable_override` — a keyword that cannot be a field name
 
-`override` is a reserved word in Rust, so the field is spelled `r#override`.
-(`rename_all = "camelCase"` would already emit `"override"` — the raw
-identifier is the reason, not the casing. The wire DTOs still carry an
-explicit `#[serde(rename = "override")]` so the intent is visible at the
-point where it matters.)
+`override` is a **reserved** word in Rust (not merely a contextual one), so
+`pub override: …` is a compile error. The field therefore carries a
+descriptive name instead: `domain_override` on the domain aggregate and
+its views, `variable_override` on the variable aggregate and its views.
+
+The wire key is unaffected. The `apis` and `sdtm-project` view structs
+carry no `Serialize` derive, so they never reach the wire; the server's
+`dto.rs` does, and each field there keeps an explicit
+`#[serde(rename = "override")]`. That explicit rename beats the struct's
+`rename_all = "camelCase"`, so the key stays `"override"` rather than
+`"domainOverride"`. The server's DTO tests assert that the camelCase
+spelling does not leak.
+
+The server's DTO structs name their fields the same way
+(`domain_override` / `variable_override`) and rely on the same
+`#[serde(rename = "override")]`.
 
 ### Copied value objects
 
@@ -338,10 +349,11 @@ are read through `get_*_override` or embedded in the parent view.
 
 ## Override hydration — who reads and who writes
 
-The parent aggregates carry `r#override: Option<…>`, and the parent
-repositories **hydrate** that field with a `LEFT JOIN` against the override
-table on every read (`find_by_id`, `list_by_*`). Reads therefore return the
-parent and its override in a single round trip, with no N+1.
+The parent aggregates carry `domain_override` / `variable_override:
+Option<…>`, and the parent repositories **hydrate** that field with a
+`LEFT JOIN` against the override table on every read (`find_by_id`,
+`list_by_*`). Reads therefore return the parent and its override in a single
+round trip, with no N+1.
 
 The **update** path hydrates too. `UPDATE sdtm_project_domains d FROM
 sdtm_project_domain_overrides o WHERE d.id = $1 RETURNING d.*, o.*` returns
@@ -356,10 +368,10 @@ Writes go the other way: the **override repository owns the override table**.
 owns every insert / update / delete against it. There is exactly one writer
 per table, so there is no ambiguity about which path last wrote the row.
 
-Consequence: `create_domain` returns a domain whose `r#override` is `None`
-(a fresh domain cannot have an override yet), while `get_domain_by_id` on the
-same row returns `Some(…)` once an override exists. This is expected and is
-covered by tests.
+Consequence: `create_domain` returns a domain whose `domain_override` is
+`None` (a fresh domain cannot have an override yet), while
+`get_domain_by_id` on the same row returns `Some(…)` once an override
+exists. This is expected and is covered by tests.
 
 ## Cross-crate: project validation
 
@@ -640,8 +652,9 @@ nullable override:
 The key is present either way, so a client reads `body.override` without
 first checking whether the body itself is null. The two envelope DTOs are
 `SdtmProjectDomainOverrideResponse` and `SdtmProjectVariableOverrideResponse`
-in the server's `dto.rs`; both name their field `override_` in Rust (it is
-a keyword) and rename it on the wire.
+in the server's `dto.rs`; both name their field `domain_override` /
+`variable_override` in Rust (the bare word `override` is a reserved
+keyword) and rename it to `override` on the wire.
 
 `update_*_override` and `delete_*_override` keep their 404: asking to
 change or remove something that does not exist is still a client error.
@@ -650,9 +663,9 @@ change or remove something that does not exist is still a client error.
 
 ```rust
 pub struct SdtmProjectVersionView { pub id: i64, pub project_code: String, pub version_name: String, pub created_at, pub updated_at }
-pub struct SdtmProjectDomainView { pub id: i64, pub version_id: i64, pub domain_code: String, pub key_variables: Vec<String>, pub r#override: Option<SdtmProjectDomainOverrideView>, pub created_at, pub updated_at }
+pub struct SdtmProjectDomainView { pub id: i64, pub version_id: i64, pub domain_code: String, pub key_variables: Vec<String>, pub domain_override: Option<SdtmProjectDomainOverrideView>, pub created_at, pub updated_at }
 pub struct SdtmProjectDomainOverrideView { pub id: i64, pub domain_id: i64, pub category: DomainCategory, pub descriptions: Vec<SdtmDomainDescription>, pub created_at, pub updated_at }
-pub struct SdtmProjectVariableView { pub id: i64, pub domain_id: i64, pub variable_code: String, pub variable_sequence: i64, pub r#override: Option<SdtmProjectVariableOverrideView>, pub created_at, pub updated_at }
+pub struct SdtmProjectVariableView { pub id: i64, pub domain_id: i64, pub variable_code: String, pub variable_sequence: i64, pub variable_override: Option<SdtmProjectVariableOverrideView>, pub created_at, pub updated_at }
 pub struct SdtmProjectVariableOverrideView { pub id: i64, pub variable_id: i64, pub variable_type: SdtmVariableType, pub variable_core: SdtmVariableCore, pub variable_role: Option<SdtmRole>, pub descriptions: Vec<SdtmVariableDescription>, pub created_at, pub updated_at }
 ```
 
@@ -1108,9 +1121,10 @@ cargo test -p sdtm-project -- --ignored --test-threads=1   # when AEGIS_SDTM_PRO
    requester's clarification: the order is always the caller's. Duplicates
    are removed on write (first occurrence wins) and blank entries are
    rejected, but nothing is ever re-sorted.
-3. The variable aggregate carries `r#override` too, even though the spec
-   lists the override field only on `SdtmProjectDomain` — the two aggregates
-   are structurally parallel and the asymmetry reads as an oversight.
+3. The variable aggregate carries `variable_override` too, even though the
+   spec lists the override field only on `SdtmProjectDomain` — the two
+   aggregates are structurally parallel and the asymmetry reads as an
+   oversight.
 4. `project_code`, `version_id` and `domain_id` are immutable after
    creation; only `version_name`, `domain_code`, `variable_code`,
    `variable_sequence` and the override payloads are mutable.

@@ -15,7 +15,7 @@ pub struct SdtmProjectDomain {
     pub version_id: i64,
     pub domain_code: String,
     pub key_variables: Vec<String>,
-    pub r#override: Option<SdtmProjectDomainOverride>,
+    pub domain_override: Option<SdtmProjectDomainOverride>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -27,7 +27,7 @@ impl std::fmt::Debug for SdtmProjectDomain {
             .field("version_id", &self.version_id)
             .field("domain_code", &self.domain_code)
             .field("key_variables", &self.key_variables)
-            .field("override", &self.r#override)
+            .field("domain_override", &self.domain_override)
             .field("created_at", &self.created_at)
             .field("updated_at", &self.updated_at)
             .finish()
@@ -51,7 +51,7 @@ impl SdtmProjectDomain {
             version_id,
             domain_code,
             key_variables,
-            r#override: None,
+            domain_override: None,
             created_at: DateTime::<Utc>::from_timestamp(0, 0).unwrap(),
             updated_at: DateTime::<Utc>::from_timestamp(0, 0).unwrap(),
         })
@@ -85,7 +85,7 @@ impl SdtmProjectDomain {
         version_id: i64,
         domain_code: String,
         key_variables: Vec<String>,
-        r#override: Option<SdtmProjectDomainOverride>,
+        domain_override: Option<SdtmProjectDomainOverride>,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
     ) -> Self {
@@ -94,7 +94,7 @@ impl SdtmProjectDomain {
             version_id,
             domain_code,
             key_variables,
-            r#override,
+            domain_override,
             created_at,
             updated_at,
         }

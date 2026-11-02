@@ -11,7 +11,7 @@ pub struct SdtmProjectVariable {
     pub domain_id: i64,
     pub variable_code: String,
     pub variable_sequence: i64,
-    pub r#override: Option<SdtmProjectVariableOverride>,
+    pub variable_override: Option<SdtmProjectVariableOverride>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -23,7 +23,7 @@ impl std::fmt::Debug for SdtmProjectVariable {
             .field("domain_id", &self.domain_id)
             .field("variable_code", &self.variable_code)
             .field("variable_sequence", &self.variable_sequence)
-            .field("override", &self.r#override)
+            .field("variable_override", &self.variable_override)
             .field("created_at", &self.created_at)
             .field("updated_at", &self.updated_at)
             .finish()
@@ -46,7 +46,7 @@ impl SdtmProjectVariable {
             domain_id,
             variable_code,
             variable_sequence,
-            r#override: None,
+            variable_override: None,
             created_at: DateTime::<Utc>::from_timestamp(0, 0).unwrap(),
             updated_at: DateTime::<Utc>::from_timestamp(0, 0).unwrap(),
         })
@@ -59,7 +59,7 @@ impl SdtmProjectVariable {
         domain_id: i64,
         variable_code: String,
         variable_sequence: i64,
-        r#override: Option<SdtmProjectVariableOverride>,
+        variable_override: Option<SdtmProjectVariableOverride>,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
     ) -> Self {
@@ -68,7 +68,7 @@ impl SdtmProjectVariable {
             domain_id,
             variable_code,
             variable_sequence,
-            r#override,
+            variable_override,
             created_at,
             updated_at,
         }
