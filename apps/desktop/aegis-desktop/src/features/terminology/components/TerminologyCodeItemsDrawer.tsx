@@ -9,15 +9,18 @@ import {
   Typography,
 } from "@aegis/ui/mui";
 import { useI18n } from "@aegis/ui/i18n";
+import { useEffect, useState } from "react";
 
 import { errorMessage } from "../../../shared/api/error";
 import { InfiniteScrollSentinel } from "../../../shared/components/InfiniteScrollSentinel";
+import { useDebouncedValue } from "../../../shared/hooks/useDebouncedValue";
 import {
   useFindCodeListBySubmissionValue,
   useListCodeItems,
   useSdtmTerminologyVersionId,
 } from "../data";
 import { CodeItemTable } from "./CodeItemTable";
+import { TermFilterBar } from "./TermFilterBar";
 
 export interface TerminologyCodeItemsDrawerProps {
   open: boolean;
@@ -57,7 +60,23 @@ export function TerminologyCodeItemsDrawer({
   );
   const codelist = codelistsQuery.codelist;
 
-  const itemsQuery = useListCodeItems(codelist?.id ?? null);
+  const [search, setSearch] = useState("");
+  const debouncedFragment = useDebouncedValue(search, {
+    delayMs: 300,
+    maxWaitMs: 1000,
+  });
+  const trimmedQuery = debouncedFragment.trim();
+
+  // The drawer is one mounted component reused across codes, so a term
+  // left over from the previous code would filter the new code list into
+  // a false "no matching code items".
+  useEffect(() => {
+    setSearch("");
+  }, [code]);
+
+  const itemsQuery = useListCodeItems(codelist?.id ?? null, {
+    fragment: debouncedFragment,
+  });
   const rows = itemsQuery.data?.pages.flatMap((p) => p.items) ?? [];
   const hasMore = itemsQuery.hasNextPage ?? false;
 
@@ -144,6 +163,11 @@ export function TerminologyCodeItemsDrawer({
                 </Tooltip>
               )}
             </Box>
+            <TermFilterBar
+              query={search}
+              onQueryChange={setSearch}
+              placeholder={t("terminology.codeitem.search.placeholder")}
+            />
             <CodeItemTable
               rows={rows}
               loading={itemsQuery.isLoading}
@@ -154,7 +178,11 @@ export function TerminologyCodeItemsDrawer({
               onCreate={() => {}}
               onEdit={() => {}}
               onDelete={() => {}}
-              emptyMessage={t("terminology.codeitem.empty")}
+              emptyMessage={
+                trimmedQuery
+                  ? t("terminology.codeitem.noMatches")
+                  : t("terminology.codeitem.empty")
+              }
               bottomSlot={(scrollEl) => (
                 <InfiniteScrollSentinel
                   root={scrollEl}
