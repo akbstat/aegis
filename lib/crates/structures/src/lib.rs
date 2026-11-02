@@ -10,4 +10,6 @@
 
 pub mod domain;
 
-pub use domain::{DomainError, Migration, Node, NodeAttributes, StructureLevel};
+pub use domain::{
+    DomainError, MergedNode, MergedTree, Migration, Node, NodeAttributes, StructureLevel,
+};

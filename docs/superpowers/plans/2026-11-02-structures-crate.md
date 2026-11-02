@@ -521,7 +521,7 @@ fn re_parenting_an_inherited_node_moves_it_and_does_not_duplicate_it() {
     let mut all: Vec<String> = merged.roots.iter().flat_map(|r| paths(r)).collect();
     all.sort();
     // `raw/a.txt` appears once, and it is no longer under `raw`
-    assert_eq!(all, vec!["docs", "docs/raw/a.txt", "raw"]);
+    assert_eq!(all, vec!["docs", "raw", "raw/a.txt"]);
     let raw = merged.roots.iter().find(|r| r.node.path == "raw").unwrap();
     assert!(raw.children.is_empty());
 }
