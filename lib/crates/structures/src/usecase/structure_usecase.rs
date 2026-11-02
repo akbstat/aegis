@@ -2,8 +2,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use crate::domain::{
-    merge, DomainError, MergedNode, MergedTree, Node, NodeAttributes, NodeRepository, ProjectLookup,
-    Structure, StructureFilter, StructureLevel, StructureNew, StructureRepository,
+    DomainError, MergedNode, MergedTree, Node, NodeAttributes, NodeRepository, ProjectLookup,
+    Structure, StructureFilter, StructureLevel, StructureNew, StructureRepository, merge,
 };
 use crate::usecase::{
     AddNode, CreateStructure, DeleteNode, NodeView, OwnNodeView, RenameStructure,
@@ -80,9 +80,16 @@ where
                 .await
                 .map_err(|_| DomainError::TemplateNotFound(template_id))?;
             if template.level != StructureLevel::Template {
-                return Err(UsecaseError::Validation(DomainError::NotATemplate(template_id)));
+                return Err(UsecaseError::Validation(DomainError::NotATemplate(
+                    template_id,
+                )));
             }
-            if self.structures.count_project_structures(project_code).await? > 0 {
+            if self
+                .structures
+                .count_project_structures(project_code)
+                .await?
+                > 0
+            {
                 return Err(UsecaseError::Repository(
                     DomainError::DuplicateProjectStructure(project_code.to_string()),
                 ));
@@ -127,10 +134,7 @@ where
     }
 
     /// Fetch a structure's identity and level, without building its tree.
-    pub async fn get_structure_meta(
-        &self,
-        id: i64,
-    ) -> Result<StructureMetaView, UsecaseError> {
+    pub async fn get_structure_meta(&self, id: i64) -> Result<StructureMetaView, UsecaseError> {
         let structure = self.structures.find_by_id(id).await?;
         Ok(StructureMetaView {
             id: structure.id,
@@ -331,7 +335,11 @@ where
 
         let template_ids = template_node_ids(&eff);
         for node_id in &removal {
-            let own = eff.own_nodes.iter().find(|n| &n.node_id == node_id).cloned();
+            let own = eff
+                .own_nodes
+                .iter()
+                .find(|n| &n.node_id == node_id)
+                .cloned();
             if template_ids.contains(node_id) {
                 let mut row = own.clone().unwrap_or_else(|| target.clone());
                 row.hidden = Some(true);
@@ -379,10 +387,7 @@ where
 
     /// The effective tree: the template's nodes merged with this
     /// structure's extension records.
-    pub async fn build_structure(
-        &self,
-        id: i64,
-    ) -> Result<StructureTreeView, UsecaseError> {
+    pub async fn build_structure(&self, id: i64) -> Result<StructureTreeView, UsecaseError> {
         let effective = self.effective(id).await?;
         Ok(StructureTreeView {
             structure_id: effective.structure.id,
@@ -418,9 +423,9 @@ where
                     UsecaseError::Validation(DomainError::ParentNotFound(parent_id.to_string()))
                 })?;
             if !parent.directory {
-                return Err(UsecaseError::Validation(
-                    DomainError::ParentNotADirectory(parent_id.to_string()),
-                ));
+                return Err(UsecaseError::Validation(DomainError::ParentNotADirectory(
+                    parent_id.to_string(),
+                )));
             }
             if let Some(target_id) = target_node_id
                 && would_cycle(eff, target_id, parent_id)
@@ -446,11 +451,7 @@ where
     ///
     /// A node the effective tree does not contain — a hidden one, or one
     /// whose parent is no longer reachable — is rendered on its own.
-    async fn node_view(
-        &self,
-        structure_id: i64,
-        node_id: &str,
-    ) -> Result<NodeView, UsecaseError> {
+    async fn node_view(&self, structure_id: i64, node_id: &str) -> Result<NodeView, UsecaseError> {
         let eff = self.effective(structure_id).await?;
         if let Some(found) = find_in_tree(&eff.merged.roots, node_id) {
             return Ok(found.into());

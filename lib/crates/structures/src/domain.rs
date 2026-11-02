@@ -1,8 +1,8 @@
 mod error;
 mod merge;
 mod migration;
-mod node_repository;
 mod node;
+mod node_repository;
 mod project_lookup;
 mod repository;
 mod structure;
@@ -12,7 +12,7 @@ mod structure_level;
 mod tests;
 
 pub use error::DomainError;
-pub use merge::{merge, MergedNode, MergedTree};
+pub use merge::{MergedNode, MergedTree, merge};
 pub use migration::Migration;
 pub use node::{Node, NodeAttributes};
 pub use node_repository::NodeRepository;

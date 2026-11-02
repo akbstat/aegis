@@ -10,9 +10,9 @@ use async_trait::async_trait;
 
 use apis::structures::{
     AddNodeRequest, CreateStructureRequest, DeleteNodeRequest, ListStructuresRequest,
-    MigrationView, NodeView, OwnNodeList, OwnNodeView, RenameStructureRequest,
-    StructureApiError, StructureLevel, StructureList, StructureMetaView, StructureService,
-    StructureSummaryView, StructureTreeView, StructureView, UpdateNodeRequest,
+    MigrationView, NodeView, OwnNodeList, OwnNodeView, RenameStructureRequest, StructureApiError,
+    StructureLevel, StructureList, StructureMetaView, StructureService, StructureSummaryView,
+    StructureTreeView, StructureView, UpdateNodeRequest,
 };
 
 use crate::domain::{
@@ -22,8 +22,8 @@ use crate::domain::{
 use crate::usecase::{
     AddNode, CreateStructure, DeleteNode, NodeView as InternalNodeView, RenameStructure,
     StructureMetaView as InternalMetaView, StructureSummaryView as InternalSummaryView,
-    StructureTreeView as InternalTreeView, StructureUsecase, StructureView as InternalStructureView,
-    UpdateNode, UsecaseError,
+    StructureTreeView as InternalTreeView, StructureUsecase,
+    StructureView as InternalStructureView, UpdateNode, UsecaseError,
 };
 
 /// Adapter that implements [`StructureService`] on top of a
@@ -82,10 +82,7 @@ where
         Ok(view.into())
     }
 
-    async fn get_structure_meta(
-        &self,
-        id: i64,
-    ) -> Result<StructureMetaView, StructureApiError> {
+    async fn get_structure_meta(&self, id: i64) -> Result<StructureMetaView, StructureApiError> {
         let meta = self.usecase.get_structure_meta(id).await?;
         Ok(meta.into())
     }

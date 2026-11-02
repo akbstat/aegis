@@ -1,4 +1,4 @@
-use super::{merge, MergedNode};
+use super::{MergedNode, merge};
 use crate::domain::node::Node;
 
 /// A node with only the fields a test cares about.
@@ -80,7 +80,10 @@ fn adding_under_a_template_node_keeps_the_templates_other_children() {
     let own = vec![node("n_new", "raw/b.txt", false, Some("t_root"))];
     let merged = merge(&template, &own);
     // both the template's child and the new one are present, sorted by path
-    assert_eq!(paths(&merged.roots[0]), vec!["raw", "raw/a.txt", "raw/b.txt"]);
+    assert_eq!(
+        paths(&merged.roots[0]),
+        vec!["raw", "raw/a.txt", "raw/b.txt"]
+    );
 }
 
 #[test]

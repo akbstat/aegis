@@ -316,6 +316,8 @@ mod tests {
             crf: Arc::new(NullCrfService) as Arc<dyn apis::crf::CrfService>,
             sdtm_project: Arc::new(NullSdtmProjectService)
                 as Arc<dyn apis::sdtm_project::SdtmProjectService>,
+            structures: std::sync::Arc::new(crate::state::test_support::NullStructureService)
+                as std::sync::Arc<dyn apis::structures::StructureService>,
             domain_model: Arc::new(NullDomainModelService)
                 as Arc<dyn apis::domain_model::DomainModelService>,
             mission: Arc::new(NullMissionService) as Arc<dyn apis::mission::MissionService>,

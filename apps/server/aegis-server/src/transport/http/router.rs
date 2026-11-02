@@ -13,6 +13,7 @@
 //! - `/api/crf/*`                        Case Report Form CRUD
 //! - `/api/mission/*`                    Mission CRUD (leader-only writes)
 //! - `/api/sdtm-project/*`               per-project SDTM model tree CRUD
+//! - `/api/structures/*`                  directory-structure CRUD
 //! - `/healthz`                         liveness probe
 //! - `/swagger-ui/`                      swagger-ui HTML
 //! - `/swagger-ui/{*rest}`               swagger-ui assets
@@ -37,6 +38,7 @@ use crate::transport::http::mission::router as mission_router;
 use crate::transport::http::openapi::ApiDoc;
 use crate::transport::http::project::router as project_router;
 use crate::transport::http::sdtm_project::router as sdtm_project_router;
+use crate::transport::http::structures::router as structures_router;
 use crate::transport::http::terminology::router as terminology_router;
 use crate::transport::http::trace_id::TraceIdMakeSpan;
 use crate::transport::http::user;
@@ -56,6 +58,7 @@ pub fn router(state: AppState) -> axum::Router {
     let crf_routes = crf_router::router();
     let mission_routes = mission_router::router();
     let sdtm_project_routes = sdtm_project_router::router();
+    let structures_routes = structures_router::router();
     let api_routers = OpenApiRouter::new()
         .nest("/auth", auth::router())
         .nest("/user", user::router())
@@ -65,6 +68,7 @@ pub fn router(state: AppState) -> axum::Router {
         .nest("/crf", crf_routes)
         .nest("/mission", mission_routes)
         .nest("/sdtm-project", sdtm_project_routes)
+        .nest("/structures", structures_routes)
         .nest("/log-ingest", log_ingest_router::router());
 
     let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
@@ -352,6 +356,8 @@ mod tests {
                 as Arc<dyn apis::crf::CrfService>,
             sdtm_project: Arc::new(crate::state::test_support::NullSdtmProjectService)
                 as Arc<dyn apis::sdtm_project::SdtmProjectService>,
+            structures: std::sync::Arc::new(crate::state::test_support::NullStructureService)
+                as std::sync::Arc<dyn apis::structures::StructureService>,
             log_ingestor: crate::state::test_support::unused_log_ingestor(),
         }
     }
@@ -374,6 +380,8 @@ mod tests {
                 as Arc<dyn apis::crf::CrfService>,
             sdtm_project: Arc::new(crate::state::test_support::NullSdtmProjectService)
                 as Arc<dyn apis::sdtm_project::SdtmProjectService>,
+            structures: std::sync::Arc::new(crate::state::test_support::NullStructureService)
+                as std::sync::Arc<dyn apis::structures::StructureService>,
             log_ingestor: crate::state::test_support::unused_log_ingestor(),
         }
     }
@@ -395,6 +403,8 @@ mod tests {
                 as Arc<dyn apis::crf::CrfService>,
             sdtm_project: Arc::new(crate::state::test_support::NullSdtmProjectService)
                 as Arc<dyn apis::sdtm_project::SdtmProjectService>,
+            structures: std::sync::Arc::new(crate::state::test_support::NullStructureService)
+                as std::sync::Arc<dyn apis::structures::StructureService>,
             log_ingestor: crate::state::test_support::unused_log_ingestor(),
         }
     }
@@ -628,6 +638,74 @@ mod tests {
                 properties.get("override").is_some(),
                 "{schema} must carry an `override` property: {properties}",
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn openapi_json_advertises_the_structures_namespace() {
+        let app = router(test_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api-docs/openapi.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), AxStatus::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Every route must be present and require BearerAuth.
+        let routes: Vec<(&str, &str)> = vec![
+            ("post", "/api/structures"),
+            ("get", "/api/structures"),
+            ("get", "/api/structures/{id}"),
+            ("get", "/api/structures/{id}/meta"),
+            ("put", "/api/structures/{id}"),
+            ("delete", "/api/structures/{id}"),
+            ("get", "/api/structures/{id}/tree"),
+            ("get", "/api/structures/{id}/nodes"),
+            ("post", "/api/structures/{id}/nodes"),
+            ("put", "/api/structures/{id}/nodes/{node_id}"),
+            ("delete", "/api/structures/{id}/nodes/{node_id}"),
+        ];
+        for (method, path) in &routes {
+            let op = &doc["paths"][path][method];
+            assert!(op.is_object(), "missing {method} {path} in openapi");
+            assert_eq!(
+                op["security"][0]["BearerAuth"],
+                serde_json::json!([]),
+                "{method} {path} must require BearerAuth",
+            );
+        }
+
+        // A write can target either a template (admin/root) or a
+        // project structure (any authenticated user), so every write
+        // route advertises a 403 — and no read route does.
+        for (method, path) in &routes {
+            let op = &doc["paths"][path][method];
+            let response_keys: Vec<&str> = op["responses"]
+                .as_object()
+                .expect("responses object")
+                .keys()
+                .map(|s| s.as_str())
+                .collect();
+            let is_write = matches!(*method, "post" | "put" | "delete");
+            if is_write {
+                assert!(
+                    response_keys.contains(&"403"),
+                    "{method} {path} must advertise a 403 (got {response_keys:?})",
+                );
+            } else {
+                assert!(
+                    !response_keys.contains(&"403"),
+                    "{method} {path} must not advertise a 403 (got {response_keys:?})",
+                );
+            }
         }
     }
 
@@ -1345,6 +1423,8 @@ mod tests {
                 as Arc<dyn apis::crf::CrfService>,
             sdtm_project: Arc::new(crate::state::test_support::NullSdtmProjectService)
                 as Arc<dyn apis::sdtm_project::SdtmProjectService>,
+            structures: std::sync::Arc::new(crate::state::test_support::NullStructureService)
+                as std::sync::Arc<dyn apis::structures::StructureService>,
             log_ingestor: crate::state::test_support::unused_log_ingestor(),
         }
     }
@@ -1854,6 +1934,8 @@ mod tests {
             crf: Arc::new(StubCrfService) as Arc<dyn apis::crf::CrfService>,
             sdtm_project: Arc::new(crate::state::test_support::NullSdtmProjectService)
                 as Arc<dyn apis::sdtm_project::SdtmProjectService>,
+            structures: std::sync::Arc::new(crate::state::test_support::NullStructureService)
+                as std::sync::Arc<dyn apis::structures::StructureService>,
             log_ingestor: crate::state::test_support::unused_log_ingestor(),
         }
     }

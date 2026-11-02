@@ -93,6 +93,11 @@ crf = { path = "../../../lib/crates/crf" }
 # apis::project::ProjectService port.
 sdtm-project = { path = "../../../lib/crates/sdtm-project" }
 
+# structures provides the directory-structure Postgres repositories, the
+# StructureUsecase, and the apis::structures::StructureService adapter
+# that the HTTP layer consumes through AppState.
+structures = { path = "../../../lib/crates/structures" }
+
 [dev-dependencies]
 # `argon2` is used by `tests/integration_auth.rs` to seed a real
 # credential row whose hash matches the password the test logs in

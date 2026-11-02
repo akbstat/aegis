@@ -4,25 +4,28 @@ use std::sync::Arc;
 
 use apis::structures::{
     AddNodeRequest, CreateStructureRequest, DeleteNodeRequest, ListStructuresRequest,
-    RenameStructureRequest, StructureApiError, StructureLevel, StructureService,
-    UpdateNodeRequest,
+    RenameStructureRequest, StructureApiError, StructureLevel, StructureService, UpdateNodeRequest,
 };
 
 use crate::adapter::facade::in_memory::service::StructureServiceImpl;
 use crate::domain::StructureLevel as DomainLevel;
-use crate::usecase::tests::{harness, node, Harness};
 use crate::usecase::StructureUsecase;
+use crate::usecase::tests::{Harness, harness, node};
 
-fn service(h: &Harness) -> StructureServiceImpl<
+fn service(
+    h: &Harness,
+) -> StructureServiceImpl<
     crate::usecase::tests::FakeStructureRepo,
     crate::usecase::tests::FakeNodeRepo,
     crate::usecase::tests::FakeProjectLookup,
 > {
-    StructureServiceImpl::new(StructureUsecase::new(crate::usecase::StructureUsecaseConfig {
-        structures: h.structures.clone(),
-        nodes: h.nodes.clone(),
-        projects: Arc::new(h.projects.clone()),
-    }))
+    StructureServiceImpl::new(StructureUsecase::new(
+        crate::usecase::StructureUsecaseConfig {
+            structures: h.structures.clone(),
+            nodes: h.nodes.clone(),
+            projects: Arc::new(h.projects.clone()),
+        },
+    ))
 }
 
 #[tokio::test]
@@ -62,7 +65,9 @@ async fn the_facade_translates_the_structure_level_both_ways() {
     // level reached the usecase as a project structure.
     assert!(created.is_err());
 
-    let template = h.structures.put(crate::usecase::tests::template_with_child());
+    let template = h
+        .structures
+        .put(crate::usecase::tests::template_with_child());
     let project = svc
         .create_structure(CreateStructureRequest {
             name: "Study".into(),
@@ -83,7 +88,9 @@ async fn the_facade_translates_the_structure_level_both_ways() {
 async fn the_facade_maps_a_duplicate_path_to_the_duplicate_path_error() {
     let h = harness(&["ABC"]);
     let svc = service(&h);
-    let template = h.structures.put(crate::usecase::tests::template_with_child());
+    let template = h
+        .structures
+        .put(crate::usecase::tests::template_with_child());
     h.nodes.put(template.id, node("t_root", "raw", true, None));
     let project = svc
         .create_structure(CreateStructureRequest {
@@ -94,8 +101,10 @@ async fn the_facade_maps_a_duplicate_path_to_the_duplicate_path_error() {
         })
         .await
         .unwrap();
-    h.nodes
-        .put(project.id, node("n_own", "raw/c.txt", false, Some("t_root")));
+    h.nodes.put(
+        project.id,
+        node("n_own", "raw/c.txt", false, Some("t_root")),
+    );
     let err = svc
         .add_node(AddNodeRequest {
             structure_id: project.id,
@@ -119,7 +128,9 @@ async fn the_facade_maps_a_duplicate_path_to_the_duplicate_path_error() {
 async fn the_facade_maps_a_missing_node_to_the_node_not_found_error() {
     let h = harness(&["ABC"]);
     let svc = service(&h);
-    let template = h.structures.put(crate::usecase::tests::template_with_child());
+    let template = h
+        .structures
+        .put(crate::usecase::tests::template_with_child());
     let project = svc
         .create_structure(CreateStructureRequest {
             name: "Study".into(),
@@ -169,7 +180,9 @@ async fn the_facade_maps_a_validation_failure_to_the_validation_error() {
 async fn the_facade_lists_own_nodes_with_the_hidden_and_override_flags() {
     let h = harness(&["ABC"]);
     let svc = service(&h);
-    let template = h.structures.put(crate::usecase::tests::template_with_child());
+    let template = h
+        .structures
+        .put(crate::usecase::tests::template_with_child());
     h.nodes.put(template.id, node("t_root", "raw", true, None));
     let project = svc
         .create_structure(CreateStructureRequest {
@@ -181,8 +194,10 @@ async fn the_facade_lists_own_nodes_with_the_hidden_and_override_flags() {
         .await
         .unwrap();
     h.nodes.put(project.id, node("t_root", "raw", true, None));
-    h.nodes
-        .put(project.id, node("n_new", "raw/b.txt", false, Some("t_root")));
+    h.nodes.put(
+        project.id,
+        node("n_new", "raw/b.txt", false, Some("t_root")),
+    );
     let own = svc.list_own_nodes(project.id).await.unwrap();
     assert_eq!(own.nodes.len(), 2);
     let root = own.nodes.iter().find(|n| n.node_id == "t_root").unwrap();
@@ -194,7 +209,9 @@ async fn the_facade_lists_own_nodes_with_the_hidden_and_override_flags() {
 async fn the_facade_deletes_a_node_and_lists_structures() {
     let h = harness(&["ABC"]);
     let svc = service(&h);
-    let template = h.structures.put(crate::usecase::tests::template_with_child());
+    let template = h
+        .structures
+        .put(crate::usecase::tests::template_with_child());
     h.nodes.put(template.id, node("t_root", "raw", true, None));
     let project = svc
         .create_structure(CreateStructureRequest {

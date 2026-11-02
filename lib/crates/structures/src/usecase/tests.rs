@@ -14,8 +14,8 @@ use crate::domain::{
     StructureNew, StructureRepository,
 };
 use crate::usecase::{
-    AddNode, CreateStructure, DeleteNode, RenameStructure, StructureUsecase, StructureUsecaseConfig,
-    StructureView, UpdateNode, UsecaseError,
+    AddNode, CreateStructure, DeleteNode, RenameStructure, StructureUsecase,
+    StructureUsecaseConfig, StructureView, UpdateNode, UsecaseError,
 };
 
 // ---- fake structure repository ----
@@ -213,10 +213,7 @@ impl NodeRepository for FakeNodeRepo {
         structure_id: i64,
         path: &str,
     ) -> Result<Option<Node>, DomainError> {
-        Ok(self
-            .all(structure_id)
-            .into_iter()
-            .find(|n| n.path == path))
+        Ok(self.all(structure_id).into_iter().find(|n| n.path == path))
     }
 }
 
@@ -230,9 +227,7 @@ pub(crate) struct FakeProjectLookup {
 impl FakeProjectLookup {
     pub(crate) fn new(codes: &[&str]) -> Self {
         Self {
-            codes: Arc::new(Mutex::new(
-                codes.iter().map(|c| c.to_string()).collect(),
-            )),
+            codes: Arc::new(Mutex::new(codes.iter().map(|c| c.to_string()).collect())),
         }
     }
 }
@@ -292,13 +287,8 @@ pub(crate) fn node(node_id: &str, path: &str, directory: bool, parent: Option<&s
 
 /// A template structure with one node under it.
 pub(crate) fn template_with_child() -> Structure {
-    let mut structure = Structure::new(
-        "Standard".into(),
-        StructureLevel::Template,
-        None,
-        None,
-    )
-    .unwrap();
+    let mut structure =
+        Structure::new("Standard".into(), StructureLevel::Template, None, None).unwrap();
     structure.id = 1;
     structure.nodes = vec![node("t_root", "raw", true, None)];
     structure
@@ -519,7 +509,10 @@ async fn renaming_a_structure_with_a_blank_name_is_rejected() {
         })
         .await
         .unwrap_err();
-    assert!(matches!(err, UsecaseError::Validation(DomainError::EmptyName)));
+    assert!(matches!(
+        err,
+        UsecaseError::Validation(DomainError::EmptyName)
+    ));
 }
 
 #[tokio::test]
@@ -592,7 +585,10 @@ async fn building_a_project_structure_returns_the_merged_tree() {
     // the template's child and the project's own addition are both there
     let mut children: Vec<String> = root.children.iter().map(|c| c.path.clone()).collect();
     children.sort();
-    assert_eq!(children, vec!["raw/a.txt".to_string(), "raw/b.txt".to_string()]);
+    assert_eq!(
+        children,
+        vec!["raw/a.txt".to_string(), "raw/b.txt".to_string()]
+    );
 }
 
 #[tokio::test]
@@ -683,8 +679,10 @@ async fn listing_structures_filters_by_level_and_project() {
 async fn template_and_project(h: &Harness) -> (Structure, StructureView) {
     let template = h.structures.put(template_with_child());
     h.nodes.put(template.id, node("t_root", "raw", true, None));
-    h.nodes
-        .put(template.id, node("t_file", "raw/a.txt", false, Some("t_root")));
+    h.nodes.put(
+        template.id,
+        node("t_file", "raw/a.txt", false, Some("t_root")),
+    );
     let project = h
         .usecase
         .create_structure(CreateStructure {
@@ -881,9 +879,12 @@ async fn updating_a_node_to_a_path_another_node_uses_is_rejected() {
 async fn updating_a_node_under_its_own_descendant_is_rejected() {
     let h = harness(&["ABC"]);
     let (_t, p) = template_and_project(&h).await;
-    h.nodes.put(p.id, node("n_child", "raw/sub", true, Some("t_root")));
     h.nodes
-        .put(p.id, node("n_grand", "raw/sub/deep.txt", false, Some("n_child")));
+        .put(p.id, node("n_child", "raw/sub", true, Some("t_root")));
+    h.nodes.put(
+        p.id,
+        node("n_grand", "raw/sub/deep.txt", false, Some("n_child")),
+    );
     // `t_root` cannot become a child of its own descendant `n_child`
     let err = h
         .usecase
@@ -929,7 +930,14 @@ async fn deleting_a_recorded_node_removes_it_and_its_descendants() {
     assert_eq!(own[0].hidden, Some(true));
     assert!(h.nodes.get(p.id, "n_new").is_none());
     // and the node is gone from the effective tree
-    assert!(h.usecase.build_structure(p.id).await.unwrap().nodes.is_empty());
+    assert!(
+        h.usecase
+            .build_structure(p.id)
+            .await
+            .unwrap()
+            .nodes
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -968,7 +976,14 @@ async fn deleting_an_overridden_node_hides_it_rather_than_reverting_it() {
     let own = h.nodes.all(p.id);
     assert_eq!(own.len(), 1);
     assert_eq!(own[0].hidden, Some(true));
-    assert!(h.usecase.build_structure(p.id).await.unwrap().nodes.is_empty());
+    assert!(
+        h.usecase
+            .build_structure(p.id)
+            .await
+            .unwrap()
+            .nodes
+            .is_empty()
+    );
 }
 
 #[tokio::test]

@@ -1580,6 +1580,334 @@ pub struct ProjectPathCode {
     pub project_code: String,
 }
 
+// ---- structures -------------------------------------------------------
+//
+// Wire types for the directory-structure namespace. They mirror
+// `apis::structures::*` field for field.
+
+/// Which kind of structure this is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum StructureLevelResponse {
+    Template,
+    Project,
+}
+
+/// What to copy into a directory once it has been created.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrationViewResponse {
+    pub directory: String,
+    pub filter: Vec<String>,
+}
+
+/// One node of the effective tree.
+///
+/// The schema is written by hand rather than derived: the type is
+/// recursive (a node's children are nodes), and utoipa 5's `ToSchema`
+/// derive cannot express that — it collects child schemas eagerly and
+/// recurses forever. The manual implementation below expresses the
+/// recursion the way OpenAPI 3 does: the `children` items are a `$ref`
+/// back to this schema.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeViewResponse {
+    pub node_id: String,
+    pub description: String,
+    pub path: String,
+    pub directory: bool,
+    pub parent: Option<String>,
+    pub reference: Option<String>,
+    pub migration: Option<MigrationViewResponse>,
+    pub children: Vec<NodeViewResponse>,
+}
+
+impl utoipa::PartialSchema for NodeViewResponse {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        use utoipa::openapi::schema::{ArrayBuilder, Object, ObjectBuilder, SchemaType, Type};
+
+        let nullable_string = Object::with_type(SchemaType::from_iter([Type::String, Type::Null]));
+        ObjectBuilder::new()
+            .property("nodeId", Object::with_type(SchemaType::Type(Type::String)))
+            .property(
+                "description",
+                Object::with_type(SchemaType::Type(Type::String)),
+            )
+            .property("path", Object::with_type(SchemaType::Type(Type::String)))
+            .property(
+                "directory",
+                Object::with_type(SchemaType::Type(Type::Boolean)),
+            )
+            .property("parent", nullable_string.clone())
+            .property("reference", nullable_string)
+            .property("migration", MigrationViewResponse::schema())
+            .property(
+                "children",
+                ArrayBuilder::new()
+                    .items(utoipa::openapi::Ref::from_schema_name("NodeViewResponse")),
+            )
+            .required("nodeId")
+            .required("description")
+            .required("path")
+            .required("directory")
+            .required("children")
+            .into()
+    }
+}
+
+impl utoipa::ToSchema for NodeViewResponse {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("NodeViewResponse")
+    }
+
+    fn schemas(
+        schemas: &mut Vec<(
+            String,
+            utoipa::openapi::RefOr<utoipa::openapi::schema::Schema>,
+        )>,
+    ) {
+        // Register this schema exactly once — the `children` property
+        // refers back to it by name rather than re-collecting it.
+        if !schemas.iter().any(|(name, _)| name == "NodeViewResponse") {
+            schemas.push((
+                "NodeViewResponse".to_string(),
+                <Self as utoipa::PartialSchema>::schema(),
+            ));
+        }
+    }
+}
+
+/// A structure and its effective tree.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StructureViewResponse {
+    pub id: i64,
+    pub name: String,
+    pub level: StructureLevelResponse,
+    pub project_code: Option<String>,
+    pub template_id: Option<i64>,
+    pub nodes: Vec<NodeViewResponse>,
+}
+
+/// A structure's identity, without its tree.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StructureSummaryResponse {
+    pub id: i64,
+    pub name: String,
+    pub level: StructureLevelResponse,
+    pub project_code: Option<String>,
+    pub template_id: Option<i64>,
+}
+
+/// A structure's identity and level, without the tree.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StructureMetaResponse {
+    pub id: i64,
+    pub name: String,
+    pub level: StructureLevelResponse,
+    pub project_code: Option<String>,
+    pub template_id: Option<i64>,
+}
+
+/// The effective tree of a structure.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StructureTreeResponse {
+    pub structure_id: i64,
+    pub nodes: Vec<NodeViewResponse>,
+}
+
+/// One of a structure's own records.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnNodeResponse {
+    pub node_id: String,
+    pub description: String,
+    pub path: String,
+    pub directory: bool,
+    pub parent: Option<String>,
+    pub reference: Option<String>,
+    pub migration: Option<MigrationViewResponse>,
+    pub hidden: bool,
+    pub overrides_template: bool,
+}
+
+/// A page-less list of structures.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StructureListResponse {
+    pub structures: Vec<StructureSummaryResponse>,
+}
+
+/// A page-less list of a structure's own records.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnNodeListResponse {
+    pub nodes: Vec<OwnNodeResponse>,
+}
+
+/// Create a structure.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateStructureRequest {
+    pub name: String,
+    pub level: StructureLevelResponse,
+    pub project_code: Option<String>,
+    pub template_id: Option<i64>,
+}
+
+/// Rename a structure.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameStructureRequest {
+    pub name: String,
+}
+
+/// Place a node at a path. `parent` is always present; `null` means
+/// "at the root".
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AddNodeRequest {
+    pub path: String,
+    pub description: String,
+    pub directory: bool,
+    pub parent: Option<String>,
+    pub reference: Option<String>,
+    pub migration: Option<MigrationViewResponse>,
+    pub hidden: Option<bool>,
+}
+
+/// Replace a node's mutable attributes.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateNodeRequest {
+    pub path: String,
+    pub description: String,
+    pub directory: bool,
+    pub parent: Option<String>,
+    pub reference: Option<String>,
+    pub migration: Option<MigrationViewResponse>,
+    pub hidden: Option<bool>,
+}
+
+/// The optional filters for the structure list.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ListStructuresQuery {
+    pub level: Option<StructureLevelResponse>,
+    pub project_code: Option<String>,
+}
+
+/// Wire-level extractor for the `{id}` and `{node_id}` URL parameters.
+///
+/// No `rename_all` here: this is an extractor, not a wire body, and a
+/// camelCase rename would turn `node_id` into `nodeId` — which no
+/// longer matches the `{node_id}` path parameter.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct StructureNodePath {
+    pub id: i64,
+    pub node_id: String,
+}
+
+// ---- structures: view conversions ------------------------------------
+
+impl From<apis::structures::StructureLevel> for StructureLevelResponse {
+    fn from(v: apis::structures::StructureLevel) -> Self {
+        match v {
+            apis::structures::StructureLevel::Template => StructureLevelResponse::Template,
+            apis::structures::StructureLevel::Project => StructureLevelResponse::Project,
+        }
+    }
+}
+
+impl From<apis::structures::MigrationView> for MigrationViewResponse {
+    fn from(v: apis::structures::MigrationView) -> Self {
+        Self {
+            directory: v.directory,
+            filter: v.filter,
+        }
+    }
+}
+
+impl From<apis::structures::NodeView> for NodeViewResponse {
+    fn from(v: apis::structures::NodeView) -> Self {
+        Self {
+            node_id: v.node_id,
+            description: v.description,
+            path: v.path,
+            directory: v.directory,
+            parent: v.parent,
+            reference: v.reference,
+            migration: v.migration.map(Into::into),
+            children: v.children.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<apis::structures::StructureView> for StructureViewResponse {
+    fn from(v: apis::structures::StructureView) -> Self {
+        Self {
+            id: v.id,
+            name: v.name,
+            level: v.level.into(),
+            project_code: v.project_code,
+            template_id: v.template_id,
+            nodes: v.nodes.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<apis::structures::StructureSummaryView> for StructureSummaryResponse {
+    fn from(v: apis::structures::StructureSummaryView) -> Self {
+        Self {
+            id: v.id,
+            name: v.name,
+            level: v.level.into(),
+            project_code: v.project_code,
+            template_id: v.template_id,
+        }
+    }
+}
+
+impl From<apis::structures::StructureMetaView> for StructureMetaResponse {
+    fn from(v: apis::structures::StructureMetaView) -> Self {
+        Self {
+            id: v.id,
+            name: v.name,
+            level: v.level.into(),
+            project_code: v.project_code,
+            template_id: v.template_id,
+        }
+    }
+}
+
+impl From<apis::structures::StructureTreeView> for StructureTreeResponse {
+    fn from(v: apis::structures::StructureTreeView) -> Self {
+        Self {
+            structure_id: v.structure_id,
+            nodes: v.nodes.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<apis::structures::OwnNodeView> for OwnNodeResponse {
+    fn from(v: apis::structures::OwnNodeView) -> Self {
+        Self {
+            node_id: v.node_id,
+            description: v.description,
+            path: v.path,
+            directory: v.directory,
+            parent: v.parent,
+            reference: v.reference,
+            migration: v.migration.map(Into::into),
+            hidden: v.hidden,
+            overrides_template: v.overrides_template,
+        }
+    }
+}
+
 // ---- view projections ----
 
 /// Wire projection of [`apis::crf::CrfVersionView`].

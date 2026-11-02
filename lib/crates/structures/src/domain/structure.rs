@@ -46,7 +46,12 @@ impl Structure {
                 }
             }
             StructureLevel::Project => {
-                if project_code.as_deref().map(str::trim).unwrap_or("").is_empty() {
+                if project_code
+                    .as_deref()
+                    .map(str::trim)
+                    .unwrap_or("")
+                    .is_empty()
+                {
                     return Err(DomainError::MissingProjectCode);
                 }
                 if template_id.is_none() {

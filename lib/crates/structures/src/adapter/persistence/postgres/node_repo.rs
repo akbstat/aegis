@@ -129,13 +129,14 @@ impl NodeRepository for NodeRepoPg {
     }
 
     async fn delete(&self, structure_id: i64, node_id: &str) -> Result<(), DomainError> {
-        let affected = sqlx::query("DELETE FROM structure_nodes WHERE structure_id = $1 AND node_id = $2")
-            .bind(structure_id)
-            .bind(node_id)
-            .execute(&self.pool)
-            .await
-            .map_err(map_error)?
-            .rows_affected();
+        let affected =
+            sqlx::query("DELETE FROM structure_nodes WHERE structure_id = $1 AND node_id = $2")
+                .bind(structure_id)
+                .bind(node_id)
+                .execute(&self.pool)
+                .await
+                .map_err(map_error)?
+                .rows_affected();
         if affected == 0 {
             return Err(DomainError::NodeNotFound(node_id.to_string()));
         }
@@ -215,7 +216,9 @@ mod tests {
     fn the_structure_nodes_table_keeps_its_constraints() {
         let sql = include_str!("../../../../migrations/0002_create_structure_nodes.sql");
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS structure_nodes"));
-        assert!(sql.contains("CONSTRAINT structure_nodes_unique_node UNIQUE (structure_id, node_id)"));
+        assert!(
+            sql.contains("CONSTRAINT structure_nodes_unique_node UNIQUE (structure_id, node_id)")
+        );
         assert!(sql.contains("CONSTRAINT structure_nodes_unique_path UNIQUE (structure_id, path)"));
         assert!(sql.contains("CONSTRAINT structure_nodes_migration_filter_array CHECK (jsonb_typeof(migration_filter) = 'array')"));
         assert!(sql.contains("CONSTRAINT structure_nodes_reference_only_on_file CHECK (reference_path IS NULL OR directory = FALSE)"));

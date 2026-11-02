@@ -15,6 +15,7 @@ use apis::crf::CrfService;
 use apis::domain_model::DomainModelService;
 use apis::mission::MissionService;
 use apis::sdtm_project::SdtmProjectService;
+use apis::structures::StructureService;
 use apis::terminology::TerminologyService;
 use apis::user::UserService;
 use auth::{
@@ -41,6 +42,10 @@ use sdtm_project::{
 };
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
+use structures::{
+    NodeRepoPg, ProjectLookupImpl as StructuresProjectLookupImpl, StructureRepoPg,
+    StructureServiceImpl, StructureUsecase, StructureUsecaseConfig,
+};
 use terminology::{
     CodeItemRepo, CodeListRepo, TerminologyServiceImpl, TerminologyUsecase,
     TerminologyUsecaseConfig, TerminologyVersionRepo,
@@ -81,6 +86,7 @@ pub async fn run(config: Config) -> Result<(), Box<dyn std::error::Error + Send 
     let domain_model = build_domain_model_service(pool.clone());
     let mission = build_mission_service(pool.clone(), project.clone(), user.clone());
     let sdtm_project = build_sdtm_project_service(pool.clone(), project.clone());
+    let structures = build_structure_service(pool.clone(), project.clone());
     let crf = build_crf_service(pool, project.clone());
 
     // Build the client-log ingestor. Reuses the same `log_dir` as the
@@ -106,6 +112,7 @@ pub async fn run(config: Config) -> Result<(), Box<dyn std::error::Error + Send 
         mission,
         crf,
         sdtm_project,
+        structures,
         log_ingestor,
     };
     let app = transport::http::router(state);
@@ -241,6 +248,25 @@ fn build_domain_model_service(pool: PgPool) -> Arc<dyn DomainModelService> {
         variable_repo,
     });
     Arc::new(DomainModelServiceImpl::new(usecase))
+}
+
+/// Build the directory-structure service.
+///
+/// The `project` service is already built in `run`, so the
+/// project-existence check reuses the canonical `projects` table.
+fn build_structure_service(
+    pool: PgPool,
+    project: Arc<dyn apis::project::ProjectService>,
+) -> Arc<dyn StructureService> {
+    let structures = StructureRepoPg::new(pool.clone());
+    let nodes = NodeRepoPg::new(pool);
+    let projects = Arc::new(StructuresProjectLookupImpl::new(project));
+    let usecase = StructureUsecase::new(StructureUsecaseConfig {
+        structures,
+        nodes,
+        projects,
+    });
+    Arc::new(StructureServiceImpl::new(usecase))
 }
 
 /// Wire the crf crate's adapters into the apis `CrfService` trait

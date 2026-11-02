@@ -220,10 +220,7 @@ pub trait StructureService: Send + Sync {
     /// The structure's identity and level, without building the effective
     /// tree. The auth gate needs the level on every write, and building
     /// the whole tree to read one enum would be wasteful.
-    async fn get_structure_meta(
-        &self,
-        id: i64,
-    ) -> Result<StructureMetaView, StructureApiError>;
+    async fn get_structure_meta(&self, id: i64) -> Result<StructureMetaView, StructureApiError>;
 
     async fn list_structures(
         &self,
@@ -247,11 +244,7 @@ pub trait StructureService: Send + Sync {
     /// `hidden` flag and whether each overrides a template node. This is
     /// where a client learns the `node_id` of a hidden node, so it can
     /// undo a hide.
-    async fn list_own_nodes(&self, structure_id: i64)
-        -> Result<OwnNodeList, StructureApiError>;
+    async fn list_own_nodes(&self, structure_id: i64) -> Result<OwnNodeList, StructureApiError>;
 
-    async fn build_structure(
-        &self,
-        id: i64,
-    ) -> Result<StructureTreeView, StructureApiError>;
+    async fn build_structure(&self, id: i64) -> Result<StructureTreeView, StructureApiError>;
 }

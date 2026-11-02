@@ -23,6 +23,6 @@ pub use domain::{
 };
 pub use usecase::{
     AddNode, CreateStructure, DeleteNode, MigrationView, NodeView, OwnNodeView, RenameStructure,
-    StructureMetaView, StructureSummaryView, StructureTreeView, StructureView, UpdateNode,
-    UsecaseError,
+    StructureMetaView, StructureSummaryView, StructureTreeView, StructureUsecase,
+    StructureUsecaseConfig, StructureView, UpdateNode, UsecaseError,
 };

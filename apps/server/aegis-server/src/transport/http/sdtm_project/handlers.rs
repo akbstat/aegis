@@ -1079,6 +1079,8 @@ mod tests {
             mission: Arc::new(NullMissionService) as Arc<dyn apis::mission::MissionService>,
             crf: Arc::new(NullCrfService) as Arc<dyn apis::crf::CrfService>,
             sdtm_project: Arc::new(sdtm_project) as Arc<dyn apis::sdtm_project::SdtmProjectService>,
+            structures: std::sync::Arc::new(crate::state::test_support::NullStructureService)
+                as std::sync::Arc<dyn apis::structures::StructureService>,
             log_ingestor: crate::state::test_support::unused_log_ingestor(),
         }
     }

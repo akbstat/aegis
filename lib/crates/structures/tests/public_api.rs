@@ -10,11 +10,11 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use structures::{
-    AddNode, CreateStructure, DeleteNode, DomainError, MergedNode, MergedTree, Migration,
-    Node, NodeAttributes, NodeRepository, NodeView, OwnNodeView, ProjectLookup,
-    ProjectLookupImpl, RenameStructure, Structure, StructureFilter, StructureLevel,
-    StructureMetaView, StructureNew, StructureRepository, StructureServiceImpl,
-    StructureSummaryView, StructureTreeView, StructureView, UpdateNode, UsecaseError,
+    AddNode, CreateStructure, DeleteNode, DomainError, MergedNode, MergedTree, Migration, Node,
+    NodeAttributes, NodeRepository, NodeView, OwnNodeView, ProjectLookup, ProjectLookupImpl,
+    RenameStructure, Structure, StructureFilter, StructureLevel, StructureMetaView, StructureNew,
+    StructureRepository, StructureServiceImpl, StructureSummaryView, StructureTreeView,
+    StructureView, UpdateNode, UsecaseError,
 };
 
 #[test]
@@ -59,8 +59,7 @@ fn the_constructor_chain_is_pinned() {
     let _: fn(PgPool) -> structures::StructureRepoPg = structures::StructureRepoPg::new;
     let _: fn(PgPool) -> structures::NodeRepoPg = structures::NodeRepoPg::new;
     // The lookup takes the project service.
-    let _: fn(Arc<dyn apis::project::ProjectService>) -> ProjectLookupImpl =
-        ProjectLookupImpl::new;
+    let _: fn(Arc<dyn apis::project::ProjectService>) -> ProjectLookupImpl = ProjectLookupImpl::new;
 }
 
 // ---- in-memory doubles, to pin the trait bounds ----

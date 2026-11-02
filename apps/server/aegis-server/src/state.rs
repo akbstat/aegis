@@ -16,6 +16,7 @@ pub struct AppState {
     pub mission: Arc<dyn apis::mission::MissionService>,
     pub crf: Arc<dyn apis::crf::CrfService>,
     pub sdtm_project: Arc<dyn apis::sdtm_project::SdtmProjectService>,
+    pub structures: Arc<dyn apis::structures::StructureService>,
     pub log_ingestor: Arc<logging_utils::LogIngestor>,
 }
 
@@ -31,6 +32,84 @@ pub(crate) mod test_support {
     use std::sync::Arc;
 
     use async_trait::async_trait;
+
+    /// A `StructureService` for tests that need an `AppState` but
+    /// never touch the structures endpoints. Every method is
+    /// `unimplemented!()`, like the other null doubles in this module.
+    #[derive(Clone)]
+    pub(crate) struct NullStructureService;
+
+    #[async_trait]
+    impl apis::structures::StructureService for NullStructureService {
+        async fn create_structure(
+            &self,
+            _req: apis::structures::CreateStructureRequest,
+        ) -> Result<apis::structures::StructureView, apis::structures::StructureApiError> {
+            unimplemented!()
+        }
+        async fn get_structure(
+            &self,
+            _id: i64,
+        ) -> Result<apis::structures::StructureView, apis::structures::StructureApiError> {
+            unimplemented!()
+        }
+        async fn get_structure_meta(
+            &self,
+            _id: i64,
+        ) -> Result<apis::structures::StructureMetaView, apis::structures::StructureApiError>
+        {
+            unimplemented!()
+        }
+        async fn list_structures(
+            &self,
+            _req: apis::structures::ListStructuresRequest,
+        ) -> Result<apis::structures::StructureList, apis::structures::StructureApiError> {
+            unimplemented!()
+        }
+        async fn rename_structure(
+            &self,
+            _req: apis::structures::RenameStructureRequest,
+        ) -> Result<apis::structures::StructureView, apis::structures::StructureApiError> {
+            unimplemented!()
+        }
+        async fn delete_structure(
+            &self,
+            _id: i64,
+        ) -> Result<(), apis::structures::StructureApiError> {
+            unimplemented!()
+        }
+        async fn add_node(
+            &self,
+            _req: apis::structures::AddNodeRequest,
+        ) -> Result<apis::structures::NodeView, apis::structures::StructureApiError> {
+            unimplemented!()
+        }
+        async fn update_node(
+            &self,
+            _req: apis::structures::UpdateNodeRequest,
+        ) -> Result<apis::structures::NodeView, apis::structures::StructureApiError> {
+            unimplemented!()
+        }
+        async fn delete_node(
+            &self,
+            _req: apis::structures::DeleteNodeRequest,
+        ) -> Result<(), apis::structures::StructureApiError> {
+            unimplemented!()
+        }
+        async fn list_own_nodes(
+            &self,
+            _structure_id: i64,
+        ) -> Result<apis::structures::OwnNodeList, apis::structures::StructureApiError> {
+            unimplemented!()
+        }
+        async fn build_structure(
+            &self,
+            _id: i64,
+        ) -> Result<apis::structures::StructureTreeView, apis::structures::StructureApiError>
+        {
+            unimplemented!()
+        }
+    }
 
     /// A `SdtmProjectService` for tests that need an `AppState` but
     /// never touch the sdtm-project endpoints. Every method is

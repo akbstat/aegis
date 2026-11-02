@@ -117,13 +117,8 @@ fn node_new_accepts_a_directory_with_a_migration() {
 
 #[test]
 fn structure_new_accepts_a_template_with_no_owner() {
-    let structure = Structure::new(
-        "Standard".into(),
-        StructureLevel::Template,
-        None,
-        None,
-    )
-    .unwrap();
+    let structure =
+        Structure::new("Standard".into(), StructureLevel::Template, None, None).unwrap();
     assert_eq!(structure.level, StructureLevel::Template);
     assert_eq!(structure.project_code, None);
     assert_eq!(structure.template_id, None);
@@ -169,7 +164,12 @@ fn structure_new_rejects_a_project_without_a_project_code() {
 
 #[test]
 fn structure_new_rejects_a_project_without_a_template() {
-    let err = Structure::new("Study".into(), StructureLevel::Project, Some("ABC".into()), None)
-        .unwrap_err();
+    let err = Structure::new(
+        "Study".into(),
+        StructureLevel::Project,
+        Some("ABC".into()),
+        None,
+    )
+    .unwrap_err();
     assert!(matches!(err, DomainError::MissingTemplate));
 }

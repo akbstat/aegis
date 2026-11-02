@@ -68,7 +68,9 @@ impl StructureRepository for StructureRepoPg {
             // The one-per-project index fired. The driver does not
             // surface which project, but the command does.
             sqlx::Error::Database(db) if db.code().as_deref() == Some("23505") => {
-                DomainError::DuplicateProjectStructure(input.project_code.clone().unwrap_or_default())
+                DomainError::DuplicateProjectStructure(
+                    input.project_code.clone().unwrap_or_default(),
+                )
             }
             _ => map_error(err),
         })?;
@@ -135,23 +137,23 @@ impl StructureRepository for StructureRepoPg {
     }
 
     async fn count_project_structures(&self, project_code: &str) -> Result<i64, DomainError> {
-        let count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM structures WHERE level = 'project' AND project_code = $1")
-                .bind(project_code)
-                .fetch_one(&self.pool)
-                .await
-                .map_err(map_error)?;
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM structures WHERE level = 'project' AND project_code = $1",
+        )
+        .bind(project_code)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(map_error)?;
         Ok(count)
     }
 
     async fn is_template_referenced(&self, template_id: i64) -> Result<bool, DomainError> {
-        let referenced: bool = sqlx::query_scalar(
-            "SELECT EXISTS(SELECT 1 FROM structures WHERE template_id = $1)",
-        )
-        .bind(template_id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(map_error)?;
+        let referenced: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM structures WHERE template_id = $1)")
+                .bind(template_id)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(map_error)?;
         Ok(referenced)
     }
 }
@@ -180,7 +182,9 @@ mod tests {
     fn the_structures_table_keeps_its_constraints() {
         let sql = include_str!("../../../../migrations/0001_create_structures.sql");
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS structures"));
-        assert!(sql.contains("CONSTRAINT structures_level_check CHECK (level IN ('template', 'project'))"));
+        assert!(sql.contains(
+            "CONSTRAINT structures_level_check CHECK (level IN ('template', 'project'))"
+        ));
         assert!(sql.contains("CONSTRAINT structures_level_shape CHECK"));
         assert!(sql.contains("CREATE UNIQUE INDEX IF NOT EXISTS structures_one_per_project"));
         assert!(sql.contains("ON structures (project_code) WHERE level = 'project'"));
