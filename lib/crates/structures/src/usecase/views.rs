@@ -104,3 +104,22 @@ impl From<MergedNode> for NodeView {
         }
     }
 }
+
+impl NodeView {
+    /// A node rendered on its own, with no children.
+    ///
+    /// Used for a node the effective tree does not contain — a hidden
+    /// node, or one whose parent is no longer reachable.
+    pub fn from_node(node: &crate::domain::Node) -> Self {
+        Self {
+            node_id: node.node_id.clone(),
+            description: node.description.clone(),
+            path: node.path.clone(),
+            directory: node.directory,
+            parent: node.parent.clone(),
+            reference: node.reference.clone(),
+            migration: node.migration.clone().map(Into::into),
+            children: Vec::new(),
+        }
+    }
+}
