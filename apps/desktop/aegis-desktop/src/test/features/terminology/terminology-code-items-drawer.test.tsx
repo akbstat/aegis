@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AegisI18nProvider } from "@aegis/ui/i18n";
@@ -121,7 +121,13 @@ function renderDrawer(props?: {
 }
 
 describe("TerminologyCodeItemsDrawer", () => {
-  afterEach(() => cleanup());
+  // Fake timers are restored after every test: a test that fails while
+  // they are installed would otherwise leave them on for the rest of
+  // the file, and every later `waitFor` would hang.
+  afterEach(() => {
+    vi.useRealTimers();
+    cleanup();
+  });
 
   it("resolves the code against the latest SDTM version and lists the code list's items", async () => {
     setupMocks();
@@ -274,26 +280,27 @@ describe("TerminologyCodeItemsDrawer", () => {
     setupMocks();
     renderDrawer();
     await screen.findByText("PASS");
-    const before = mockInvoke.mock.calls.filter(
-      (c) => c[0] === "list_code_items",
-    ).length;
-    await userEvent.type(
-      screen.getByPlaceholderText(/search by code, submission value/i),
-      "p",
+    const searchBox = screen.getByPlaceholderText(
+      /search by code, submission value/i,
     );
-    // The raw keystroke must not have reached the server yet.
-    const during = mockInvoke.mock.calls.filter(
-      (c) => c[0] === "list_code_items",
-    ).length;
-    expect(during).toBe(before);
-    await waitFor(
-      () => {
-        expect(mockInvoke).toHaveBeenCalledWith(
-          "list_code_items",
-          expect.objectContaining({ fragment: "p" }),
-        );
-      },
-      { timeout: 2000 },
+
+    vi.useFakeTimers();
+    const fragmentCalls = () =>
+      mockInvoke.mock.calls.filter(
+        (c) =>
+          c[0] === "list_code_items" &&
+          (c[1] as { fragment?: string }).fragment !== undefined,
+      );
+    // `fireEvent` rather than `userEvent`: the latter awaits timers
+    // internally, which deadlocks under fake timers.
+    fireEvent.change(searchBox, { target: { value: "p" } });
+    // The debounce timer has not been advanced, so the keystroke has not
+    // reached the server.
+    expect(fragmentCalls().length).toBe(0);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(fragmentCalls().length).toBe(1);
+    expect(fragmentCalls()[0][1]).toEqual(
+      expect.objectContaining({ fragment: "p", codelistId: 11 }),
     );
   });
 
@@ -307,7 +314,9 @@ describe("TerminologyCodeItemsDrawer", () => {
     );
     await waitFor(() => {
       const calls = mockInvoke.mock.calls.filter(
-        (c) => c[0] === "list_code_items",
+        (c) =>
+          c[0] === "list_code_items" &&
+          (c[1] as { fragment?: string }).fragment !== undefined,
       );
       expect(calls.length).toBeGreaterThan(0);
       expect(
@@ -332,20 +341,113 @@ describe("TerminologyCodeItemsDrawer", () => {
         expect.objectContaining({ fragment: "zzz" }),
       );
     });
+    const beforeClear = mockInvoke.mock.calls.filter(
+      (c) => c[0] === "list_code_items",
+    ).length;
     await userEvent.clear(input);
     await waitFor(
       () => {
         const calls = mockInvoke.mock.calls.filter(
           (c) => c[0] === "list_code_items",
         );
+        const afterClear = calls.slice(beforeClear);
         expect(
-          calls.some(
+          afterClear.some(
             (c) => (c[1] as { fragment?: string }).fragment === undefined,
           ),
         ).toBe(true);
       },
       { timeout: 2000 },
     );
+  });
+
+  it("does not apply the previous code's search to the new code list", async () => {
+    setupMocks({
+      codeLists: {
+        items: [
+          targetCodelist,
+          { ...targetCodelist, id: 13, submissionValue: "AESEV" },
+        ],
+      },
+    });
+    const { rerender } = renderDrawer();
+    await screen.findByText("PASS");
+    await userEvent.type(
+      screen.getByPlaceholderText(/search by code, submission value/i),
+      "pas",
+    );
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "list_code_items",
+        expect.objectContaining({ codelistId: 11, fragment: "pas" }),
+      );
+    });
+
+    rerender(
+      <AegisThemeProvider>
+        <TestQueryProvider>
+          <AegisI18nProvider>
+            <TerminologyCodeItemsDrawer
+              open={true}
+              code="AESEV"
+              projectCode={null}
+              onClose={() => {}}
+            />
+          </AegisI18nProvider>
+        </TestQueryProvider>
+      </AegisThemeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "list_code_items",
+        expect.objectContaining({ codelistId: 13 }),
+      );
+    });
+    // The new code list is never searched with the previous code's term.
+    const calls = mockInvoke.mock.calls.filter(
+      (c) => c[0] === "list_code_items",
+    );
+    expect(
+      calls.some(
+        (c) =>
+          (c[1] as { codelistId: number }).codelistId === 13 &&
+          (c[1] as { fragment?: string }).fragment !== undefined,
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps the search box when the search fails", async () => {
+    mockInvoke.mockReset();
+    mockCommands({
+      list_terminology_versions: () => [sdtmVersion],
+      list_code_lists: () => ({ items: [targetCodelist] }),
+      list_code_items: (args?: Record<string, unknown>) => {
+        if (args?.fragment) {
+          throw {
+            kind: "http",
+            status: 400,
+            code: "invalid_fragment",
+            message: "invalid fragment",
+          };
+        }
+        return { items: [codeItem] };
+      },
+    });
+    renderDrawer();
+    await screen.findByText("PASS");
+    await userEvent.type(
+      screen.getByPlaceholderText(/search by code, submission value/i),
+      "a b",
+    );
+    // The user can see the failure and correct the query — the input
+    // survives it.
+    expect(
+      await screen.findByText(/failed to load code items/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText(/search by code, submission value/i),
+    ).toBeInTheDocument();
   });
 
   it("shows the no-matches message for an active search", async () => {

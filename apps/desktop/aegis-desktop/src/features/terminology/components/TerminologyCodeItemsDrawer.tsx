@@ -9,7 +9,7 @@ import {
   Typography,
 } from "@aegis/ui/mui";
 import { useI18n } from "@aegis/ui/i18n";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { errorMessage } from "../../../shared/api/error";
 import { InfiniteScrollSentinel } from "../../../shared/components/InfiniteScrollSentinel";
@@ -60,22 +60,30 @@ export function TerminologyCodeItemsDrawer({
   );
   const codelist = codelistsQuery.codelist;
 
-  const [search, setSearch] = useState("");
-  const debouncedFragment = useDebouncedValue(search, {
+  // The search text, together with the code it was typed for.
+  //
+  // The drawer is one mounted component reused across codes, so a
+  // fragment typed for one code must never reach another code's list.
+  // The reset happens during render rather than in an effect, and the
+  // *settled* value is scoped by its code: the debounced value lags the
+  // reset by a debounce window, so an effect-based reset would let the
+  // old term reach the new code list in the meantime.
+  const [search, setSearch] = useState<{ code: string | null; text: string }>(
+    { code, text: "" },
+  );
+  if (search.code !== code) {
+    setSearch({ code, text: "" });
+  }
+  const searchText = search.code === code ? search.text : "";
+  const debouncedSearch = useDebouncedValue(search, {
     delayMs: 300,
     maxWaitMs: 1000,
   });
-  const trimmedQuery = debouncedFragment.trim();
-
-  // The drawer is one mounted component reused across codes, so a term
-  // left over from the previous code would filter the new code list into
-  // a false "no matching code items".
-  useEffect(() => {
-    setSearch("");
-  }, [code]);
+  const fragment = debouncedSearch.code === code ? debouncedSearch.text : "";
+  const trimmedQuery = fragment.trim();
 
   const itemsQuery = useListCodeItems(codelist?.id ?? null, {
-    fragment: debouncedFragment,
+    fragment,
   });
   const rows = itemsQuery.data?.pages.flatMap((p) => p.items) ?? [];
   const hasMore = itemsQuery.hasNextPage ?? false;
@@ -86,11 +94,11 @@ export function TerminologyCodeItemsDrawer({
   const projectFailed = versions.projectError != null;
   const noVersion = versions.versionId == null && !versionsFailed && !projectFailed;
   const resolving = versions.isLoading || codelistsQuery.isLoading;
+  // A failed *search* is not a failed code list: it is rendered by the
+  // table (which keeps the search box and offers its own retry), so the
+  // user can correct the query.
   const lookupError =
-    versions.versionsError ??
-    versions.projectError ??
-    codelistsQuery.error ??
-    itemsQuery.error;
+    versions.versionsError ?? versions.projectError ?? codelistsQuery.error;
 
   function handleRetry() {
     // Refetch only the query that failed: the code-item query is
@@ -100,11 +108,7 @@ export function TerminologyCodeItemsDrawer({
       versions.refetch();
       return;
     }
-    if (codelistsQuery.error) {
-      void codelistsQuery.refetch();
-      return;
-    }
-    void itemsQuery.refetch();
+    void codelistsQuery.refetch();
   }
 
   return (
@@ -164,8 +168,8 @@ export function TerminologyCodeItemsDrawer({
               )}
             </Box>
             <TermFilterBar
-              query={search}
-              onQueryChange={setSearch}
+              query={searchText}
+              onQueryChange={(value) => setSearch({ code, text: value })}
               placeholder={t("terminology.codeitem.search.placeholder")}
             />
             <CodeItemTable
