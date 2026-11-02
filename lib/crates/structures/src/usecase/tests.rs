@@ -256,6 +256,7 @@ pub(crate) struct Harness {
     pub usecase: StructureUsecase<FakeStructureRepo, FakeNodeRepo, FakeProjectLookup>,
     pub structures: FakeStructureRepo,
     pub nodes: FakeNodeRepo,
+    pub projects: FakeProjectLookup,
 }
 
 pub(crate) fn harness(project_codes: &[&str]) -> Harness {
@@ -271,6 +272,7 @@ pub(crate) fn harness(project_codes: &[&str]) -> Harness {
         usecase,
         structures,
         nodes,
+        projects,
     }
 }
 

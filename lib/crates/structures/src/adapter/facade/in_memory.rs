@@ -5,3 +5,6 @@
 //! `structures::usecase::StructureUsecase` to the API contract.
 
 pub mod service;
+
+#[cfg(test)]
+mod tests;

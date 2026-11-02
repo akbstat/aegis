@@ -12,6 +12,7 @@ pub mod adapter;
 pub mod domain;
 pub mod usecase;
 
+pub use adapter::facade::in_memory::service::StructureServiceImpl;
 pub use adapter::persistence::postgres::node_repo::NodeRepoPg;
 pub use adapter::persistence::postgres::structure_repo::StructureRepoPg;
 pub use adapter::service::project::project_lookup_impl::ProjectLookupImpl;
