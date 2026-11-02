@@ -245,7 +245,7 @@ async fn domain_create_then_list_round_trips() {
         assert_eq!(d.version_id, v.id);
         assert_eq!(d.domain_code, "AE");
         assert_eq!(d.key_variables, vec!["AETERM".to_string()]);
-        assert!(d.r#override.is_none());
+        assert!(d.domain_override.is_none());
 
         let listed = domains.list_by_version(v.id).await.expect("list");
         assert_eq!(listed.len(), 1);
@@ -635,12 +635,15 @@ async fn domain_read_carries_the_override() {
             .unwrap();
 
         let by_id = domains.find_by_id(d.id).await.expect("find");
-        let ov = by_id.r#override.as_ref().expect("override hydrated");
+        let ov = by_id.domain_override.as_ref().expect("override hydrated");
         assert_eq!(ov.category, DomainCategory::TrialDesign);
         assert_eq!(ov.domain_id, d.id);
 
         let listed = domains.list_by_version(v.id).await.expect("list");
-        let ov = listed[0].r#override.as_ref().expect("override hydrated");
+        let ov = listed[0]
+            .domain_override
+            .as_ref()
+            .expect("override hydrated");
         assert_eq!(ov.category, DomainCategory::TrialDesign);
         assert_eq!(ov.domain_id, d.id);
     })
@@ -687,7 +690,7 @@ async fn domain_update_carries_the_override() {
             })
             .await
             .expect("domain update");
-        let ov = updated.r#override.as_ref().expect("override hydrated");
+        let ov = updated.domain_override.as_ref().expect("override hydrated");
         assert_eq!(ov.category, DomainCategory::TrialDesign);
         assert_eq!(ov.domain_id, d.id);
     })

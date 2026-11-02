@@ -360,7 +360,7 @@ fn sdtm_project_public_types_are_nameable() {
         version_id: 1,
         domain_code: "AE".into(),
         key_variables: vec!["AETERM".into()],
-        r#override: None,
+        domain_override: None,
         created_at: ts,
         updated_at: ts,
     });
@@ -377,7 +377,7 @@ fn sdtm_project_public_types_are_nameable() {
         domain_id: 2,
         variable_code: "AETERM".into(),
         variable_sequence: 11,
-        r#override: None,
+        variable_override: None,
         created_at: ts,
         updated_at: ts,
     });

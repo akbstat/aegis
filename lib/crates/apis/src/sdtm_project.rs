@@ -188,14 +188,14 @@ pub struct SdtmProjectVersionView {
 }
 
 /// Safe projection of an `SdtmProjectDomain` aggregate. The nested
-/// `r#override` carries the domain's one override, when it has one.
+/// `domain_override` carries the domain's one override, when it has one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SdtmProjectDomainView {
     pub id: i64,
     pub version_id: i64,
     pub domain_code: String,
     pub key_variables: Vec<String>,
-    pub r#override: Option<SdtmProjectDomainOverrideView>,
+    pub domain_override: Option<SdtmProjectDomainOverrideView>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -212,14 +212,14 @@ pub struct SdtmProjectDomainOverrideView {
 }
 
 /// Safe projection of an `SdtmProjectVariable` aggregate. The nested
-/// `r#override` carries the variable's one override, when it has one.
+/// `variable_override` carries the variable's one override, when it has one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SdtmProjectVariableView {
     pub id: i64,
     pub domain_id: i64,
     pub variable_code: String,
     pub variable_sequence: i64,
-    pub r#override: Option<SdtmProjectVariableOverrideView>,
+    pub variable_override: Option<SdtmProjectVariableOverrideView>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -28,7 +28,7 @@ use crate::usecase::sdtm_project_usecase::{SdtmProjectUsecase, SdtmProjectUsecas
 // One store behind all five repositories, so the domain and variable
 // repositories can hydrate their override exactly the way the SQL
 // adapters do with a LEFT JOIN. The stored parent rows always carry
-// `r#override: None`; the override lives in its own collection.
+// `domain_override: None`; the override lives in its own collection.
 
 #[derive(Default)]
 struct InMemoryStore {
@@ -144,7 +144,7 @@ impl InMemoryDomainRepo {
             .find(|o| o.domain_id == d.id)
             .cloned();
         SdtmProjectDomain {
-            r#override: ov,
+            domain_override: ov,
             ..d
         }
     }
@@ -324,7 +324,7 @@ impl InMemoryVariableRepo {
             .find(|o| o.variable_id == v.id)
             .cloned();
         SdtmProjectVariable {
-            r#override: ov,
+            variable_override: ov,
             ..v
         }
     }
@@ -735,7 +735,7 @@ async fn domain_list_carries_the_override() {
 
     let list = uc.list_domains_by_version(version_id).await.unwrap();
     assert_eq!(list.len(), 1);
-    let ov = list[0].r#override.as_ref().expect("override hydrated");
+    let ov = list[0].domain_override.as_ref().expect("override hydrated");
     assert_eq!(ov.category, DomainCategory::Events);
     assert_eq!(ov.descriptions.len(), 1);
     // The override's parent is the domain, not the version.
@@ -765,7 +765,7 @@ async fn domain_update_keeps_the_override() {
         .await
         .unwrap();
     assert_eq!(updated.domain_code, "AE2");
-    assert!(updated.r#override.is_some());
+    assert!(updated.domain_override.is_some());
 }
 
 #[tokio::test]

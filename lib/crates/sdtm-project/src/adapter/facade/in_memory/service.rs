@@ -251,7 +251,7 @@ fn domain_view_from_internal(view: InternalDomainView) -> SdtmProjectDomainView 
         version_id: view.version_id,
         domain_code: view.domain_code,
         key_variables: view.key_variables,
-        r#override: view.r#override.map(domain_override_view_from_internal),
+        domain_override: view.domain_override.map(domain_override_view_from_internal),
         created_at: view.created_at,
         updated_at: view.updated_at,
     }
@@ -276,7 +276,9 @@ fn variable_view_from_internal(view: InternalVariableView) -> SdtmProjectVariabl
         domain_id: view.domain_id,
         variable_code: view.variable_code,
         variable_sequence: view.variable_sequence,
-        r#override: view.r#override.map(variable_override_view_from_internal),
+        variable_override: view
+            .variable_override
+            .map(variable_override_view_from_internal),
         created_at: view.created_at,
         updated_at: view.updated_at,
     }

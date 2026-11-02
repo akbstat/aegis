@@ -40,7 +40,7 @@ struct SdtmProjectVariableRow {
 
 impl SdtmProjectVariableRow {
     fn into_variable(self) -> Result<SdtmProjectVariable, DomainError> {
-        let r#override = match self.override_id {
+        let variable_override = match self.override_id {
             None => None,
             Some(id) => {
                 let variable_type = SdtmVariableType::try_from(
@@ -73,7 +73,7 @@ impl SdtmProjectVariableRow {
             self.domain_id,
             self.variable_code,
             self.variable_sequence,
-            r#override,
+            variable_override,
             self.created_at,
             self.updated_at,
         ))

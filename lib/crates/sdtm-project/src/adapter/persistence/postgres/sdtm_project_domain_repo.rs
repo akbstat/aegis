@@ -41,7 +41,7 @@ impl SdtmProjectDomainRow {
     fn into_domain(self) -> Result<SdtmProjectDomain, DomainError> {
         let key_variables: Vec<String> = serde_json::from_value(self.key_variables)
             .map_err(|e| DomainError::Repository(e.to_string()))?;
-        let r#override = match self.override_id {
+        let domain_override = match self.override_id {
             None => None,
             Some(id) => {
                 let category = DomainCategory::try_from(
@@ -65,7 +65,7 @@ impl SdtmProjectDomainRow {
             self.version_id,
             self.domain_code,
             key_variables,
-            r#override,
+            domain_override,
             self.created_at,
             self.updated_at,
         ))
