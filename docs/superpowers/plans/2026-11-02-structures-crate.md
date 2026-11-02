@@ -512,6 +512,37 @@ fn a_node_whose_parent_is_absent_is_treated_as_a_root() {
 }
 
 #[test]
+fn re_parenting_an_inherited_node_moves_it_and_does_not_duplicate_it() {
+    // Review Focus: the same node_id must appear exactly once.
+    let template = vec![node("t_root", "raw", true, None), node("t_file", "raw/a.txt", false, Some("t_root")), node("t_doc", "docs", true, None)];
+    // the project re-parents `raw/a.txt` under `docs`
+    let own = vec![node("t_file", "raw/a.txt", false, Some("t_doc"))];
+    let merged = merge(&template, &own);
+    let mut all: Vec<String> = merged.roots.iter().flat_map(|r| paths(r)).collect();
+    all.sort();
+    // `raw/a.txt` appears once, and it is no longer under `raw`
+    assert_eq!(all, vec!["docs", "docs/raw/a.txt", "raw"]);
+    let raw = merged.roots.iter().find(|r| r.node.path == "raw").unwrap();
+    assert!(raw.children.is_empty());
+}
+
+#[test]
+fn a_dropped_template_subtree_is_not_promoted_to_a_root() {
+    // overriding `raw` drops the template's children; their own children
+    // go with them and must not reappear at the top level.
+    let template = vec![
+        node("t_root", "raw", true, None),
+        node("t_child", "raw/sub", true, Some("t_root")),
+        node("t_grand", "raw/sub/deep.txt", false, Some("t_child")),
+    ];
+    let own = vec![node("t_root", "raw", true, None)];
+    let merged = merge(&template, &own);
+    let mut all: Vec<String> = merged.roots.iter().flat_map(|r| paths(r)).collect();
+    all.sort();
+    assert_eq!(all, vec!["raw"]);
+}
+
+#[test]
 fn a_cycle_does_not_recurse_forever() {
     let own = vec![node("a", "a", true, Some("b")), node("b", "b", true, Some("a"))];
     let merged = merge(&[], &own);
@@ -560,15 +591,15 @@ pub struct MergedTree {
 
 The algorithm, in order:
 
-1. Build `attrs: HashMap<&str, &Node>` from `template`, then overwrite each entry with the matching entry from `own`. An own record therefore wins on a shared `node_id`.
-2. Build `overridden: HashSet<&str>` = the set of `node_id`s that `own` mentions. Every node in `overridden` is a node this structure has a record for.
-3. Build `template_children: HashMap<&str, Vec<&Node>>` and `own_children: HashMap<&str, Vec<&Node>>`, keyed on the `parent` of each node. A node with `parent == None` is not in either map.
-4. The **effective children** of a node with `node_id` `X`:
-   - if `X` is in `overridden` → `own_children[X]` only (the template's children under an overridden node are dropped);
-   - otherwise → `template_children[X]` followed by `own_children[X]`, deduplicated by `node_id` with the own record winning. Since an own record that overrides a template child shares that child's `node_id`, the child appears once.
-5. The **roots** are the nodes in `attrs` whose `parent` is `None`, plus any node whose `parent` names an id that is not in `attrs` (treated as a root rather than silently lost).
+1. Build the **effective record map**: `HashMap<&str, &Node>` from `template`, then overwrite each entry with the matching entry from `own`. An own record therefore wins on a shared `node_id`. Every node in the map appears **exactly once** in the merged tree.
+2. Build `own_ids: HashSet<&str>` = the set of `node_id`s that `own` mentions. A node in `own_ids` is *overridden* — this structure has a record for it.
+3. The **effective parent** of a node `Y` is `effective[Y].parent` — the parent named by the *winning* record. A re-parented node therefore moves, and never appears under two parents.
+4. The **effective children** of a node `X` are the nodes `Y` in the map with `effective[Y].parent == X`, **except** that when `X` is overridden, only the children that are themselves own records are kept. The template's other children under an overridden node are dropped.
+5. The **roots** are the nodes whose effective parent is `None`, plus any **own** record whose parent names an id that is not in the map. A *template* node whose parent is not `None` is never a root — if its parent was dropped by rule 4, the node is simply unreachable and is not rendered.
 6. Build the tree recursively from the roots. A node whose `node.hidden == Some(true)` is **skipped**, and its subtree is skipped with it. The recursion carries a `visited: HashSet<&str>`; a node already visited is skipped, so a cycle in `parent` cannot recurse forever.
-7. Sort every children list and the root list by `node.path` ascending.
+7. Sort every children list and the root list by `node.path` ascending, then by `node.node_id`, so the order is deterministic even if a later template edit puts two nodes at the same path.
+
+**`merge()` is a pure renderer.** It produces the tree a caller sees. The usecase's *lookups* — which node a `POST` at a path refers to, which node a `PUT` at a `node_id` refers to — run over a different index built in Task 4: **own records ∪ template nodes**, hidden own records included. The rendered tree excludes hidden nodes; the lookup index does not. That is what makes a hide reversible.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -821,6 +852,34 @@ pub struct StructureSummaryView {
     pub template_id: Option<i64>,
 }
 
+/// The structure's identity and level, without the tree. The auth gate
+/// needs the level on every write, and building the whole effective tree
+/// to read one enum would be wasteful.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructureMetaView {
+    pub id: i64,
+    pub name: String,
+    pub level: StructureLevel,
+    pub project_code: Option<String>,
+    pub template_id: Option<i64>,
+}
+
+/// One of the structure's own records — an extension record, with the
+/// two facts a client cannot get from the merged tree: whether it is
+/// hidden, and whether it overrides a template node.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OwnNodeView {
+    pub node_id: String,
+    pub description: String,
+    pub path: String,
+    pub directory: bool,
+    pub parent: Option<String>,
+    pub reference: Option<String>,
+    pub migration: Option<MigrationView>,
+    pub hidden: bool,
+    pub overrides_template: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructureTreeView {
     pub structure_id: i64,
@@ -889,7 +948,10 @@ mod views;
 
 pub use commands::{AddNode, CreateStructure, DeleteNode, RenameStructure, UpdateNode};
 pub use error::UsecaseError;
-pub use views::{MigrationView, NodeView, StructureSummaryView, StructureTreeView, StructureView};
+pub use views::{
+    MigrationView, NodeView, OwnNodeView, StructureMetaView, StructureSummaryView,
+    StructureTreeView, StructureView,
+};
 ```
 
 `src/domain.rs` gains `mod node_repository;`, `mod project_lookup;`, `mod repository;`, `mod structure;` and the re-exports:
@@ -938,7 +1000,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 - Produces:
   - `structures::StructureUsecase<S, N, P>` — `pub struct` with `pub fn new(StructureUsecaseConfig<S, N, P>) -> Self`.
   - `structures::StructureUsecaseConfig<S, N, P>` — `pub struct { pub structures: S, pub nodes: N, pub projects: Arc<P> }`.
-  - Methods: `create_structure`, `get_structure`, `list_structures`, `rename_structure`, `delete_structure`, `build_structure`.
+  - Methods: `create_structure`, `get_structure`, `get_structure_meta`, `list_structures`, `rename_structure`, `delete_structure`, `build_structure`.
 
 - [ ] **Step 1: Write the failing usecase tests**
 
@@ -1045,8 +1107,8 @@ struct Effective {
     /// The template's nodes. Empty for a template-level structure.
     template_nodes: Vec<Node>,
     /// This structure's own rows — the extension records at project level.
-    own_nodes: Vec<crate::domain::Node>,
-    /// The merged result.
+    own_nodes: Vec<Node>,
+    /// The merged result — what the caller sees.
     merged: MergedTree,
 }
 ```
@@ -1058,7 +1120,26 @@ struct Effective {
 3. `let own_nodes = self.nodes.list(structure.id).await?;`
 4. `let merged = merge(&template_nodes, &own_nodes);`
 
-The six methods:
+**The lookup index.** Writes do not search the merged tree — they search
+**own records ∪ template nodes**, hidden own records included. Two private
+helpers on the usecase build it from an `Effective`:
+
+```rust
+/// Every node a write may refer to: this structure's own records plus
+/// the template's nodes. A hidden own record is in here — that is how a
+/// hide is undone.
+fn lookup_nodes(eff: &Effective) -> Vec<&Node> {
+    eff.own_nodes.iter().chain(eff.template_nodes.iter()).collect()
+}
+
+/// The `node_id`s the template already has, so a write can tell an
+/// override from an addition.
+fn template_node_ids(eff: &Effective) -> HashSet<&str> {
+    eff.template_nodes.iter().map(|n| n.node_id.as_str()).collect()
+}
+```
+
+The eight methods:
 
 - **`create_structure(cmd)`** — validate, then insert.
   1. `cmd.name.trim().is_empty()` → `Validation(DomainError::EmptyName)`.
@@ -1071,6 +1152,10 @@ The six methods:
   6. Return the view with an empty tree (a fresh structure has no nodes): `StructureView { id, name, level, project_code, template_id, nodes: vec![] }`.
 
 - **`get_structure(id)`** — `let eff = self.effective(id).await?;` then build the `StructureView` from `eff.structure` and `eff.merged.roots`.
+
+- **`get_structure_meta(id)`** — load the structure and return its `StructureMetaView` (id, name, level, project_code, template_id) **without** building the tree. The auth gate calls this on every write.
+
+- **`list_own_nodes(structure_id)`** — load the structure and its own rows, and return each as an `OwnNodeView`: the record's own attributes, `hidden` = the record's hidden flag, and `overrides_template` = whether the record's `node_id` also exists in the template. This is the endpoint a client uses to learn a hidden node's `node_id`, so it can undo a hide.
 
 - **`list_structures(level, project_code)`** — `self.structures.list(StructureFilter { level, project_code })` → map each to a `StructureSummaryView`. **No nodes are loaded** for a list.
 
@@ -1133,6 +1218,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
   - `StructureUsecase::add_node(&self, cmd: AddNode) -> Result<NodeView, UsecaseError>`
   - `StructureUsecase::update_node(&self, cmd: UpdateNode) -> Result<NodeView, UsecaseError>`
   - `StructureUsecase::delete_node(&self, cmd: DeleteNode) -> Result<(), UsecaseError>`
+  - `StructureUsecase::list_own_nodes(&self, structure_id: i64) -> Result<Vec<OwnNodeView>, UsecaseError>`
 
 - [ ] **Step 1: Write the failing node-write tests**
 
@@ -1194,6 +1280,18 @@ async fn deleting_a_recorded_node_removes_it_and_its_descendants() {
 async fn deleting_an_inherited_node_hides_it() { /* assert the repo holds one own record with hidden == Some(true) */ }
 
 #[tokio::test]
+async fn deleting_an_overridden_node_hides_it_rather_than_reverting_it() {
+    // the override row must not simply be deleted: that would bring the
+    // template's version straight back into the tree.
+    /* the project overrode `raw`; DELETE `raw` → the own row still exists and its hidden flag is true; the built tree has no `raw` */
+}
+
+#[tokio::test]
+async fn a_hidden_record_is_still_addressable_so_a_hide_can_be_undone() {
+    /* the project hides `raw`; PUT `raw` with hidden = false → the own row's hidden flag is false again and `raw` is back in the built tree */
+}
+
+#[tokio::test]
 async fn deleting_an_unknown_node_is_rejected() { /* assert Err(Repository(DomainError::NodeNotFound(id))) */ }
 ```
 
@@ -1209,15 +1307,15 @@ Expected: FAIL — `add_node` is not defined.
 1. `let eff = self.effective(cmd.structure_id).await?;`
 2. If `eff.structure.level` is `Template` and `cmd.hidden == Some(true)` → `Validation(DomainError::HiddenNotAllowed)`.
 3. Build the attributes and validate them: `let attrs = NodeAttributes { description: cmd.description.clone(), path: cmd.path.clone(), directory: cmd.directory, parent: cmd.parent.clone(), reference: cmd.reference.clone(), migration: cmd.migration.clone() }; attrs.validate().map_err(UsecaseError::Validation)?;`
-4. **Resolve the target node by path.** Search the effective tree's flattened node list for a node whose `path` equals `cmd.path`:
-   - If found **and** the structure already records it (it is in `eff.own_nodes`) → `Repository(DomainError::DuplicatePath(cmd.path))`.
+4. **Resolve the target node by path**, searching `lookup_nodes(&eff)` — own records ∪ template nodes, hidden own records included — for a node whose `path` equals `cmd.path`:
+   - If found **and** the structure already records it (its `node_id` is in the own rows) → `Repository(DomainError::DuplicatePath(cmd.path))`. The client should `PUT` it instead. A hidden own record counts: it is still recorded.
    - If found **and** it is inherited → the write is an **override**: reuse that node's `node_id`.
    - If not found → mint a new id with `nanoid::nanoid!()`.
 5. **Validate the parent.** If `cmd.parent` is `Some(p)`:
-   - The parent must exist in the effective structure → else `Validation(DomainError::ParentNotFound(p))`.
+   - The parent must exist in `lookup_nodes(&eff)` → else `Validation(DomainError::ParentNotFound(p))`.
    - The parent must be a directory → else `Validation(DomainError::ParentNotADirectory(p))`.
    - The parent must not be the node itself or one of its descendants → else `Validation(DomainError::Cycle)`. (For a new node there are no descendants; the check matters for `update_node`.)
-6. **Validate the path against the rest of the effective structure.** No *other* node may already use `cmd.path` → else `Repository(DomainError::DuplicatePath(cmd.path))`. (Step 4 already handled the "this structure records it" case; this covers a path held by a *different* template node.)
+6. **Validate the path against the rest of the structure.** No *other* node in `lookup_nodes(&eff)` may already use `cmd.path` → else `Repository(DomainError::DuplicatePath(cmd.path))`. (Step 4 already handled the "this structure records it" case; this covers a path held by a *different* template node.)
 7. **Validate `hidden`.** If `cmd.hidden == Some(true)` and the write did not resolve to an inherited node → `Validation(DomainError::NothingToHide)`. (A hidden node that overrides nothing would be invisible.)
 8. Build the `Node` with `Node::new(node_id, attrs)?` — except that `Node::new` sets `hidden: None`, so set `node.hidden = cmd.hidden` afterwards.
 9. `self.nodes.insert(cmd.structure_id, &node).await?`
@@ -1228,22 +1326,27 @@ Expected: FAIL — `add_node` is not defined.
 `update_node(cmd)`:
 
 1. `let eff = self.effective(cmd.structure_id).await?;`
-2. Locate the target in the effective tree by `cmd.node_id` → else `Repository(DomainError::NodeNotFound(cmd.node_id))`.
+2. Locate the target in `lookup_nodes(&eff)` by `cmd.node_id` → else `Repository(DomainError::NodeNotFound(cmd.node_id))`. A **hidden own record is in this index**, so a hide can be undone with `hidden: false`.
 3. If the target is an own record → update that row. If it is inherited → create an override record carrying the target's `node_id`.
    - In both cases the stored `parent` is the one in the command.
-4. The same validation rules as `add_node` apply (attributes, parent existence and directory-ness, cycle, path uniqueness, `hidden` rules) — except that the path-uniqueness check **excludes the node being updated**.
+4. The same validation rules as `add_node` apply (attributes, parent existence and directory-ness, cycle, path uniqueness, `hidden` rules) — except that the path-uniqueness check **excludes the node being updated**, and the "already recorded at this path" check does not apply (the node is being updated, not added).
 5. `hidden` on a template-level structure → `Validation(DomainError::HiddenNotAllowed)`.
 6. `hidden == Some(true)` on a node that is **not** inherited and **not** already recorded as hidden → `Validation(DomainError::NothingToHide)`. (A node this structure recorded *can* be hidden — that is how a recorded node is taken out of the effective structure.)
 7. Write the row, then return the merged view of the node.
 
 - [ ] **Step 5: Implement `delete_node`**
 
-`delete_node(cmd)`:
+`delete_node(cmd)` — **one meaning in every case: the node and everything
+under it are not part of this structure.**
 
 1. `let eff = self.effective(cmd.structure_id).await?;`
-2. Locate the target by `cmd.node_id` → else `Repository(DomainError::NodeNotFound(cmd.node_id))`.
-3. If the structure **records** it → delete that row **and every own record beneath it**. Compute the descendant set from `eff.own_nodes`: repeatedly take the own records whose `parent` is a node already in the removal set. Delete each with `self.nodes.delete(cmd.structure_id, node_id)`.
-4. If it is **inherited** → write an override record that hides it: the new row carries the template node's `node_id`, `path`, `description`, `directory`, `parent`, `reference` and `migration`, with `hidden = Some(true)`. If the structure already records that node, update that row instead of inserting a second one.
+2. Locate the target in `lookup_nodes(&eff)` by `cmd.node_id` → else `Repository(DomainError::NodeNotFound(cmd.node_id))`.
+3. Collect the **removal set**: the target plus every own record beneath it. Walk the own records repeatedly, taking each one whose `parent` is already in the set, until nothing new is added.
+4. For each node in the removal set:
+   - **The record has a template counterpart** (its `node_id` is in `template_node_ids(&eff)`) → set `hidden = true` on the record. If the structure has no own row for it yet, insert one carrying the template node's `node_id`, `path`, `description`, `directory`, `parent`, `reference` and `migration`, with `hidden = true`. If it already has one, update that row's `hidden` flag.
+   - **The record has no template counterpart** → delete the row with `self.nodes.delete(cmd.structure_id, node_id)`.
+
+   Hiding rather than deleting an override matters: deleting an override's row would revert the node to the *template's* version and put it straight back into the tree.
 5. Return `Ok(())`.
 
 - [ ] **Step 6: Run the tests to verify they pass**
@@ -1554,7 +1657,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 - Consumes: the usecase from Tasks 4–5; `apis::project::ProjectService` for the lookup.
 - Produces:
   - `apis::structures::StructureService` — the port trait.
-  - `apis::structures::{StructureLevel, MigrationView, NodeView, StructureView, StructureSummaryView, StructureTreeView, StructureList}` — the apis view DTOs.
+  - `apis::structures::{StructureLevel, MigrationView, NodeView, StructureView, StructureSummaryView, StructureMetaView, StructureTreeView, OwnNodeView, StructureList, OwnNodeList}` — the apis view DTOs.
   - `apis::structures::{CreateStructureRequest, RenameStructureRequest, AddNodeRequest, UpdateNodeRequest, DeleteNodeRequest, ListStructuresRequest}` — the apis request DTOs.
   - `apis::structures::StructureApiError` — the error enum.
   - `structures::StructureServiceImpl` — the facade.
@@ -1609,7 +1712,7 @@ pub enum StructureLevel {
 }
 ```
 
-`MigrationView`, `NodeView`, `StructureView`, `StructureSummaryView`, `StructureTreeView` and `StructureList` mirror the usecase views field for field. `StructureList` is `struct { pub structures: Vec<StructureSummaryView> }`.
+`MigrationView`, `NodeView`, `StructureView`, `StructureSummaryView`, `StructureMetaView`, `StructureTreeView`, `OwnNodeView` and `StructureList` mirror the usecase views field for field. `StructureList` is `struct { pub structures: Vec<StructureSummaryView> }`. `OwnNodeList` is `struct { pub nodes: Vec<OwnNodeView> }`.
 
 The request DTOs:
 
@@ -1673,6 +1776,10 @@ The trait:
 pub trait StructureService: Send + Sync {
     async fn create_structure(&self, req: CreateStructureRequest) -> Result<StructureView, StructureApiError>;
     async fn get_structure(&self, id: i64) -> Result<StructureView, StructureApiError>;
+    /// The structure's identity and level, without building the effective
+    /// tree. The auth gate needs the level on every write, and building
+    /// the whole tree to read one enum would be wasteful.
+    async fn get_structure_meta(&self, id: i64) -> Result<StructureMetaView, StructureApiError>;
     async fn list_structures(&self, req: ListStructuresRequest) -> Result<StructureList, StructureApiError>;
     async fn rename_structure(&self, req: RenameStructureRequest) -> Result<StructureView, StructureApiError>;
     async fn delete_structure(&self, id: i64) -> Result<(), StructureApiError>;
@@ -1680,6 +1787,11 @@ pub trait StructureService: Send + Sync {
     async fn add_node(&self, req: AddNodeRequest) -> Result<NodeView, StructureApiError>;
     async fn update_node(&self, req: UpdateNodeRequest) -> Result<NodeView, StructureApiError>;
     async fn delete_node(&self, req: DeleteNodeRequest) -> Result<(), StructureApiError>;
+    /// This structure's own records — the extension records, with their
+    /// `hidden` flag and whether each overrides a template node. This is
+    /// where a client learns the `node_id` of a hidden node, so it can
+    /// undo a hide.
+    async fn list_own_nodes(&self, structure_id: i64) -> Result<OwnNodeList, StructureApiError>;
 
     async fn build_structure(&self, id: i64) -> Result<StructureTreeView, StructureApiError>;
 }
@@ -1737,6 +1849,20 @@ impl<S, N, P> StructureServiceImpl<S, N, P> where … {
 ```
 
 Each trait method translates the apis DTO into the usecase command, calls the usecase, and translates the usecase view into the apis view. The `StructureLevel` translation is a matching pair of `match`es between the apis copy and the crate's own copy.
+
+The two new methods translate directly:
+
+```rust
+async fn get_structure_meta(&self, id: i64) -> Result<StructureMetaView, StructureApiError> {
+    Ok(self.usecase.get_structure_meta(id).await?.into())
+}
+
+async fn list_own_nodes(&self, structure_id: i64) -> Result<OwnNodeList, StructureApiError> {
+    Ok(OwnNodeList {
+        nodes: self.usecase.list_own_nodes(structure_id).await?.into_iter().map(Into::into).collect(),
+    })
+}
+```
 
 The error translation:
 
@@ -1915,7 +2041,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `apis::structures::StructureService` and its DTOs from Task 7.
-- Produces: nine routes under `/api/structures`.
+- Produces: eleven routes under `/api/structures`.
 
 - [ ] **Step 1: Add the wire DTOs**
 
@@ -1974,6 +2100,36 @@ pub struct StructureSummaryResponse {
 #[serde(rename_all = "camelCase")]
 pub struct StructureListResponse {
     pub structures: Vec<StructureSummaryResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StructureMetaResponse {
+    pub id: i64,
+    pub name: String,
+    pub level: StructureLevelResponse,
+    pub project_code: Option<String>,
+    pub template_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnNodeResponse {
+    pub node_id: String,
+    pub description: String,
+    pub path: String,
+    pub directory: bool,
+    pub parent: Option<String>,
+    pub reference: Option<String>,
+    pub migration: Option<MigrationViewResponse>,
+    pub hidden: bool,
+    pub overrides_template: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnNodeListResponse {
+    pub nodes: Vec<OwnNodeResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -2044,19 +2200,23 @@ fn structures_code(e: &apis::structures::StructureApiError) -> &'static str {
 
 - [ ] **Step 3: Write the handlers**
 
-`transport/http/structures/handlers.rs` — nine handlers, each a thin adapter in the shape of the `sdtm_project` handlers. Each takes `State(state): State<AppState>`, `_claims: AuthClaims`, and the path/query/body extractors, calls `state.structures.…`, and returns `Result<Json<T>, ApiError>`.
+`transport/http/structures/handlers.rs` — eleven handlers, each a thin adapter in the shape of the `sdtm_project` handlers. Each takes `State(state): State<AppState>`, `_claims: AuthClaims`, and the path/query/body extractors, calls `state.structures.…`, and returns `Result<Json<T>, ApiError>`.
 
-**The auth gate.** The gate depends on the *target structure's level*, not on the route, so it is resolved per request:
+**The auth gate.** The gate depends on the *target structure's level*, not on the route, so it is resolved per request. It reads the level through `get_structure_meta`, which does **not** build the effective tree:
 
 ```rust
 /// Reject a write against a template structure unless the caller is an
 /// admin or root. Template structures are global and affect every
 /// project, so they are gated like the `domain-model` module's global
 /// data. Project-level structures are open to any authenticated user.
-fn require_template_write_permission(state: &AppState, structure_id: i64) -> Result<(), ApiError> {
-    let structure = state.structures.get_structure(structure_id).await?;
-    if structure.level == apis::structures::StructureLevel::Template {
-        // the caller must be admin/root
+async fn require_template_write_permission(
+    state: &AppState,
+    claims: &AuthClaims,
+    structure_id: i64,
+) -> Result<(), ApiError> {
+    let meta = state.structures.get_structure_meta(structure_id).await?;
+    if meta.level == apis::structures::StructureLevel::Template {
+        require_admin_or_root(claims)?;
     }
     Ok(())
 }
@@ -2070,13 +2230,10 @@ use crate::transport::http::auth::middleware::{AuthClaims, require_admin_or_root
 pub async fn add_node(
     State(state): State<AppState>,
     claims: AuthClaims,
-    Path(path): Path<StructureNodePath>,
+    Path(path): Path<dto::StructureNodePath>,
     Json(req): Json<dto::AddNodeRequest>,
 ) -> Result<(StatusCode, Json<dto::NodeViewResponse>), ApiError> {
-    let structure = state.structures.get_structure(req.structure_id).await?;
-    if structure.level == apis::structures::StructureLevel::Template {
-        require_admin_or_root(&claims)?;
-    }
+    require_template_write_permission(&state, &claims, req.structure_id).await?;
     …
 }
 ```
@@ -2096,23 +2253,25 @@ pub struct StructureNodePath {
 
 Put it in `dto.rs` next to the other structures wire types.
 
-The nine handlers and their paths:
+The eleven handlers and their paths:
 
 | Handler | Method + path | `#[utoipa::path]` `path` value | `operation_id` |
 | --- | --- | --- | --- |
 | `create_structure` | POST `/api/structures` | `/` | `structures_create_structure` |
 | `list_structures` | GET `/api/structures` | `/` | `structures_list_structures` |
 | `get_structure` | GET `/api/structures/{id}` | `/{id}` | `structures_get_structure` |
+| `get_structure_meta` | GET `/api/structures/{id}/meta` | `/{id}/meta` | `structures_get_structure_meta` |
 | `rename_structure` | PUT `/api/structures/{id}` | `/{id}` | `structures_rename_structure` |
 | `delete_structure` | DELETE `/api/structures/{id}` | `/{id}` | `structures_delete_structure` |
 | `build_structure` | GET `/api/structures/{id}/tree` | `/{id}/tree` | `structures_build_structure` |
+| `list_own_nodes` | GET `/api/structures/{id}/nodes` | `/{id}/nodes` | `structures_list_own_nodes` |
 | `add_node` | POST `/api/structures/{id}/nodes` | `/{id}/nodes` | `structures_add_node` |
 | `update_node` | PUT `/api/structures/{id}/nodes/{node_id}` | `/{id}/nodes/{node_id}` | `structures_update_node` |
 | `delete_node` | DELETE `/api/structures/{id}/nodes/{node_id}` | `/{id}/nodes/{node_id}` | `structures_delete_node` |
 
 `create_structure` has no target structure yet, so it gates on the **requested level**: `req.level == Template` → `require_admin_or_root(&claims)?`.
 
-Every handler's `#[utoipa::path]` block declares `security(("BearerAuth" = []))` and lists its responses: `400`, `401`, `404`, `409`, `500` as applicable. The template-gated handlers also advertise `403`.
+Every handler's `#[utoipa::path]` block declares `security(("BearerAuth" = []))` and lists its responses: `400`, `401`, `404`, `409`, `500` as applicable. **Every write route also advertises `403`**, because a write can target either level and the gate is resolved per target at run time; no read route advertises a `403`.
 
 - [ ] **Step 4: Write the router**
 
@@ -2124,7 +2283,9 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::list_structures))
         .routes(routes!(handlers::create_structure))
         .routes(routes!(handlers::get_structure))
+        .routes(routes!(handlers::get_structure_meta))
         .routes(routes!(handlers::build_structure))
+        .routes(routes!(handlers::list_own_nodes))
         .routes(routes!(handlers::rename_structure))
         .routes(routes!(handlers::delete_structure))
         .routes(routes!(handlers::add_node))
@@ -2133,7 +2294,7 @@ pub fn router() -> OpenApiRouter<AppState> {
 }
 ```
 
-(The `utoipa-axum` 0.2 panic on two handlers sharing a verb in one `routes!` call is why the calls are split. `list_structures` is a GET and `create_structure` is a POST, so they are in separate calls; `get_structure` and `build_structure` are both GET and therefore also need separate calls — split them further if the compiler or the runtime complains.)
+(The `utoipa-axum` 0.2 panic on two handlers sharing a verb in one `routes!` call is why the calls are split. `list_structures`, `get_structure`, `get_structure_meta`, `build_structure` and `list_own_nodes` are all GET, so each needs its own `routes!` call.)
 
 Nest it in `transport/http/router.rs`:
 
@@ -2160,7 +2321,7 @@ and a null double in `test_support`, mirroring `NullSdtmProjectService`:
 pub(crate) struct NullStructureService;
 ```
 
-with the nine methods, each `unimplemented!()`.
+with the eleven methods, each `unimplemented!()`.
 
 `run.rs` — add the builder:
 
@@ -2209,8 +2370,11 @@ dto::MigrationViewResponse,
 dto::NodeViewResponse,
 dto::StructureViewResponse,
 dto::StructureSummaryResponse,
+dto::StructureMetaResponse,
 dto::StructureListResponse,
 dto::StructureTreeResponse,
+dto::OwnNodeResponse,
+dto::OwnNodeListResponse,
 dto::CreateStructureRequest,
 dto::RenameStructureRequest,
 dto::AddNodeRequest,

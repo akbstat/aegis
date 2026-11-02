@@ -237,22 +237,48 @@ usecase validates those shapes before the merge ever sees them.
 
 ### Rules
 
-1. **The join key is `node_id`.** An extension record whose `node_id` matches
-   a template node's `node_id` **overrides** that template node: the
-   effective node takes the extension record's `description`, `path`,
-   `directory`, `reference`, `migration` and `hidden`. An extension record
-   with a `node_id` the template does not know is an **addition**.
-2. **Overriding a node drops the template's children.** The effective
+1. **The join key is `node_id`.** The merge builds one global map from
+   `node_id` to the *effective record* for that node: the template's node
+   first, then the extension record with the same `node_id` replaces it. An
+   extension record whose `node_id` the template does not know is an
+   **addition**.
+2. **An override is a wholesale replacement.** The extension record's
+   `description`, `path`, `directory`, `reference` and `migration` replace
+   the template node's — including an empty description and an absent
+   reference or migration. Nothing is inherited field by field.
+3. **Each `node_id` appears exactly once in the merged tree**, under its
+   effective record's `parent`. A node re-parented by the project therefore
+   moves; it is never listed under two parents.
+4. **Overriding a node drops the template's children.** The effective
    children of an overridden node are exactly the extension records that
-   name it as `parent`. The template's own children under it disappear.
-3. **Adding under a template node keeps the template's other children.** If
+   name it as `parent`. The template's own children under it disappear —
+   and so does everything below them, because those nodes are no longer
+   reachable from any root. An extension record whose parent is invisible
+   is dangling and is not rendered either.
+5. **Adding under a template node keeps the template's other children.** If
    a node is *not* overridden, its effective children are the template's
    children plus the extension records under it. When an extension record
    and a template child share a `node_id`, the extension record wins and the
    child appears once.
-4. **Hidden nodes are filtered out**, together with their whole subtree.
-5. **Ordering is deterministic**: children and roots are sorted by `path`
-   ascending.
+6. **Hidden nodes are filtered out**, together with their whole subtree.
+7. **Ordering is deterministic**: children and roots are sorted by `path`
+   ascending, then by `node_id` so that two nodes at the same path — which
+   only a later template edit can produce — still have a stable order.
+
+### The merge renders; it does not look up
+
+`merge()` is a **pure renderer**. It produces the tree a caller sees.
+
+The usecase's *lookups* — which node does this `POST` at path `p` refer
+to, which node does this `PUT` at `node_id` `n` refer to — run over a
+different index: **this structure's own records ∪ the template's nodes**,
+hidden own records included. The rendered tree excludes hidden nodes, so a
+hidden node is not in the tree, but it *is* still addressable by `node_id`.
+That is what makes a hide reversible.
+
+The two indexes are deliberately different. The tree answers "what does
+this structure look like"; the index answers "what does this write refer
+to".
 
 ### Worked example
 
@@ -297,13 +323,13 @@ made by the server, never by the client.
 
 | Operation | Addressing | Target |
 | --- | --- | --- |
-| `POST …/nodes` | by `path` | the node at that path in the effective structure |
-| `PUT …/nodes/{node_id}` | by `node_id` | that node in the effective structure |
-| `DELETE …/nodes/{node_id}` | by `node_id` | that node in the effective structure |
+| `POST …/nodes` | by `path` | the node at that path in *own records ∪ template nodes* |
+| `PUT …/nodes/{node_id}` | by `node_id` | that node in *own records ∪ template nodes* |
+| `DELETE …/nodes/{node_id}` | by `node_id` | that node in *own records ∪ template nodes* |
 
 **`POST` — place a node at a path.**
 
-1. The system looks the `path` up in the effective structure.
+1. The system looks the `path` up in own records ∪ template nodes.
 2. **No node at that path** → the system mints a `node_id` and inserts a new
    record. `201`.
 3. **A node at that path, recorded by this structure** → `409`
@@ -318,24 +344,31 @@ existing node rather than creating a duplicate beside it.
 
 **`PUT` — update a node.**
 
-The `node_id` must exist in the effective structure, either as this
-structure's own record or as an inherited template node.
+The `node_id` must exist in own records ∪ template nodes — including a
+node this structure recorded and then hid, which is how a hide is undone.
 
 - **Own record** → the row is updated. `200`.
 - **Inherited template node** → an override record is created carrying the
   template's `node_id`, and the supplied attributes replace the template
-  node's. `200`.
+  node's wholesale. `200`.
 - **Unknown `node_id`** → `404`.
 
 **`DELETE` — remove a node.**
 
-- **Own record** → the row is deleted, along with every own record beneath
-  it. `204`.
-- **Inherited template node** → a record is written with `hidden = true`, so
-  the node drops out of the effective structure. `204`.
+`DELETE` has one meaning in every case: **the node and everything under it
+are not part of this structure.** For the target and every own record
+beneath it:
 
-`DELETE` therefore always means "this node is not part of my structure", by
-removing the row or by hiding the inherited node.
+- **the record has a template counterpart** (its `node_id` exists in the
+  template) → the record is set to `hidden = true`. The node drops out of
+  the effective structure.
+- **the record has no template counterpart** → the row is deleted.
+
+`204` either way.
+
+Hiding rather than deleting an override matters: deleting an override's row
+would revert the node to the *template's* version and put it straight back
+into the tree.
 
 ### `hidden`
 
@@ -347,8 +380,10 @@ subtree. Writing `hidden = true` on a node that overrides nothing — i.e. a
 brand-new node — is rejected with `400`: it would be invisible, which is
 never what the caller meant.
 
-`hidden = true` on a node the project recorded itself keeps the row (so the
-hide can be undone) and hides it from the effective structure.
+`hidden = true` on a node the project recorded itself keeps the row, so the
+hide can be undone with a `PUT` carrying `hidden = false`. The row is
+reachable through the own-records endpoint, which is where a client learns
+the `node_id` of a hidden node in the first place.
 
 ### `parent`
 
@@ -357,16 +392,26 @@ hide can be undone) and hides it from the effective structure.
 - a node this structure recorded, or
 - a node inherited from the template.
 
-The parent must exist in the effective structure and must be a **directory**.
-A node cannot be its own parent, and a node cannot be re-parented under one
-of its own descendants — both are `400` (cycle).
+The parent must exist in own records ∪ template nodes and must be a
+**directory**. A node cannot be its own parent, and a node cannot be
+re-parented under one of its own descendants — both are `400` (cycle).
+
+`parent` is **always explicit** in a `POST` or `PUT` body: `null` means
+"this node is at the root". Both operations are full replacements, so an
+omitted `parent` must never silently re-parent a node.
 
 ### `path`
 
 - Non-blank, and normalised: no leading or trailing `/`, no `\`, no empty
   segment, no `.` or `..` segment.
-- **Unique within the effective structure.** A path already used by a
+- **Unique within own records ∪ template nodes.** A path already used by a
   different node is `409` `duplicate_path`.
+
+A path collision produced by a *later template edit* — the template adds a
+node at a path a project already uses for its own addition — is accepted
+rather than rejected: the template repository cannot see project structures
+through the current ports. The merge renders both nodes and sorts by
+`(path, node_id)` so the order stays deterministic.
 
 The server does **not** require a node's `path` to lie inside its parent's
 `path`. The tree is defined by the `parent` links; the `path` is the
@@ -457,11 +502,17 @@ Notes:
 - `migration_directory` + `migration_filter` are two columns rather than one
   JSONB object, so a migration is inspectable in SQL. `migration_filter` is
   an array of target suffixes.
-- The `set_updated_at()` trigger function is the workspace's shared helper;
-  if a crate already defines it, it is reused rather than redefined.
+- Each table defines its **own** trigger function —
+  `structures_set_updated_at()` and `structure_nodes_set_updated_at()`. There
+  is no shared helper in this workspace; every crate defines a per-table
+  function.
 - `ON DELETE RESTRICT` on `template_id` is the backstop for "a template that
   a project structure still points at cannot be deleted". The usecase checks
   this first and answers `409 template_in_use`; the FK is the race backstop.
+- Each table gets its **own** trigger function — `structures_set_updated_at()`
+  and `structure_nodes_set_updated_at()`. There is no shared helper in this
+  workspace; every crate defines a per-table function
+  (`sdtm_project_versions_set_updated_at()`, `assignees_set_updated_at()`, …).
 
 ## Persistence (sqlx, runtime API)
 
@@ -497,9 +548,9 @@ pub use domain::{
     ProjectLookup, Structure, StructureFilter, StructureLevel, StructureNew, StructureRepository,
 };
 pub use usecase::{
-    AddNode, DeleteNode, DeleteStructure, NodeView, RenameStructure, StructureSummaryView,
-    StructureTreeView, StructureUsecase, StructureUsecaseConfig, StructureView, UpdateNode,
-    UsecaseError, CreateStructure,
+    AddNode, CreateStructure, DeleteNode, MigrationView, NodeView, OwnNodeView, RenameStructure,
+    StructureMetaView, StructureSummaryView, StructureTreeView, StructureUsecase,
+    StructureUsecaseConfig, StructureView, UpdateNode, UsecaseError,
 };
 ```
 
@@ -585,6 +636,7 @@ pub struct StructureUsecase<S, N, P> {
 // ---- structures ----
 async fn create_structure(&self, cmd: CreateStructure) -> Result<StructureView, UsecaseError>;
 async fn get_structure(&self, id: i64) -> Result<StructureView, UsecaseError>;
+async fn get_structure_meta(&self, id: i64) -> Result<StructureMetaView, UsecaseError>;
 async fn list_structures(
     &self,
     level: Option<StructureLevel>,
@@ -597,6 +649,7 @@ async fn delete_structure(&self, id: i64) -> Result<(), UsecaseError>;
 async fn add_node(&self, cmd: AddNode) -> Result<NodeView, UsecaseError>;
 async fn update_node(&self, cmd: UpdateNode) -> Result<NodeView, UsecaseError>;
 async fn delete_node(&self, cmd: DeleteNode) -> Result<(), UsecaseError>;
+async fn list_own_nodes(&self, structure_id: i64) -> Result<Vec<OwnNodeView>, UsecaseError>;
 
 // ---- build ----
 async fn build_structure(&self, id: i64) -> Result<StructureTreeView, UsecaseError>;
@@ -655,6 +708,30 @@ pub struct StructureSummaryView {
     pub template_id: Option<i64>,
 }
 
+/// The structure's identity and level, without the tree.
+pub struct StructureMetaView {
+    pub id: i64,
+    pub name: String,
+    pub level: StructureLevel,
+    pub project_code: Option<String>,
+    pub template_id: Option<i64>,
+}
+
+/// One of the structure's own records.
+pub struct OwnNodeView {
+    pub node_id: String,
+    pub description: String,
+    pub path: String,
+    pub directory: bool,
+    pub parent: Option<String>,
+    pub reference: Option<String>,
+    pub migration: Option<MigrationView>,
+    /// Whether this record hides the node.
+    pub hidden: bool,
+    /// Whether this record overrides a node the template already has.
+    pub overrides_template: bool,
+}
+
 pub struct StructureTreeView {
     pub structure_id: i64,
     /// The effective tree's roots.
@@ -691,13 +768,17 @@ The `apis` crate stays dependency-free and re-declares the value objects it
 needs (`StructureLevel`, `MigrationView`, `NodeView`, …) exactly as
 `apis/src/project.rs` does.
 
-The trait mirrors the usecase's nine methods:
+The trait mirrors the usecase's eleven methods:
 
 ```rust
 #[async_trait]
 pub trait StructureService: Send + Sync {
     async fn create_structure(&self, req: CreateStructureRequest) -> Result<StructureView, StructureApiError>;
     async fn get_structure(&self, id: i64) -> Result<StructureView, StructureApiError>;
+    /// The structure's identity and level, without building the effective
+    /// tree. The auth gate needs the level on every write, and building
+    /// the whole tree to read one enum would be wasteful.
+    async fn get_structure_meta(&self, id: i64) -> Result<StructureMetaView, StructureApiError>;
     async fn list_structures(&self, req: ListStructuresRequest) -> Result<StructureList, StructureApiError>;
     async fn rename_structure(&self, req: RenameStructureRequest) -> Result<StructureView, StructureApiError>;
     async fn delete_structure(&self, id: i64) -> Result<(), StructureApiError>;
@@ -705,6 +786,12 @@ pub trait StructureService: Send + Sync {
     async fn add_node(&self, req: AddNodeRequest) -> Result<NodeView, StructureApiError>;
     async fn update_node(&self, req: UpdateNodeRequest) -> Result<NodeView, StructureApiError>;
     async fn delete_node(&self, req: DeleteNodeRequest) -> Result<(), StructureApiError>;
+
+    /// This structure's own records — the extension records, with their
+    /// `hidden` flag and whether each overrides a template node. This is
+    /// where a client learns the `node_id` of a hidden node, so it can
+    /// undo a hide.
+    async fn list_own_nodes(&self, structure_id: i64) -> Result<OwnNodeList, StructureApiError>;
 
     async fn build_structure(&self, id: i64) -> Result<StructureTreeView, StructureApiError>;
 }
@@ -731,9 +818,11 @@ The router is nested under `/api/structures` in `transport/http/router.rs`.
 | POST | `/api/structures` | `create_structure` | 201 |
 | GET | `/api/structures` | `list_structures` | 200 |
 | GET | `/api/structures/{id}` | `get_structure` | 200 |
+| GET | `/api/structures/{id}/meta` | `get_structure_meta` | 200 |
 | PUT | `/api/structures/{id}` | `rename_structure` | 200 |
 | DELETE | `/api/structures/{id}` | `delete_structure` | 204 |
 | GET | `/api/structures/{id}/tree` | `build_structure` | 200 |
+| GET | `/api/structures/{id}/nodes` | `list_own_nodes` | 200 |
 | POST | `/api/structures/{id}/nodes` | `add_node` | 201 |
 | PUT | `/api/structures/{id}/nodes/{node_id}` | `update_node` | 200 |
 | DELETE | `/api/structures/{id}/nodes/{node_id}` | `delete_node` | 204 |
@@ -757,16 +846,21 @@ wire types, all `#[serde(rename_all = "camelCase")]` and
   `nodes`.
 - `StructureSummaryResponse` — `id`, `name`, `level`, `projectCode`,
   `templateId`.
+- `StructureMetaResponse` — `id`, `name`, `level`, `projectCode`,
+  `templateId`.
 - `StructureListResponse` — `{ "structures": [...] }`.
 - `NodeViewResponse` — `nodeId`, `description`, `path`, `directory`, `parent`,
   `reference`, `migration`, `children`.
 - `MigrationViewResponse` — `directory`, `filter`.
 - `StructureTreeResponse` — `structureId`, `nodes`.
+- `OwnNodeResponse` — `nodeId`, `description`, `path`, `directory`, `parent`,
+  `reference`, `migration`, `hidden`, `overridesTemplate`.
+- `OwnNodeListResponse` — `{ "nodes": [...] }`.
 - `CreateStructureRequest` — `name`, `level`, `projectCode?`, `templateId?`.
 - `RenameStructureRequest` — `name`.
-- `AddNodeRequest` — `path`, `description`, `directory`, `parent?`,
+- `AddNodeRequest` — `path`, `description`, `directory`, `parent`,
   `reference?`, `migration?`, `hidden?`.
-- `UpdateNodeRequest` — `path`, `description`, `directory`, `parent?`,
+- `UpdateNodeRequest` — `path`, `description`, `directory`, `parent`,
   `reference?`, `migration?`, `hidden?`.
 - `DeleteNodeRequest` — `structureId`, `nodeId`.
 - `ListStructuresQuery` — `level?`, `projectCode?`.
@@ -775,6 +869,10 @@ wire types, all `#[serde(rename_all = "camelCase")]` and
 overwrites the node's mutable attributes, so `parent: null` moves the node to
 the root and `hidden: false` un-hides it. `hidden` defaults to `false` when
 omitted.
+
+`parent` is **not optional** on those two requests — it is `Option<String>` on
+the wire but always present, and `null` means "at the root". A missing
+`parent` is a malformed request, not an implicit "keep the current parent".
 
 ### Error mapping
 
@@ -812,8 +910,16 @@ structure's level:
   (the `crf` / `sdtm-project` precedent).
 
 The handler resolves the structure's level before the write, so the gate is
-per-target rather than per-route. A template write therefore advertises a
-`403` response in its `#[utoipa::path]` block, and a project write does not.
+per-target rather than per-route. It reads the level through
+`get_structure_meta`, which returns the structure's identity without
+building the effective tree — building the whole merged tree to read one
+enum would be wasteful on every write.
+
+Because a write can target either level, **every write route advertises a
+`403` response** in its `#[utoipa::path]` block, and no read route does.
+`POST /api/structures` has no target structure yet, so it gates on the
+*requested* level: creating a template requires admin/root, creating a
+project structure does not.
 
 Project-membership gating is **not** implemented — deciding who may shape a
 project's directory layout is a separate question, and no other crate in the
@@ -1042,6 +1148,22 @@ cargo test -p structures -- --ignored --test-threads=1   # when AEGIS_STRUCTURES
 9. `GET /api/structures/{id}` returns the structure *and* its effective
    tree, so the caller never needs to know where a node came from. A
    separate `GET …/tree` returns the tree alone.
-10. The write routes do not advertise a `403` response on their own; the
-    403 depends on the target structure's level, which the handler resolves
-    at run time.
+10. Every **write** route advertises a `403` response and no read route
+    does, because a write can target either level and the gate is resolved
+    per target at run time. `POST /api/structures` gates on the requested
+    level, so creating a template requires admin/root.
+11. `parent` is always present in a `POST` / `PUT` node body; `null` means
+    "at the root". Both operations are full replacements, so an omitted
+    `parent` must never silently re-parent a node.
+12. `GET /api/structures/{id}/nodes` returns the structure's own records
+    with a `hidden` flag and an `overridesTemplate` marker, and
+    `GET /api/structures/{id}/meta` returns the structure's identity and
+    level without the tree. Together they make a hide reversible and keep
+    the auth gate cheap.
+13. The migrations are numbered `0001_` / `0002_`, matching every other
+    crate. SQLx derives a migration's version from the filename's integer
+    prefix and keeps one `_sqlx_migrations` table per database, so several
+    crates' `--source` directories collide on version 1 in a shared
+    database. That collision is pre-existing and workspace-wide; fixing it
+    means renumbering eight crates and is out of scope here. The README
+    states the dedicated-database requirement the other crates state.
