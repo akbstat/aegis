@@ -254,6 +254,155 @@ describe("TerminologyCodeItemsDrawer", () => {
     expect(screen.getByText("EXT")).toBeInTheDocument();
   });
 
+  it("searches the resolved code list's items", async () => {
+    setupMocks();
+    renderDrawer();
+    await screen.findByText("PASS");
+    await userEvent.type(
+      screen.getByPlaceholderText(/search by code, submission value/i),
+      "pas",
+    );
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "list_code_items",
+        expect.objectContaining({ codelistId: 11, fragment: "pas" }),
+      );
+    });
+  });
+
+  it("waits for the debounce before querying", async () => {
+    setupMocks();
+    renderDrawer();
+    await screen.findByText("PASS");
+    const before = mockInvoke.mock.calls.filter(
+      (c) => c[0] === "list_code_items",
+    ).length;
+    await userEvent.type(
+      screen.getByPlaceholderText(/search by code, submission value/i),
+      "p",
+    );
+    // The raw keystroke must not have reached the server yet.
+    const during = mockInvoke.mock.calls.filter(
+      (c) => c[0] === "list_code_items",
+    ).length;
+    expect(during).toBe(before);
+    await waitFor(
+      () => {
+        expect(mockInvoke).toHaveBeenCalledWith(
+          "list_code_items",
+          expect.objectContaining({ fragment: "p" }),
+        );
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it("scopes the search to the resolved code list", async () => {
+    setupMocks();
+    renderDrawer();
+    await screen.findByText("PASS");
+    await userEvent.type(
+      screen.getByPlaceholderText(/search by code, submission value/i),
+      "pas",
+    );
+    await waitFor(() => {
+      const calls = mockInvoke.mock.calls.filter(
+        (c) => c[0] === "list_code_items",
+      );
+      expect(calls.length).toBeGreaterThan(0);
+      expect(
+        calls.every(
+          (c) => (c[1] as { codelistId: number }).codelistId === 11,
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("clearing the search restores every code item", async () => {
+    setupMocks();
+    renderDrawer();
+    await screen.findByText("PASS");
+    const input = screen.getByPlaceholderText(
+      /search by code, submission value/i,
+    );
+    await userEvent.type(input, "zzz");
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "list_code_items",
+        expect.objectContaining({ fragment: "zzz" }),
+      );
+    });
+    await userEvent.clear(input);
+    await waitFor(
+      () => {
+        const calls = mockInvoke.mock.calls.filter(
+          (c) => c[0] === "list_code_items",
+        );
+        expect(
+          calls.some(
+            (c) => (c[1] as { fragment?: string }).fragment === undefined,
+          ),
+        ).toBe(true);
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it("shows the no-matches message for an active search", async () => {
+    setupMocks({ codeItems: { items: [] } });
+    renderDrawer();
+    const input = await screen.findByPlaceholderText(
+      /search by code, submission value/i,
+    );
+    await userEvent.type(input, "zzz");
+    expect(
+      await screen.findByText(/no matching code items/i),
+    ).toBeInTheDocument();
+  });
+
+  it("clears the search when the code changes", async () => {
+    // Both codes resolve, so the drawer stays in the code-list branch
+    // and the search box is there to observe.
+    setupMocks({
+      codeLists: {
+        items: [
+          targetCodelist,
+          { ...targetCodelist, id: 13, submissionValue: "AESEV" },
+        ],
+      },
+    });
+    const { rerender } = renderDrawer();
+    await screen.findByText("PASS");
+    const input = screen.getByPlaceholderText(
+      /search by code, submission value/i,
+    ) as HTMLInputElement;
+    await userEvent.type(input, "pas");
+    expect(input.value).toBe("pas");
+    rerender(
+      <AegisThemeProvider>
+        <TestQueryProvider>
+          <AegisI18nProvider>
+            <TerminologyCodeItemsDrawer
+              open={true}
+              code="AESEV"
+              projectCode={null}
+              onClose={() => {}}
+            />
+          </AegisI18nProvider>
+        </TestQueryProvider>
+      </AegisThemeProvider>,
+    );
+    await waitFor(() => {
+      expect(
+        (
+          screen.getByPlaceholderText(
+            /search by code, submission value/i,
+          ) as HTMLInputElement
+        ).value,
+      ).toBe("");
+    });
+  });
+
   it("does not mark a non-extensible code list as extensible", async () => {
     setupMocks({
       codeLists: { items: [{ ...targetCodelist, extensible: false }] },
