@@ -72,6 +72,20 @@ PUT    /api/domain-model/variables/:id      (admin/root)
 DELETE /api/domain-model/variables/:id      (admin/root)
 ```
 
+## Database setup
+
+```bash
+sqlx migrate run --source lib/crates/domain-model/migrations
+```
+
+Adding a migration: let the sqlx CLI create the file, then write the
+DDL into the file it names. Never hand-write the file name — the CLI's
+timestamp prefix is the migration's version.
+
+```bash
+sqlx migrate add --source lib/crates/domain-model/migrations --timestamp <description>
+```
+
 ## Verification
 
 ```bash

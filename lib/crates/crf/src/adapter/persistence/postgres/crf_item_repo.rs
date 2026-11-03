@@ -180,7 +180,7 @@ fn map_db_err(err: sqlx::Error) -> DomainError {
 mod tests {
     #[test]
     fn migration_file_is_present_and_idempotent() {
-        let sql = include_str!("../../../../migrations/0003_create_crf_items.sql");
+        let sql = include_str!("../../../../migrations/20261103135353_create_crf_items.sql");
         assert!(sql.contains("crf_items_kind_check"));
         assert!(sql.contains("'Selection'"));
     }

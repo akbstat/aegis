@@ -1,4 +1,4 @@
--- 0002_add_project_configuration.sql
+-- 20261103135408_add_project_configuration.sql
 --
 -- Migrate the existing `projects.tags` JSONB column into a new
 -- `projects.configuration` JSONB column that carries both the

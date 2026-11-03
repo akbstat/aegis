@@ -1,4 +1,4 @@
--- 0004_add_project_configuration_sdtm_terminology.sql
+-- 20261103135410_add_project_configuration_sdtm_terminology.sql
 --
 -- Adds the `sdtm_terminology` key to the existing
 -- `projects.configuration` JSONB column so the configuration
@@ -13,7 +13,7 @@
 --      `sdtm_terminology: null` so new inserts that omit the column
 --      land in a coherent state.
 --
--- Mirrors the structure of `0003_add_project_configuration_sdtmig.sql`.
+-- Mirrors the structure of `20261103135409_add_project_configuration_sdtmig.sql`.
 UPDATE projects
 SET configuration = configuration || '{"sdtm_terminology": null}'::jsonb;
 ALTER TABLE projects

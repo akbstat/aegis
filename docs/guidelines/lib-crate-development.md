@@ -127,9 +127,41 @@ the adapter translates driver errors into domain errors.
 
 ## 8. Database schema
 
+- **Never create a migration file by hand.** The file name *is* the
+  migration's version and the sqlx CLI owns it. Let the CLI create the
+  file first, then write the DDL into the file it created:
+
+  ```bash
+  sqlx migrate add --source lib/crates/<crate>/migrations --timestamp <description>
+  ```
+
+  The CLI writes `migrations/<UTC timestamp>_<description>.sql` and
+  prints the path. Put the DDL in that file. Do not rename it, do not
+  hand-roll the version prefix, do not create the file with an editor
+  and then patch in a name.
+
+  Hand-rolled names like `0001_create_users.sql` look harmless but
+  change how the CLI behaves afterwards: `sqlx migrate add` infers
+  *sequential* versioning whenever the last two migrations differ by
+  exactly 1, so the next migration added to a hand-numbered directory
+  comes out as `0009_…` instead of a timestamp and the ordering stops
+  reflecting when the migration was actually written. Every crate under
+  `lib/crates/` uses timestamp versioning — keep it that way. Passing
+  `--timestamp` explicitly pins the scheme even if a directory ever
+  ends up with a consecutive-looking pair.
+
+  Apply the new migration with
+  `sqlx migrate run --source lib/crates/<crate>/migrations` before
+  relying on it.
+
 - One migration file per schema change, under `<crate>/migrations/`.
   Consumed via `sqlx::migrate!("./migrations")` so the file inventory is
   the source of truth.
+- The migration file name is generated, so anything that reads a
+  migration file by path — the `include_str!` calls in the adapter
+  tests, the `read_to_string` helpers in §9.2 — has to spell the
+  CLI-generated name. Look it up with
+  `ls lib/crates/<crate>/migrations`; never guess it.
 - SQLx runtime API (`sqlx::query_as`, `QueryBuilder`) until the workspace
   ships a `sqlx-data.json` cache or a live `DATABASE_URL` at build time.
   Document the choice in a module-level comment so the next reviewer can
@@ -185,6 +217,9 @@ Every business lib crate gets a `README.md` covering:
 - Database setup if the crate owns a schema: the `sqlx migrate run --source
   lib/crates/<crate>/migrations` command, the env var
   (`AEGIS_<CRATE>_DATABASE_URL`), and a small constructor snippet.
+- How to add a migration: `sqlx migrate add --source
+  lib/crates/<crate>/migrations --timestamp <description>`, then write the
+  DDL into the file the CLI created (see §8).
 - How to run the ignored tests (`cargo test -p <crate> -- --ignored`).
 - A back-link to this guideline so newcomers find the cross-cutting
   conventions.

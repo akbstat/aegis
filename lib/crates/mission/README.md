@@ -89,6 +89,14 @@ covers the issue + comment aggregate.
 Migrations live under `migrations/` and are applied via
 `sqlx migrate run --source lib/crates/mission/migrations`.
 
+Adding a migration: let the sqlx CLI create the file, then write the
+DDL into the file it names. Never hand-write the file name — the CLI's
+timestamp prefix is the migration's version.
+
+```bash
+sqlx migrate add --source lib/crates/mission/migrations --timestamp <description>
+```
+
 The live-DB URL comes from the
 `AEGIS_MISSION_DATABASE_URL` environment variable (or `.env` at
 the workspace root).

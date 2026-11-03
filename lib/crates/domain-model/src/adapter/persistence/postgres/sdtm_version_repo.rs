@@ -122,7 +122,7 @@ mod tests {
     /// for that.
     #[test]
     fn migration_file_is_present_and_idempotent() {
-        let sql = include_str!("../../../../migrations/0001_create_sdtm_versions.sql");
+        let sql = include_str!("../../../../migrations/20261103135400_create_sdtm_versions.sql");
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS sdtm_versions"));
         assert!(sql.contains("sdtm_versions_updated_at"));
     }

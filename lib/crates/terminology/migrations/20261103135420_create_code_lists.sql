@@ -1,4 +1,4 @@
--- 0002_create_code_lists.sql
+-- 20261103135420_create_code_lists.sql
 --
 -- CDISC codelists, one row per (version, code) pair. Items live
 -- in a separate `code_items` table (migration 0003).

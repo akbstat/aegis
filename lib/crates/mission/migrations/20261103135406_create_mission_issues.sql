@@ -1,4 +1,4 @@
--- 0003_create_mission_issues.sql
+-- 20261103135406_create_mission_issues.sql
 --
 -- Mission-scoped issue tracker. Each row is one issue; the
 -- `comments` jsonb column carries the append-only discussion

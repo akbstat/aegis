@@ -1,4 +1,4 @@
--- 0003_add_project_configuration_sdtmig.sql
+-- 20261103135409_add_project_configuration_sdtmig.sql
 --
 -- Adds the `sdtmig` key to the existing `projects.configuration`
 -- JSONB column so the configuration object has a uniform shape:
@@ -11,7 +11,7 @@
 --   2. Update the column default to include `sdtmig: null` so new
 --      inserts that omit the column land in a coherent state.
 --
--- Mirrors the structure of `0002_add_project_configuration.sql`.
+-- Mirrors the structure of `20261103135408_add_project_configuration.sql`.
 UPDATE projects
 SET configuration = configuration || '{"sdtmig": null}'::jsonb;
 ALTER TABLE projects

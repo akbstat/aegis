@@ -27,14 +27,14 @@ fn create_table_block(sql: &str) -> String {
 
 #[test]
 fn projects_migration_creates_projects_table() {
-    let sql = load_migration("0001_create_projects.sql");
+    let sql = load_migration("20261103135407_create_projects.sql");
     let block = create_table_block(&sql);
     assert!(block.contains("CREATE TABLE") && block.contains("projects"));
 }
 
 #[test]
 fn projects_migration_has_required_columns() {
-    let block = create_table_block(&load_migration("0001_create_projects.sql"));
+    let block = create_table_block(&load_migration("20261103135407_create_projects.sql"));
     let upper = block.to_uppercase();
     for required in [
         "ID INTEGER",
@@ -53,14 +53,14 @@ fn projects_migration_has_required_columns() {
 
 #[test]
 fn projects_migration_has_updated_at_trigger() {
-    let sql = load_migration("0001_create_projects.sql");
+    let sql = load_migration("20261103135407_create_projects.sql");
     assert!(sql.contains("CREATE TRIGGER projects_set_updated_at"));
     assert!(sql.contains("BEFORE UPDATE ON projects"));
 }
 
 #[test]
 fn projects_migration_makes_code_unique() {
-    let block = create_table_block(&load_migration("0001_create_projects.sql"));
+    let block = create_table_block(&load_migration("20261103135407_create_projects.sql"));
     assert!(
         block.contains("UNIQUE (code)") || block.contains("UNIQUE(\"code\")"),
         "expected UNIQUE on code; got:\n{block}"
@@ -69,7 +69,7 @@ fn projects_migration_makes_code_unique() {
 
 #[test]
 fn projects_migration_no_longer_has_product_id() {
-    let sql = load_migration("0001_create_projects.sql");
+    let sql = load_migration("20261103135407_create_projects.sql");
     assert!(
         !sql.contains("product_id"),
         "projects table must not reference product_id; got:\n{sql}"
@@ -83,7 +83,7 @@ fn projects_migration_no_longer_has_tags_column() {
     // remains so the table can be built fresh in environments
     // without 0002 applied). This test confirms 0002 has actually
     // dropped the column.
-    let sql = load_migration("0002_add_project_configuration.sql");
+    let sql = load_migration("20261103135408_add_project_configuration.sql");
     let upper = sql.to_uppercase();
     assert!(
         upper.contains("DROP COLUMN TAGS"),
@@ -93,7 +93,7 @@ fn projects_migration_no_longer_has_tags_column() {
 
 #[test]
 fn configuration_migration_has_configuration_object_check() {
-    let sql = load_migration("0002_add_project_configuration.sql");
+    let sql = load_migration("20261103135408_add_project_configuration.sql");
     let upper = sql.to_uppercase();
     assert!(
         upper.contains("JSONB_TYPEOF(CONFIGURATION) = 'OBJECT'"),
@@ -103,7 +103,7 @@ fn configuration_migration_has_configuration_object_check() {
 
 #[test]
 fn configuration_migration_drops_legacy_tags() {
-    let sql = load_migration("0002_add_project_configuration.sql");
+    let sql = load_migration("20261103135408_add_project_configuration.sql");
     let upper = sql.to_uppercase();
     assert!(
         upper.contains("DROP COLUMN TAGS"),
@@ -117,7 +117,7 @@ fn configuration_migration_drops_legacy_tags() {
 
 #[test]
 fn project_members_migration_has_composite_pk_and_checks() {
-    let sql = load_migration("0001_create_projects.sql");
+    let sql = load_migration("20261103135407_create_projects.sql");
     let upper = sql.to_uppercase();
     let start = upper
         .find("CREATE TABLE PROJECT_MEMBERS")
@@ -136,7 +136,7 @@ fn project_members_migration_has_composite_pk_and_checks() {
 
 #[test]
 fn project_members_migration_cascades_on_delete() {
-    let sql = load_migration("0001_create_projects.sql");
+    let sql = load_migration("20261103135407_create_projects.sql");
     assert!(
         sql.contains("REFERENCES projects(id) ON DELETE CASCADE"),
         "project_members FK must cascade on delete"
@@ -145,7 +145,7 @@ fn project_members_migration_cascades_on_delete() {
 
 #[test]
 fn sdtmig_migration_adds_sdtmig_key_to_configuration() {
-    let sql = load_migration("0003_add_project_configuration_sdtmig.sql");
+    let sql = load_migration("20261103135409_add_project_configuration_sdtmig.sql");
     let upper = sql.to_uppercase();
     assert!(
         upper.contains("SDTMIG"),
@@ -159,7 +159,7 @@ fn sdtmig_migration_adds_sdtmig_key_to_configuration() {
 
 #[test]
 fn sdtmig_migration_updates_default_to_include_sdtmig_null() {
-    let sql = load_migration("0003_add_project_configuration_sdtmig.sql");
+    let sql = load_migration("20261103135409_add_project_configuration_sdtmig.sql");
     let upper = sql.to_uppercase();
     assert!(
         upper.contains("DEFAULT"),
@@ -173,7 +173,7 @@ fn sdtmig_migration_updates_default_to_include_sdtmig_null() {
 
 #[test]
 fn sdtm_terminology_migration_adds_sdtm_terminology_key_to_configuration() {
-    let sql = load_migration("0004_add_project_configuration_sdtm_terminology.sql");
+    let sql = load_migration("20261103135410_add_project_configuration_sdtm_terminology.sql");
     let upper = sql.to_uppercase();
     assert!(
         upper.contains("SDTM_TERMINOLOGY"),
@@ -187,7 +187,7 @@ fn sdtm_terminology_migration_adds_sdtm_terminology_key_to_configuration() {
 
 #[test]
 fn sdtm_terminology_migration_updates_default_to_include_sdtm_terminology_null() {
-    let sql = load_migration("0004_add_project_configuration_sdtm_terminology.sql");
+    let sql = load_migration("20261103135410_add_project_configuration_sdtm_terminology.sql");
     let upper = sql.to_uppercase();
     assert!(
         upper.contains("DEFAULT"),

@@ -167,7 +167,7 @@ fn map_domain_err(err: sqlx::Error) -> DomainError {
 mod tests {
     #[test]
     fn migration_file_is_present_and_idempotent() {
-        let sql = include_str!("../../../../migrations/0002_create_sdtm_domains.sql");
+        let sql = include_str!("../../../../migrations/20261103135401_create_sdtm_domains.sql");
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS sdtm_domains"));
         assert!(sql.contains("descriptions  JSONB"));
         assert!(sql.contains("sdtm_domains_category_check"));

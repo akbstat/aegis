@@ -219,8 +219,9 @@ fn map_variable_override_err(err: sqlx::Error, parent_id: i64) -> DomainError {
 mod tests {
     #[test]
     fn migration_file_declares_variable_override_table() {
-        let sql =
-            include_str!("../../../../migrations/0005_create_sdtm_project_variable_overrides.sql");
+        let sql = include_str!(
+            "../../../../migrations/20261103135416_create_sdtm_project_variable_overrides.sql"
+        );
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS sdtm_project_variable_overrides"));
         assert!(sql.contains(
             "CONSTRAINT sdtm_project_variable_overrides_variable_unique UNIQUE (variable_id)"

@@ -42,8 +42,8 @@ fn create_table_block(sql: &str) -> String {
 }
 
 #[test]
-fn migration_0001_creates_auth_user_credentials_table() {
-    let sql = load_migration("0001_create_auth_user_credentials.sql");
+fn migration_create_auth_user_credentials_table() {
+    let sql = load_migration("20261103135349_create_auth_user_credentials.sql");
     let block = create_table_block(&sql);
     assert!(
         block.contains("CREATE TABLE") && block.contains("auth_user_credentials"),
@@ -52,8 +52,10 @@ fn migration_0001_creates_auth_user_credentials_table() {
 }
 
 #[test]
-fn migration_0001_has_required_columns() {
-    let block = create_table_block(&load_migration("0001_create_auth_user_credentials.sql"));
+fn migration_auth_user_credentials_has_required_columns() {
+    let block = create_table_block(&load_migration(
+        "20261103135349_create_auth_user_credentials.sql",
+    ));
     let upper = block.to_uppercase();
     for required in ["CODE TEXT", "PASSWORD_HASH TEXT", "TOKEN_VERSION INTEGER"] {
         assert!(
@@ -64,8 +66,10 @@ fn migration_0001_has_required_columns() {
 }
 
 #[test]
-fn migration_0001_password_hash_is_not_null_and_checked() {
-    let block = create_table_block(&load_migration("0001_create_auth_user_credentials.sql"));
+fn migration_auth_user_credentials_password_hash_is_not_null_and_checked() {
+    let block = create_table_block(&load_migration(
+        "20261103135349_create_auth_user_credentials.sql",
+    ));
     let upper = block.to_uppercase();
     assert!(upper.contains("PASSWORD_HASH TEXT NOT NULL"));
     assert!(upper.contains("CHECK"));
@@ -73,8 +77,10 @@ fn migration_0001_password_hash_is_not_null_and_checked() {
 }
 
 #[test]
-fn migration_0001_token_version_defaults_to_one() {
-    let block = create_table_block(&load_migration("0001_create_auth_user_credentials.sql"));
+fn migration_auth_user_credentials_token_version_defaults_to_one() {
+    let block = create_table_block(&load_migration(
+        "20261103135349_create_auth_user_credentials.sql",
+    ));
     let upper = block.to_uppercase();
     assert!(
         upper.contains("TOKEN_VERSION INTEGER NOT NULL DEFAULT 1"),
@@ -83,16 +89,16 @@ fn migration_0001_token_version_defaults_to_one() {
 }
 
 #[test]
-fn migration_0001_has_updated_at_trigger() {
-    let sql = load_migration("0001_create_auth_user_credentials.sql");
+fn migration_auth_user_credentials_has_updated_at_trigger() {
+    let sql = load_migration("20261103135349_create_auth_user_credentials.sql");
     assert!(sql.contains("CREATE TRIGGER auth_user_credentials_set_updated_at"));
     assert!(sql.contains("BEFORE UPDATE ON auth_user_credentials"));
     assert!(sql.contains("CREATE OR REPLACE FUNCTION auth_user_credentials_set_updated_at"));
 }
 
 #[test]
-fn migration_0002_creates_auth_user_domain_identities_table() {
-    let sql = load_migration("0002_create_auth_user_domain_identities.sql");
+fn migration_create_auth_user_domain_identities_table() {
+    let sql = load_migration("20261103135350_create_auth_user_domain_identities.sql");
     let block = create_table_block(&sql);
     assert!(
         block.contains("CREATE TABLE") && block.contains("auth_user_domain_identities"),
@@ -101,9 +107,9 @@ fn migration_0002_creates_auth_user_domain_identities_table() {
 }
 
 #[test]
-fn migration_0002_has_required_columns() {
+fn migration_auth_user_domain_identities_has_required_columns() {
     let block = create_table_block(&load_migration(
-        "0002_create_auth_user_domain_identities.sql",
+        "20261103135350_create_auth_user_domain_identities.sql",
     ));
     let upper = block.to_uppercase();
     for required in [
@@ -120,9 +126,9 @@ fn migration_0002_has_required_columns() {
 }
 
 #[test]
-fn migration_0002_unique_constraint_covers_all_four_columns() {
+fn migration_auth_user_domain_identities_unique_constraint_covers_all_four_columns() {
     let block = create_table_block(&load_migration(
-        "0002_create_auth_user_domain_identities.sql",
+        "20261103135350_create_auth_user_domain_identities.sql",
     ));
     assert!(
         block.contains("UNIQUE (user_code, domain_name, hostname, sid)"),

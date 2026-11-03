@@ -48,6 +48,20 @@ adapts `apis::project::ProjectService` to the domain `ProjectLookup`.
 | `DomainAnnotation`  | `id`, `form_id` (FK CASCADE), `name`, `description`, `created_at`, `updated_at`                  |
 | `Annotation`        | `id`, `domain_annotation_id` (FK RESTRICT), `content`, `assign`, polymorphic `owner`, `created_at`, `updated_at` |
 
+## Database setup
+
+```bash
+sqlx migrate run --source lib/crates/crf/migrations
+```
+
+Adding a migration: let the sqlx CLI create the file, then write the
+DDL into the file it names. Never hand-write the file name — the CLI's
+timestamp prefix is the migration's version.
+
+```bash
+sqlx migrate add --source lib/crates/crf/migrations --timestamp <description>
+```
+
 ## Verification
 
 ```bash

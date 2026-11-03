@@ -170,8 +170,9 @@ fn map_domain_override_err(err: sqlx::Error, parent_id: i64) -> DomainError {
 mod tests {
     #[test]
     fn migration_file_declares_domain_override_table() {
-        let sql =
-            include_str!("../../../../migrations/0003_create_sdtm_project_domain_overrides.sql");
+        let sql = include_str!(
+            "../../../../migrations/20261103135413_create_sdtm_project_domain_overrides.sql"
+        );
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS sdtm_project_domain_overrides"));
         assert!(
             sql.contains(

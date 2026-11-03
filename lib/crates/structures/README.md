@@ -85,6 +85,14 @@ database of its own for the live tests.
 > it. The live test below drops that table, so pointing it at the server's
 > database would erase the applied-migration record for every other crate.
 
+Adding a migration: let the sqlx CLI create the file, then write the
+DDL into the file it names. Never hand-write the file name — the CLI's
+timestamp prefix is the migration's version.
+
+```bash
+sqlx migrate add --source lib/crates/structures/migrations --timestamp <description>
+```
+
 ## Constructor snippet
 
 ```rust

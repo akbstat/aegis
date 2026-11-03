@@ -57,7 +57,7 @@ fn mission_row_rejects_unknown_kind() {
 
 #[test]
 fn mission_migration_has_natural_key_unique() {
-    let sql = read_migration("0001_create_missions.sql");
+    let sql = read_migration("20261103135404_create_missions.sql");
     assert!(sql.contains("missions_natural_key"));
     assert!(sql.contains("UNIQUE (project_code, mission_kind, mission_code)"));
     assert!(sql.contains("missions_kind_check"));
@@ -68,7 +68,7 @@ fn mission_migration_has_natural_key_unique() {
 
 #[test]
 fn assignee_migration_has_per_mission_unique_and_cascade() {
-    let sql = read_migration("0002_create_assignees.sql");
+    let sql = read_migration("20261103135405_create_assignees.sql");
     assert!(sql.contains("assignees_per_mission_unique"));
     assert!(sql.contains("UNIQUE (mission_id, user_code, role)"));
     assert!(sql.contains("assignees_role_check"));
@@ -125,7 +125,7 @@ fn issue_row_rejects_unknown_state() {
 
 #[test]
 fn mission_issues_migration_has_checks_and_trigger() {
-    let sql = read_migration("0003_create_mission_issues.sql");
+    let sql = read_migration("20261103135406_create_mission_issues.sql");
     assert!(sql.contains("CREATE TABLE mission_issues"));
     assert!(sql.contains("REFERENCES missions(id) ON DELETE CASCADE"));
     assert!(sql.contains("mission_issues_state_check"));

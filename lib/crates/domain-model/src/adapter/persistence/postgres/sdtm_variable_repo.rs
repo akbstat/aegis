@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn migration_file_is_present_and_idempotent() {
-        let sql = include_str!("../../../../migrations/0003_create_sdtm_variables.sql");
+        let sql = include_str!("../../../../migrations/20261103135402_create_sdtm_variables.sql");
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS sdtm_variables"));
         assert!(sql.contains("descriptions         JSONB"));
         assert!(sql.contains("sdtm_variables_type_check"));
@@ -291,7 +291,7 @@ mod tests {
     #[test]
     fn variable_controlled_migration_converts_the_column_to_jsonb() {
         let sql = include_str!(
-            "../../../../migrations/0004_alter_sdtm_variables_variable_controlled_to_jsonb.sql"
+            "../../../../migrations/20261103135403_alter_sdtm_variables_variable_controlled_to_jsonb.sql"
         );
         assert!(sql.contains("ALTER TABLE sdtm_variables"));
         // The column that changes must be named, and the conversion

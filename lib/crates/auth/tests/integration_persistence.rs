@@ -1,7 +1,8 @@
 //! Live-database integration tests for the PostgreSQL adapter.
 //!
 //! These tests connect to a real PostgreSQL server, apply the
-//! `migrations/0001_*.sql` and `migrations/0002_*.sql` schemas, and
+//! `migrations/*_create_auth_user_credentials.sql` and
+//! `migrations/*_create_auth_user_domain_identities.sql` schemas, and
 //! exercise the full surface of `UserCredentialsRepo` and
 //! `DomainIdentityRepo`. They are `#[ignore]`-gated so that
 //! `cargo test -p auth` stays green without a database; opt in with:

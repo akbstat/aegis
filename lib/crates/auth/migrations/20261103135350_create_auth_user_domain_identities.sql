@@ -1,4 +1,4 @@
--- 0002_create_auth_user_domain_identities.sql
+-- 20261103135350_create_auth_user_domain_identities.sql
 --
 -- Maps a (domain_name, hostname, sid) AD triple to a `user_code` so
 -- `login_with_domain_user_info` can resolve a domain logon without a

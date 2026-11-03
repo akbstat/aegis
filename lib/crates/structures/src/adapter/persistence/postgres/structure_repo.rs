@@ -180,7 +180,7 @@ fn map_error(err: sqlx::Error) -> DomainError {
 mod tests {
     #[test]
     fn the_structures_table_keeps_its_constraints() {
-        let sql = include_str!("../../../../migrations/0001_create_structures.sql");
+        let sql = include_str!("../../../../migrations/20261103135417_create_structures.sql");
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS structures"));
         assert!(sql.contains(
             "CONSTRAINT structures_level_check CHECK (level IN ('template', 'project'))"

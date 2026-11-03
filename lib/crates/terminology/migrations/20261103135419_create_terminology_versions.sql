@@ -1,4 +1,4 @@
--- 0001_create_terminology_versions.sql
+-- 20261103135419_create_terminology_versions.sql
 --
 -- Initial schema for the `terminology_versions` table. Applied
 -- by `sqlx migrate run --source lib/crates/terminology/migrations`

@@ -1,7 +1,7 @@
 //! Live-database integration tests for the PostgreSQL adapter.
 //!
 //! These tests connect to a real PostgreSQL server, apply the
-//! `migrations/0001_create_users.sql` schema, and exercise the full
+//! `migrations/20261103135422_create_users.sql` schema, and exercise the full
 //! CRUD surface of `UserRepo` plus the happy-path of `UserUsecase`.
 //! They are `#[ignore]`-gated so that `cargo test -p user` stays green
 //! without a database; opt in with:

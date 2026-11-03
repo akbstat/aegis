@@ -1,4 +1,4 @@
--- 0001_create_missions.sql
+-- 20261103135404_create_missions.sql
 --
 -- Single migration for the `mission` crate that owns the
 -- `Mission` aggregate. Assignees live in their own migration

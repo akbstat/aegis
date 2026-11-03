@@ -1,4 +1,4 @@
--- 0001_create_users.sql
+-- 20261103135422_create_users.sql
 --
 -- Initial schema for the `users` table. Applied by the database
 -- migration toolchain (sqlx migrate run / refinery / etc.) before the
