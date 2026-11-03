@@ -653,7 +653,8 @@ describe("structures api", () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/api.test.ts`
+Run: `npx vitest run src/test/features/templates/api.test.ts` (from
+`apps/desktop/aegis-desktop`)
 Expected: FAIL — `api.listStructures` is not a function.
 
 - [ ] **Step 3: Add the TS wire types**
@@ -708,7 +709,16 @@ export interface StructureNodeInput {
 
 - [ ] **Step 4: Add the API client wrappers**
 
-In `apps/desktop/aegis-desktop/src/shared/api/index.ts`, add the six new type names to the `import type { ... } from "./types"` block, then add a `// structures` section to the `api` object:
+In `apps/desktop/aegis-desktop/src/shared/api/index.ts`, add the five new
+type names the file itself uses (`StructureLevel`, `StructureNodeInput`,
+`StructureNodeView`, `StructureSummaryView`, `StructureView`) to the
+top `import type { ... } from "./types"` block, and add **all six**
+(including `MigrationView`) to the `export type { ... } from "./types"`
+re-export block at the bottom of the file. `MigrationView` must **not**
+go in the top import block — it is only re-exported, and an unused
+import fails `tsc --noEmit` with `TS6196`.
+
+Then add a `// structures` section to the `api` object:
 
 ```ts
   // structures
@@ -754,7 +764,8 @@ and add a `structures` group to the `queryKeys` object (after `mission`):
 
 - [ ] **Step 6: Run the test to verify it passes**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/api.test.ts`
+Run: `npx vitest run src/test/features/templates/api.test.ts` (from
+`apps/desktop/aegis-desktop`)
 Expected: PASS — 5 tests.
 
 - [ ] **Step 7: Typecheck**

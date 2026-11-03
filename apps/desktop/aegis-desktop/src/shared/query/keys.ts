@@ -1,3 +1,5 @@
+import type { StructureLevel } from "../api/types";
+
 // Query key factory. Keys are tuples typed `as const` so downstream
 // `useQuery({ queryKey: queryKeys.x.y() })` gets exact tuple inference.
 // All hooks and invalidations reference keys through this module —
@@ -79,5 +81,9 @@ export const queryKeys = {
       ["mission", "byProject", projectCode, kind] as const,
     issuesByMission: (missionId: number) =>
       ["mission", "issuesByMission", missionId] as const,
+  },
+  structures: {
+    list: (level: StructureLevel) => ["structures", "list", level] as const,
+    detail: (id: number) => ["structures", "detail", id] as const,
   },
 } as const;

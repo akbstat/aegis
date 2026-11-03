@@ -54,6 +54,11 @@ import type {
   SdtmVariableView,
   SdtmVersionListResponse,
   SdtmVersionView,
+  StructureLevel,
+  StructureNodeInput,
+  StructureNodeView,
+  StructureSummaryView,
+  StructureView,
   TerminologyKind,
   TerminologyVersionView,
   UpdateAnnotationInput,
@@ -508,6 +513,29 @@ export const api = {
     body: AppendCommentInput,
   ): Promise<IssueViewResponse> =>
     call<IssueViewResponse>("append_comment", { issueId, body: { ...body } }),
+
+  // structures
+  listStructures: (level?: StructureLevel): Promise<StructureSummaryView[]> =>
+    call<StructureSummaryView[]>("list_structures", { level }),
+  getStructure: (id: number): Promise<StructureView> =>
+    call<StructureView>("get_structure", { id }),
+  addStructureNode: (
+    structureId: number,
+    input: StructureNodeInput,
+  ): Promise<StructureNodeView> =>
+    call<StructureNodeView>("add_structure_node", { structureId, ...input }),
+  updateStructureNode: (
+    structureId: number,
+    nodeId: string,
+    input: StructureNodeInput,
+  ): Promise<StructureNodeView> =>
+    call<StructureNodeView>("update_structure_node", {
+      structureId,
+      nodeId,
+      ...input,
+    }),
+  deleteStructureNode: (structureId: number, nodeId: string): Promise<void> =>
+    call<void>("delete_structure_node", { structureId, nodeId }),
 } as const;
 
 export type { ApiError } from "./types";
@@ -557,6 +585,7 @@ export type {
   IssueListResponse,
   IssueState,
   IssueViewResponse,
+  MigrationView,
   MissionKind,
   MissionRole,
   MissionViewResponse,
@@ -586,6 +615,11 @@ export type {
   SdtmVariableView,
   SdtmVersionListResponse,
   SdtmVersionView,
+  StructureLevel,
+  StructureNodeInput,
+  StructureNodeView,
+  StructureSummaryView,
+  StructureView,
   Tag,
   TerminologyKind,
   TerminologyVersionListResponse,
