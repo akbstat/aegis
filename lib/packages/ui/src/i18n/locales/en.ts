@@ -542,4 +542,5 @@ export const en = {
   'Delete "{path}" and everything under it?',
 'templates.node.delete.failed': 'Delete failed: {message}',
   'templates.node.actions': 'Node actions',
+  'templates.node.field.migrationFilterAdd': 'Add filter',
 } as const;

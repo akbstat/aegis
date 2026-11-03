@@ -93,7 +93,12 @@ export function NodeDrawer({
     const migration: MigrationView | null = directory
       ? migrationDirectory.trim() === ""
         ? null
-        : { directory: migrationDirectory.trim(), filter: migrationFilters }
+        : {
+            directory: migrationDirectory.trim(),
+            // A filter row the admin left blank is dropped, the same way
+            // the domain-model drawer drops an empty language row.
+            filter: migrationFilters.filter((f) => f.trim() !== ""),
+          }
       : null;
     onSubmit({
       path: path.trim(),
@@ -185,7 +190,7 @@ export function NodeDrawer({
                 sx={{ alignSelf: "flex-start" }}
                 onClick={() => setMigrationFilters((filters) => [...filters, ""])}
               >
-                {t("templates.node.field.migrationFilter")}
+                {t("templates.node.field.migrationFilterAdd")}
               </Button>
             </>
           )}

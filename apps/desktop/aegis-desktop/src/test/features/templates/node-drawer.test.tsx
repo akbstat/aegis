@@ -131,6 +131,29 @@ describe("NodeDrawer", () => {
     );
   });
 
+  it("drops a blank migration filter", async () => {
+    const onSubmit = vi.fn();
+    renderDrawer({ onSubmit });
+    await userEvent.type(
+      screen.getByLabelText("Migration source directory"),
+      "/opt/sop",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Add filter" }));
+    await userEvent.type(
+      screen.getAllByLabelText("Migration filter")[0],
+      "*.sas7bdat",
+    );
+    // A second, blank filter row.
+    await userEvent.click(screen.getByRole("button", { name: "Add filter" }));
+    await userEvent.type(screen.getByLabelText(/^Path/), "raw");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        migration: { directory: "/opt/sop", filter: ["*.sas7bdat"] },
+      }),
+    );
+  });
+
   it("shows the node's current values when editing", () => {
     renderDrawer({
       mode: "edit",

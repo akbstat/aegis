@@ -43,15 +43,17 @@ export function NodeActionMenu({
         <MoreHorizIcon fontSize="small" />
       </IconButton>
       <Menu anchorEl={anchor} open={anchor != null} onClose={close}>
-        <MenuItem
-          onClick={() => {
-            close();
-            onAdd(node);
-          }}
-        >
-          <AddIcon fontSize="small" sx={{ mr: 1 }} />
-          {t("templates.node.add")}
-        </MenuItem>
+        {node.directory && (
+          <MenuItem
+            onClick={() => {
+              close();
+              onAdd(node);
+            }}
+          >
+            <AddIcon fontSize="small" sx={{ mr: 1 }} />
+            {t("templates.node.add")}
+          </MenuItem>
+        )}
         <MenuItem
           onClick={() => {
             close();

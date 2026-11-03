@@ -93,6 +93,16 @@ describe("StructureNodeRow", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("does not offer to add a child under a file", async () => {
+    renderRow(FILE, { canMutate: true });
+    await userEvent.click(screen.getByRole("button", { name: /node actions/i }));
+    // The server rejects a parent that is not a directory, so the action
+    // is not offered on a file.
+    expect(screen.queryByText("Add node")).not.toBeInTheDocument();
+    expect(screen.getByText("Edit node")).toBeInTheDocument();
+    expect(screen.getByText("Delete node")).toBeInTheDocument();
+  });
+
   it("offers add, edit and delete to an admin", async () => {
     const onAdd = vi.fn();
     renderRow(DIRECTORY, { canMutate: true, onAdd });
