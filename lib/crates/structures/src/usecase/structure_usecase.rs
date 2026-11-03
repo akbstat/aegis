@@ -1,9 +1,10 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::domain::{
     DomainError, MergedNode, MergedTree, Node, NodeAttributes, NodeRepository, ProjectLookup,
-    Structure, StructureFilter, StructureLevel, StructureNew, StructureRepository, merge,
+    Structure, StructureFilter, StructureLevel, StructureNew, StructureRepository,
+    effective_records, merge,
 };
 use crate::usecase::{
     AddNode, CreateStructure, DeleteNode, NodeView, OwnNodeView, RenameStructure,
@@ -199,41 +200,42 @@ where
 
     // ---- nodes ----
 
-    /// Place a node at a path.
+    /// Place a node under a parent.
     ///
-    /// The system decides what the write refers to: a path the template
-    /// already uses becomes an **override** of that node, reusing its
-    /// `node_id`; a path this structure already records is a conflict;
-    /// a new path mints a fresh `node_id`.
+    /// The system decides what the write refers to: a name the
+    /// effective structure already uses under that parent becomes an
+    /// **override** of that node, reusing its `node_id`; a name this
+    /// structure already records is a conflict; a new name mints a
+    /// fresh `node_id`.
     pub async fn add_node(&self, cmd: AddNode) -> Result<NodeView, UsecaseError> {
         let eff = self.effective(cmd.structure_id).await?;
         let attrs = NodeAttributes {
             description: cmd.description,
-            path: cmd.path,
+            entry_name: cmd.entry_name,
             directory: cmd.directory,
             parent: cmd.parent,
             reference: cmd.reference,
             migration: cmd.migration,
         };
 
-        // What does this path already refer to?
-        let existing = lookup_nodes(&eff)
-            .into_iter()
-            .find(|n| n.path == attrs.path)
-            .cloned();
-        let recorded_here = eff.own_nodes.iter().any(|n| n.path == attrs.path);
+        // What does this name already refer to, under this parent?
+        let existing = find_sibling(&eff, attrs.parent.as_deref(), &attrs.entry_name).cloned();
+        let template_ids = template_node_ids(&eff);
 
-        let (node_id, inherited) = if recorded_here {
-            // The structure already records this path. The client should
-            // have used `PUT`.
-            return Err(UsecaseError::Repository(DomainError::DuplicatePath(
-                attrs.path.clone(),
-            )));
-        } else if let Some(node) = existing {
-            // The template has this path: bind the write to that node.
-            (node.node_id.clone(), true)
-        } else {
-            (nanoid::nanoid!(), false)
+        let (node_id, inherited) = match existing {
+            Some(node) if eff.own_nodes.iter().any(|o| o.node_id == node.node_id) => {
+                // This structure already records this name under this
+                // parent. The client should have used `PUT`.
+                return Err(UsecaseError::Repository(DomainError::DuplicateName(
+                    attrs.entry_name.clone(),
+                )));
+            }
+            Some(node) => {
+                // The template has this name under this parent: bind the
+                // write to that node.
+                (node.node_id.clone(), template_ids.contains(&node.node_id))
+            }
+            None => (nanoid::nanoid!(), false),
         };
 
         if cmd.hidden == Some(true) {
@@ -247,8 +249,8 @@ where
             }
         }
 
-        // The node being written is excluded from the path-uniqueness
-        // check: an override deliberately reuses the path of the node
+        // The node being written is excluded from the name-uniqueness
+        // check: an override deliberately reuses the name of the node
         // it overrides.
         self.validate_node_write(&eff, &attrs, Some(&node_id))?;
 
@@ -265,17 +267,14 @@ where
     /// override record carrying the template's `node_id`.
     pub async fn update_node(&self, cmd: UpdateNode) -> Result<NodeView, UsecaseError> {
         let eff = self.effective(cmd.structure_id).await?;
-        lookup_nodes(&eff)
-            .into_iter()
-            .find(|n| n.node_id == cmd.node_id)
-            .ok_or_else(|| {
-                UsecaseError::Repository(DomainError::NodeNotFound(cmd.node_id.clone()))
-            })?;
+        find_node(&eff, &cmd.node_id).ok_or_else(|| {
+            UsecaseError::Repository(DomainError::NodeNotFound(cmd.node_id.clone()))
+        })?;
         let recorded_here = eff.own_nodes.iter().any(|n| n.node_id == cmd.node_id);
 
         let attrs = NodeAttributes {
             description: cmd.description,
-            path: cmd.path,
+            entry_name: cmd.entry_name,
             directory: cmd.directory,
             parent: cmd.parent,
             reference: cmd.reference,
@@ -307,13 +306,9 @@ where
     /// record with no template counterpart is deleted.
     pub async fn delete_node(&self, cmd: DeleteNode) -> Result<(), UsecaseError> {
         let eff = self.effective(cmd.structure_id).await?;
-        let target = lookup_nodes(&eff)
-            .into_iter()
-            .find(|n| n.node_id == cmd.node_id)
-            .cloned()
-            .ok_or_else(|| {
-                UsecaseError::Repository(DomainError::NodeNotFound(cmd.node_id.clone()))
-            })?;
+        let target = find_node(&eff, &cmd.node_id).cloned().ok_or_else(|| {
+            UsecaseError::Repository(DomainError::NodeNotFound(cmd.node_id.clone()))
+        })?;
 
         // The removal set: the target plus every own record beneath it.
         let mut removal: Vec<String> = vec![target.node_id.clone()];
@@ -374,7 +369,7 @@ where
                 overrides_template: template_ids.contains(&node.node_id),
                 node_id: node.node_id,
                 description: node.description,
-                path: node.path,
+                entry_name: node.entry_name,
                 directory: node.directory,
                 parent: node.parent,
                 reference: node.reference,
@@ -405,8 +400,8 @@ where
     /// Validate a node write against the effective structure.
     ///
     /// `target_node_id` is the node being written — `None` for an add.
-    /// The path-uniqueness check excludes it, so a node may keep its own
-    /// path.
+    /// The name-uniqueness check excludes it, so a node may keep its own
+    /// name.
     fn validate_node_write(
         &self,
         eff: &Effective,
@@ -416,12 +411,9 @@ where
         attrs.validate().map_err(UsecaseError::Validation)?;
 
         if let Some(parent_id) = attrs.parent.as_deref() {
-            let parent = lookup_nodes(eff)
-                .into_iter()
-                .find(|n| n.node_id == parent_id)
-                .ok_or_else(|| {
-                    UsecaseError::Validation(DomainError::ParentNotFound(parent_id.to_string()))
-                })?;
+            let parent = find_node(eff, parent_id).ok_or_else(|| {
+                UsecaseError::Validation(DomainError::ParentNotFound(parent_id.to_string()))
+            })?;
             if !parent.directory {
                 return Err(UsecaseError::Validation(DomainError::ParentNotADirectory(
                     parent_id.to_string(),
@@ -434,13 +426,17 @@ where
             }
         }
 
-        for node in lookup_nodes(eff) {
+        // A name is unique among siblings: no other node under the same
+        // parent may carry it.
+        for node in records(eff).values() {
             if Some(node.node_id.as_str()) == target_node_id {
                 continue;
             }
-            if node.path == attrs.path {
-                return Err(UsecaseError::Repository(DomainError::DuplicatePath(
-                    attrs.path.clone(),
+            if node.parent.as_deref() == attrs.parent.as_deref()
+                && node.entry_name == attrs.entry_name
+            {
+                return Err(UsecaseError::Repository(DomainError::DuplicateName(
+                    attrs.entry_name.clone(),
                 )));
             }
         }
@@ -456,12 +452,9 @@ where
         if let Some(found) = find_in_tree(&eff.merged.roots, node_id) {
             return Ok(found.into());
         }
-        let node = lookup_nodes(&eff)
-            .into_iter()
-            .find(|n| n.node_id == node_id)
-            .ok_or_else(|| {
-                UsecaseError::Repository(DomainError::NodeNotFound(node_id.to_string()))
-            })?;
+        let node = find_node(&eff, node_id).ok_or_else(|| {
+            UsecaseError::Repository(DomainError::NodeNotFound(node_id.to_string()))
+        })?;
         Ok(NodeView::from_node(node))
     }
 
@@ -501,18 +494,34 @@ struct Effective {
     merged: MergedTree,
 }
 
-/// Every node a write may refer to: this structure's own records plus
-/// the template's nodes.
+/// The effective record for each `node_id`: the template's rows with
+/// this structure's own rows layered on top.
 ///
 /// A hidden own record is in here — that is how a hide is undone. The
 /// *rendered* tree excludes hidden nodes, but the lookup index does
 /// not: the tree answers "what does this structure look like", the
 /// index answers "what does this write refer to".
-fn lookup_nodes(eff: &Effective) -> Vec<&Node> {
-    eff.own_nodes
-        .iter()
-        .chain(eff.template_nodes.iter())
-        .collect()
+fn records(eff: &Effective) -> HashMap<&str, &Node> {
+    effective_records(&eff.template_nodes, &eff.own_nodes)
+}
+
+/// The effective node with that `node_id`, if the structure has one.
+fn find_node<'a>(eff: &'a Effective, node_id: &str) -> Option<&'a Node> {
+    records(eff)
+        .values()
+        .find(|n| n.node_id == node_id)
+        .copied()
+}
+
+/// The effective node carrying that name under that parent, if any.
+///
+/// The name of a node is unique among its **siblings** — the same name
+/// may appear under two different parents.
+fn find_sibling<'a>(eff: &'a Effective, parent: Option<&str>, name: &str) -> Option<&'a Node> {
+    records(eff)
+        .values()
+        .find(|n| n.parent.as_deref() == parent && n.entry_name == name)
+        .copied()
 }
 
 /// The `node_id`s the template already has, so a write can tell an
@@ -534,12 +543,12 @@ fn would_cycle(eff: &Effective, target_id: &str, new_parent_id: &str) -> bool {
     if new_parent_id == target_id {
         return true;
     }
-    let nodes = lookup_nodes(eff);
+    let nodes = records(eff);
     let mut current = new_parent_id.to_string();
     // The bound guards against a cycle already present in the stored
     // data, which would otherwise loop forever.
     for _ in 0..=nodes.len() {
-        let Some(node) = nodes.iter().find(|n| n.node_id == current) else {
+        let Some(node) = nodes.get(current.as_str()) else {
             return false;
         };
         let Some(parent) = node.parent.as_deref() else {

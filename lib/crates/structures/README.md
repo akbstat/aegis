@@ -16,12 +16,17 @@ desktop app's job.
 - A **node** is a folder or a file. Its `node_id` is unique inside one structure
   and is a **shared identity space**: a project structure's record for an
   inherited node carries the template node's `node_id`.
+- A node's **`entry_name`** is its own name — one folder or one file name, *not*
+  a path. The nesting comes from the `parent` link, and the full path of a node
+  is the chain of names above it. A name is unique among the node's **siblings**:
+  the same name may appear under two different parents, but never twice under
+  the same one.
 - A **migration** says what to copy into a directory once it has been created.
 
 Reading a project structure returns the **effective tree**: the template's nodes
 merged with the project structure's extension records. The merge joins on
-`node_id`, never on `path` — which is why renaming an inherited node works and
-the template's original does not reappear.
+`node_id`, never on `entry_name` — which is why renaming an inherited node works
+and the template's original does not reappear.
 
 ## `src/` tree
 
@@ -32,7 +37,7 @@ src/
 ├── domain/
 │   ├── structure_level.rs     # Template | Project
 │   ├── migration.rs           # { directory, filter }
-│   ├── node.rs                # Node, NodeAttributes, the path rules
+│   ├── node.rs                # Node, NodeAttributes, the name rules
 │   ├── structure.rs           # the Structure aggregate
 │   ├── merge.rs               # the merge algorithm (pure)
 │   ├── repository.rs          # StructureRepository

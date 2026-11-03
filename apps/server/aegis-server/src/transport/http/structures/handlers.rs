@@ -286,7 +286,7 @@ pub async fn list_own_nodes(
     }))
 }
 
-/// `POST /api/structures/{id}/nodes` — place a node at a path.
+/// `POST /api/structures/{id}/nodes` — place a node under a parent.
 #[utoipa::path(
     post, path = "/{id}/nodes", tag = "structures",
     operation_id = "structures_add_node",
@@ -300,7 +300,7 @@ pub async fn list_own_nodes(
         (status = 401, description = "Missing / invalid token", body = crate::transport::http::error::ErrorBody),
         (status = 403, description = "Admin or root required to change a template", body = crate::transport::http::error::ErrorBody),
         (status = 404, description = "Structure or parent node not found", body = crate::transport::http::error::ErrorBody),
-        (status = 409, description = "The path is already used", body = crate::transport::http::error::ErrorBody),
+        (status = 409, description = "The name is already used under this parent", body = crate::transport::http::error::ErrorBody),
         (status = 500, description = "Repository failure", body = crate::transport::http::error::ErrorBody),
     ),
     security(("BearerAuth" = [])),
@@ -316,7 +316,7 @@ pub async fn add_node(
         .structures
         .add_node(apis::structures::AddNodeRequest {
             structure_id: id,
-            path: req.path,
+            entry_name: req.entry_name,
             description: req.description,
             directory: req.directory,
             parent: req.parent,
@@ -346,7 +346,7 @@ pub async fn add_node(
         (status = 401, description = "Missing / invalid token", body = crate::transport::http::error::ErrorBody),
         (status = 403, description = "Admin or root required to change a template", body = crate::transport::http::error::ErrorBody),
         (status = 404, description = "Structure or node not found", body = crate::transport::http::error::ErrorBody),
-        (status = 409, description = "The path is already used", body = crate::transport::http::error::ErrorBody),
+        (status = 409, description = "The name is already used under this parent", body = crate::transport::http::error::ErrorBody),
         (status = 500, description = "Repository failure", body = crate::transport::http::error::ErrorBody),
     ),
     security(("BearerAuth" = [])),
@@ -366,7 +366,7 @@ pub async fn update_node(
         .update_node(apis::structures::UpdateNodeRequest {
             structure_id,
             node_id,
-            path: req.path,
+            entry_name: req.entry_name,
             description: req.description,
             directory: req.directory,
             parent: req.parent,
@@ -551,7 +551,7 @@ mod tests {
         apis::structures::NodeView {
             node_id: "n1".into(),
             description: String::new(),
-            path: "raw".into(),
+            entry_name: "raw".into(),
             directory: true,
             parent: None,
             reference: None,
@@ -732,13 +732,13 @@ mod tests {
             (
                 "POST",
                 "/api/structures/1/nodes",
-                Some(r#"{"path":"raw","description":"","directory":true,"parent":null}"#),
+                Some(r#"{"entryName":"raw","description":"","directory":true,"parent":null}"#),
                 AxStatus::CREATED,
             ),
             (
                 "PUT",
                 "/api/structures/1/nodes/n1",
-                Some(r#"{"path":"raw","description":"","directory":true,"parent":null}"#),
+                Some(r#"{"entryName":"raw","description":"","directory":true,"parent":null}"#),
                 AxStatus::OK,
             ),
             (

@@ -116,10 +116,11 @@ impl NodeRepository for FakeNodes {
     async fn list(&self, _structure_id: i64) -> Result<Vec<Node>, DomainError> {
         unimplemented!()
     }
-    async fn find_by_path(
+    async fn find_by_name(
         &self,
         _structure_id: i64,
-        _path: &str,
+        _parent_id: Option<&str>,
+        _name: &str,
     ) -> Result<Option<Node>, DomainError> {
         unimplemented!()
     }

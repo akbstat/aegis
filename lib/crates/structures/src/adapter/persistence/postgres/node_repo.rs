@@ -15,7 +15,7 @@ use crate::domain::{DomainError, Migration, Node, NodeAttributes, NodeRepository
 struct NodeRow {
     node_id: String,
     description: String,
-    path: String,
+    entry_name: String,
     directory: bool,
     parent_id: Option<String>,
     hidden: bool,
@@ -38,7 +38,7 @@ impl TryFrom<NodeRow> for Node {
         };
         let attrs = NodeAttributes {
             description: row.description,
-            path: row.path,
+            entry_name: row.entry_name,
             directory: row.directory,
             parent: row.parent_id,
             reference: row.reference_path,
@@ -66,16 +66,16 @@ impl NodeRepository for NodeRepoPg {
     async fn insert(&self, structure_id: i64, node: &Node) -> Result<Node, DomainError> {
         let row = sqlx::query_as::<_, NodeRow>(
             "INSERT INTO structure_nodes
-                 (structure_id, node_id, description, path, directory, parent_id, hidden,
+                 (structure_id, node_id, description, entry_name, directory, parent_id, hidden,
                   reference_path, migration_directory, migration_filter)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-             RETURNING node_id, description, path, directory, parent_id, hidden,
+             RETURNING node_id, description, entry_name, directory, parent_id, hidden,
                        reference_path, migration_directory, migration_filter",
         )
         .bind(structure_id)
         .bind(&node.node_id)
         .bind(&node.description)
-        .bind(&node.path)
+        .bind(&node.entry_name)
         .bind(node.directory)
         .bind(&node.parent)
         .bind(node.hidden.unwrap_or(false))
@@ -98,16 +98,16 @@ impl NodeRepository for NodeRepoPg {
     async fn update(&self, structure_id: i64, node: &Node) -> Result<Node, DomainError> {
         let row = sqlx::query_as::<_, NodeRow>(
             "UPDATE structure_nodes
-                SET description = $3, path = $4, directory = $5, parent_id = $6, hidden = $7,
+                SET description = $3, entry_name = $4, directory = $5, parent_id = $6, hidden = $7,
                     reference_path = $8, migration_directory = $9, migration_filter = $10
               WHERE structure_id = $1 AND node_id = $2
-             RETURNING node_id, description, path, directory, parent_id, hidden,
+             RETURNING node_id, description, entry_name, directory, parent_id, hidden,
                        reference_path, migration_directory, migration_filter",
         )
         .bind(structure_id)
         .bind(&node.node_id)
         .bind(&node.description)
-        .bind(&node.path)
+        .bind(&node.entry_name)
         .bind(node.directory)
         .bind(&node.parent)
         .bind(node.hidden.unwrap_or(false))
@@ -149,7 +149,7 @@ impl NodeRepository for NodeRepoPg {
         node_id: &str,
     ) -> Result<Option<Node>, DomainError> {
         let row = sqlx::query_as::<_, NodeRow>(
-            "SELECT node_id, description, path, directory, parent_id, hidden,
+            "SELECT node_id, description, entry_name, directory, parent_id, hidden,
                     reference_path, migration_directory, migration_filter
              FROM structure_nodes WHERE structure_id = $1 AND node_id = $2",
         )
@@ -163,9 +163,9 @@ impl NodeRepository for NodeRepoPg {
 
     async fn list(&self, structure_id: i64) -> Result<Vec<Node>, DomainError> {
         let rows = sqlx::query_as::<_, NodeRow>(
-            "SELECT node_id, description, path, directory, parent_id, hidden,
+            "SELECT node_id, description, entry_name, directory, parent_id, hidden,
                     reference_path, migration_directory, migration_filter
-             FROM structure_nodes WHERE structure_id = $1 ORDER BY path ASC",
+             FROM structure_nodes WHERE structure_id = $1 ORDER BY entry_name ASC",
         )
         .bind(structure_id)
         .fetch_all(&self.pool)
@@ -174,18 +174,21 @@ impl NodeRepository for NodeRepoPg {
         rows.into_iter().map(Node::try_from).collect()
     }
 
-    async fn find_by_path(
+    async fn find_by_name(
         &self,
         structure_id: i64,
-        path: &str,
+        parent_id: Option<&str>,
+        name: &str,
     ) -> Result<Option<Node>, DomainError> {
         let row = sqlx::query_as::<_, NodeRow>(
-            "SELECT node_id, description, path, directory, parent_id, hidden,
+            "SELECT node_id, description, entry_name, directory, parent_id, hidden,
                     reference_path, migration_directory, migration_filter
-             FROM structure_nodes WHERE structure_id = $1 AND path = $2",
+             FROM structure_nodes
+             WHERE structure_id = $1 AND entry_name = $2 AND parent_id IS NOT DISTINCT FROM $3",
         )
         .bind(structure_id)
-        .bind(path)
+        .bind(name)
+        .bind(parent_id)
         .fetch_optional(&self.pool)
         .await
         .map_err(map_error)?;
@@ -196,14 +199,14 @@ impl NodeRepository for NodeRepoPg {
 /// The only place in the crate that knows about `sqlx::Error`.
 ///
 /// The driver does not surface the natural key of a violated
-/// constraint, so `DuplicatePath` carries an empty value; the
+/// constraint, so `DuplicateName` carries an empty value; the
 /// usecase's own check produces the useful message, and the constraint
 /// is the race backstop.
 fn map_error(err: sqlx::Error) -> DomainError {
     match err {
         sqlx::Error::RowNotFound => DomainError::NotFound,
         sqlx::Error::Database(db) => match db.code().as_deref() {
-            Some("23505") => DomainError::DuplicatePath(String::new()),
+            Some("23505") => DomainError::DuplicateName(String::new()),
             _ => DomainError::Repository(db.to_string()),
         },
         other => DomainError::Repository(other.to_string()),
@@ -219,11 +222,22 @@ mod tests {
         assert!(
             sql.contains("CONSTRAINT structure_nodes_unique_node UNIQUE (structure_id, node_id)")
         );
-        assert!(sql.contains("CONSTRAINT structure_nodes_unique_path UNIQUE (structure_id, path)"));
         assert!(sql.contains("CONSTRAINT structure_nodes_migration_filter_array CHECK (jsonb_typeof(migration_filter) = 'array')"));
         assert!(sql.contains("CONSTRAINT structure_nodes_reference_only_on_file CHECK (reference_path IS NULL OR directory = FALSE)"));
         assert!(sql.contains("CONSTRAINT structure_nodes_migration_only_on_directory CHECK (migration_directory IS NULL OR directory = TRUE)"));
         assert!(sql.contains("REFERENCES structures(id) ON DELETE CASCADE"));
         assert!(sql.contains("BEFORE UPDATE ON structure_nodes"));
+    }
+
+    #[test]
+    fn a_name_is_unique_among_the_siblings_not_across_the_structure() {
+        let sql = include_str!("../../../../migrations/0002_create_structure_nodes.sql");
+        // The name is scoped by the parent, so the same name may appear
+        // under two different parents.
+        assert!(
+            sql.contains("ON structure_nodes (structure_id, COALESCE(parent_id, ''), entry_name)")
+        );
+        // ... and the old whole-structure uniqueness is gone.
+        assert!(!sql.contains("structure_nodes_unique_path"));
     }
 }

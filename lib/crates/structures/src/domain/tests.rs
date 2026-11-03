@@ -20,32 +20,32 @@ fn structure_level_round_trips_through_its_str_form() {
 }
 
 #[test]
-fn node_new_rejects_a_blank_path() {
+fn node_new_rejects_a_blank_name() {
     let attrs = NodeAttributes {
-        path: "   ".into(),
+        entry_name: "   ".into(),
         ..Default::default()
     };
     assert!(matches!(
         Node::new("n1".into(), attrs),
-        Err(DomainError::InvalidPath(_))
+        Err(DomainError::InvalidName(_))
     ));
 }
 
 #[test]
-fn node_new_rejects_an_unnormalised_path() {
-    // leading slash, trailing slash, empty segment, "." segment, ".."
-    // segment and a backslash are each rejected.
-    for bad in ["/a", "a/", "a//b", "a/./b", "a/../b", "a\\b"] {
+fn node_new_rejects_a_name_that_is_not_a_single_segment() {
+    // A name is one folder or one file name — never a path. A
+    // separator, a "." segment and a ".." segment are each rejected.
+    for bad in ["a/b", "a\\b", "/a", "a/", ".", ".."] {
         let attrs = NodeAttributes {
-            path: bad.into(),
+            entry_name: bad.into(),
             ..Default::default()
         };
         assert!(
             matches!(
                 Node::new("n1".into(), attrs),
-                Err(DomainError::InvalidPath(_))
+                Err(DomainError::InvalidName(_))
             ),
-            "path {bad} should be rejected"
+            "name {bad} should be rejected"
         );
     }
 }
@@ -53,7 +53,7 @@ fn node_new_rejects_an_unnormalised_path() {
 #[test]
 fn node_new_rejects_a_reference_on_a_directory() {
     let attrs = NodeAttributes {
-        path: "a".into(),
+        entry_name: "a".into(),
         directory: true,
         reference: Some("/abs/a.txt".into()),
         ..Default::default()
@@ -67,7 +67,7 @@ fn node_new_rejects_a_reference_on_a_directory() {
 #[test]
 fn node_new_rejects_a_migration_on_a_file() {
     let attrs = NodeAttributes {
-        path: "a.txt".into(),
+        entry_name: "a.txt".into(),
         directory: false,
         migration: Some(Migration {
             directory: "/src".into(),
@@ -85,7 +85,7 @@ fn node_new_rejects_a_migration_on_a_file() {
 fn node_new_accepts_a_well_formed_node() {
     let attrs = NodeAttributes {
         description: "the raw folder".into(),
-        path: "raw/b.txt".into(),
+        entry_name: "b.txt".into(),
         directory: false,
         parent: Some("t_root".into()),
         reference: Some("/abs/b.txt".into()),
@@ -93,7 +93,8 @@ fn node_new_accepts_a_well_formed_node() {
     };
     let node = Node::new("n1".into(), attrs).unwrap();
     assert_eq!(node.node_id, "n1");
-    assert_eq!(node.path, "raw/b.txt");
+    assert_eq!(node.entry_name, "b.txt");
+    assert_eq!(node.parent.as_deref(), Some("t_root"));
     assert_eq!(node.hidden, None);
 }
 
@@ -101,7 +102,7 @@ fn node_new_accepts_a_well_formed_node() {
 fn node_new_accepts_a_directory_with_a_migration() {
     let attrs = NodeAttributes {
         description: "the stats folder".into(),
-        path: "stats".into(),
+        entry_name: "stats".into(),
         directory: true,
         parent: None,
         reference: None,

@@ -22,15 +22,17 @@ pub struct RenameStructure {
     pub name: String,
 }
 
-/// Place a node at a path.
+/// Place a node under a parent.
 ///
-/// The usecase resolves the path against the effective structure and
+/// The usecase resolves the name against the effective structure and
 /// decides whether this creates a new node or overrides an inherited
 /// one. `parent` is always explicit: `None` means "at the root".
 #[derive(Debug, Clone)]
 pub struct AddNode {
     pub structure_id: i64,
-    pub path: String,
+    /// The node's own name — a folder or a file name, unique among its
+    /// siblings.
+    pub entry_name: String,
     pub description: String,
     pub directory: bool,
     pub parent: Option<String>,
@@ -47,7 +49,9 @@ pub struct AddNode {
 pub struct UpdateNode {
     pub structure_id: i64,
     pub node_id: String,
-    pub path: String,
+    /// The node's own name — a folder or a file name, unique among its
+    /// siblings.
+    pub entry_name: String,
     pub description: String,
     pub directory: bool,
     pub parent: Option<String>,

@@ -12,7 +12,7 @@ mod structure_level;
 mod tests;
 
 pub use error::DomainError;
-pub use merge::{MergedNode, MergedTree, merge};
+pub use merge::{MergedNode, MergedTree, effective_records, merge};
 pub use migration::Migration;
 pub use node::{Node, NodeAttributes};
 pub use node_repository::NodeRepository;

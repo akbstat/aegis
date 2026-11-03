@@ -93,11 +93,11 @@ impl ProjectLookup for AnyProject {
     }
 }
 
-fn node(node_id: &str, path: &str, directory: bool, parent: Option<&str>) -> Node {
+fn node(node_id: &str, entry_name: &str, directory: bool, parent: Option<&str>) -> Node {
     Node {
         node_id: node_id.to_string(),
         description: String::new(),
-        path: path.to_string(),
+        entry_name: entry_name.to_string(),
         hidden: None,
         directory,
         parent: parent.map(str::to_string),
@@ -139,7 +139,7 @@ async fn a_template_structure_round_trips_through_postgres() {
                     "t_root".into(),
                     NodeAttributes {
                         description: "the raw folder".into(),
-                        path: "raw".into(),
+                        entry_name: "raw".into(),
                         directory: true,
                         ..Default::default()
                     },
@@ -152,7 +152,7 @@ async fn a_template_structure_round_trips_through_postgres() {
         let fetched = uc.get_structure(view.id).await.unwrap();
         assert_eq!(fetched.nodes.len(), 1);
         assert_eq!(fetched.nodes[0].node_id, "t_root");
-        assert_eq!(fetched.nodes[0].path, "raw");
+        assert_eq!(fetched.nodes[0].entry_name, "raw");
         assert_eq!(fetched.nodes[0].description, "the raw folder");
     })
     .await;
@@ -180,7 +180,7 @@ async fn a_migration_and_a_reference_survive_the_jsonb_round_trip() {
                     "t_stats".into(),
                     NodeAttributes {
                         description: String::new(),
-                        path: "stats".into(),
+                        entry_name: "stats".into(),
                         directory: true,
                         migration: Some(Migration {
                             directory: "/abs/references".into(),
@@ -200,7 +200,7 @@ async fn a_migration_and_a_reference_survive_the_jsonb_round_trip() {
                     "t_file".into(),
                     NodeAttributes {
                         description: String::new(),
-                        path: "stats/a.txt".into(),
+                        entry_name: "a.txt".into(),
                         directory: false,
                         reference: Some("/abs/a.txt".into()),
                         ..Default::default()
@@ -253,10 +253,7 @@ async fn a_project_structure_merges_over_its_template() {
             .await
             .unwrap();
         nodes
-            .insert(
-                template.id,
-                &node("t_file", "raw/a.txt", false, Some("t_root")),
-            )
+            .insert(template.id, &node("t_file", "a.txt", false, Some("t_root")))
             .await
             .unwrap();
 
@@ -273,10 +270,7 @@ async fn a_project_structure_merges_over_its_template() {
 
         // A new node under the template's directory.
         nodes
-            .insert(
-                project.id,
-                &node("n_new", "raw/b.txt", false, Some("t_root")),
-            )
+            .insert(project.id, &node("n_new", "b.txt", false, Some("t_root")))
             .await
             .unwrap();
 
@@ -285,13 +279,10 @@ async fn a_project_structure_merges_over_its_template() {
         let mut children: Vec<String> = tree.nodes[0]
             .children
             .iter()
-            .map(|c| c.path.clone())
+            .map(|c| c.entry_name.clone())
             .collect();
         children.sort();
-        assert_eq!(
-            children,
-            vec!["raw/a.txt".to_string(), "raw/b.txt".to_string()]
-        );
+        assert_eq!(children, vec!["a.txt".to_string(), "b.txt".to_string()]);
     })
     .await;
 }
@@ -316,10 +307,7 @@ async fn overriding_a_template_node_drops_the_template_children() {
             .await
             .unwrap();
         nodes
-            .insert(
-                template.id,
-                &node("t_file", "raw/a.txt", false, Some("t_root")),
-            )
+            .insert(template.id, &node("t_file", "a.txt", false, Some("t_root")))
             .await
             .unwrap();
 
@@ -337,7 +325,7 @@ async fn overriding_a_template_node_drops_the_template_children() {
         uc.update_node(UpdateNode {
             structure_id: project.id,
             node_id: "t_root".into(),
-            path: "raw".into(),
+            entry_name: "raw".into(),
             description: "project raw".into(),
             directory: true,
             parent: None,
@@ -428,6 +416,63 @@ async fn deleting_a_structure_cascades_to_its_nodes() {
 
         uc.delete_structure(view.id).await.unwrap();
         assert!(nodes.list(view.id).await.unwrap().is_empty());
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+async fn the_database_refuses_two_siblings_with_the_same_name() {
+    with_pool(|pool| async move {
+        let uc = usecase(pool.clone());
+        let view = uc
+            .create_structure(CreateStructure {
+                name: unique("template"),
+                level: StructureLevel::Template,
+                project_code: None,
+                template_id: None,
+            })
+            .await
+            .unwrap();
+        let nodes = NodeRepoPg::new(pool.clone());
+        nodes
+            .insert(view.id, &node("t_root", "raw", true, None))
+            .await
+            .unwrap();
+        nodes
+            .insert(view.id, &node("t_other", "other", true, None))
+            .await
+            .unwrap();
+
+        // The same name under two *different* parents is fine.
+        nodes
+            .insert(view.id, &node("n_a", "same.txt", false, Some("t_root")))
+            .await
+            .unwrap();
+        nodes
+            .insert(view.id, &node("n_b", "same.txt", false, Some("t_other")))
+            .await
+            .unwrap();
+
+        // The same name under the *same* parent is not.
+        let err = nodes
+            .insert(view.id, &node("n_c", "same.txt", false, Some("t_root")))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::DuplicateName(_)), "got {err:?}");
+
+        // Two roots may not share a name either — a plain UNIQUE
+        // constraint would let them through, because NULLs are
+        // distinct.
+        nodes
+            .insert(view.id, &node("n_d", "root.txt", true, None))
+            .await
+            .unwrap();
+        let err = nodes
+            .insert(view.id, &node("n_e", "root.txt", true, None))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DomainError::DuplicateName(_)), "got {err:?}");
     })
     .await;
 }
