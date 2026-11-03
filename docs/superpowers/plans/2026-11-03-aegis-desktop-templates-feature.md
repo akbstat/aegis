@@ -832,7 +832,9 @@ In `lib/packages/ui/src/i18n/locales/en.ts`, add:
 
 - [ ] **Step 2: Add the Chinese keys**
 
-In `lib/packages/ui/src/i18n/locales/zhCN.ts`, add the same keys with these values:
+In `lib/packages/ui/src/i18n/locales/zhCN.ts`, add the same keys with these values.
+Note: `zhCN.ts` closes with `} satisfies Record<keyof typeof en, string>;`, not
+`} as const;` — insert before that line, not before an `as const` close:
 
 ```ts
   'nav.templates': '模板',
