@@ -1114,17 +1114,15 @@ function Probe() {
 describe("templates data hooks", () => {
   it("lists the template structures", async () => {
     mockCommands({
-      list_structures: () => ({
-        structures: [
-          {
-            id: 3,
-            name: "Standard",
-            level: "template",
-            projectCode: null,
-            templateId: null,
-          },
-        ],
-      }),
+      list_structures: () => [
+        {
+          id: 3,
+          name: "Standard",
+          level: "template",
+          projectCode: null,
+          templateId: null,
+        },
+      ],
     });
     renderWithQueryClient(<Probe />);
     expect(await screen.findByText("1")).toBeInTheDocument();
@@ -1132,7 +1130,7 @@ describe("templates data hooks", () => {
 
   it("loads a structure by id", async () => {
     mockCommands({
-      list_structures: () => ({ structures: [] }),
+      list_structures: () => [],
       get_structure: () => ({
         id: 3,
         name: "Standard",
@@ -1148,7 +1146,7 @@ describe("templates data hooks", () => {
 
   it("invalidates the structure and the list after a node is added", async () => {
     mockCommands({
-      list_structures: () => ({ structures: [] }),
+      list_structures: () => [],
       get_structure: () => ({
         id: 3,
         name: "Standard",
@@ -1174,7 +1172,7 @@ describe("templates data hooks", () => {
 
   it("invalidates after a node is deleted", async () => {
     mockCommands({
-      list_structures: () => ({ structures: [] }),
+      list_structures: () => [],
       get_structure: () => ({
         id: 3,
         name: "Standard",
@@ -2596,17 +2594,15 @@ const STRUCTURE = {
   ],
 };
 
-const TEMPLATES = {
-  structures: [
-    {
-      id: 3,
-      name: "Standard",
-      level: "template",
-      projectCode: null,
-      templateId: null,
-    },
-  ],
-};
+const TEMPLATES = [
+  {
+    id: 3,
+    name: "Standard",
+    level: "template",
+    projectCode: null,
+    templateId: null,
+  },
+];
 
 function baseCommands(extra: Record<string, unknown> = {}) {
   return {
@@ -2683,7 +2679,7 @@ describe("StructureTemplatePage", () => {
   it("shows an empty state and does not select anything when there are no templates", async () => {
     mockCommands(
       baseCommands({
-        list_structures: () => ({ structures: [] }),
+        list_structures: () => [],
       }),
     );
     await renderPage("/templates/structure");
