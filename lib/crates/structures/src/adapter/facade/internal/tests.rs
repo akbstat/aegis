@@ -7,7 +7,7 @@ use apis::structures::{
     RenameStructureRequest, StructureApiError, StructureLevel, StructureService, UpdateNodeRequest,
 };
 
-use crate::adapter::facade::in_memory::service::StructureServiceImpl;
+use crate::adapter::facade::internal::service::StructureServiceImpl;
 use crate::domain::StructureLevel as DomainLevel;
 use crate::usecase::StructureUsecase;
 use crate::usecase::tests::{Harness, harness, node};

@@ -5,15 +5,18 @@ use apis::mission::{
     ListMissionsByUserRequest, MissionKind as ApiKind, MissionRole as ApiRole, MissionService,
 };
 
-use crate::usecase::{MissionUsecase, MissionUsecaseConfig};
+use crate::usecase::{
+    MissionIssueUsecase, MissionIssueUsecaseConfig, MissionUsecase, MissionUsecaseConfig,
+};
 
 #[path = "../../../test_support.rs"]
 mod test_support;
-use test_support::{FakeAssigneeRepo, FakeMissionRepo, FakeProject, FakeUser};
+use test_support::{FakeAssigneeRepo, FakeIssueRepo, FakeMissionRepo, FakeProject, FakeUser};
 
 use super::service::MissionServiceImpl;
 
-fn service() -> MissionServiceImpl<FakeMissionRepo, FakeAssigneeRepo, FakeProject, FakeUser> {
+fn service()
+-> MissionServiceImpl<FakeMissionRepo, FakeAssigneeRepo, FakeProject, FakeUser, FakeIssueRepo> {
     let usecase = MissionUsecase::new(MissionUsecaseConfig {
         mission_repo: FakeMissionRepo::default(),
         assignee_repo: FakeAssigneeRepo::default(),
@@ -22,7 +25,15 @@ fn service() -> MissionServiceImpl<FakeMissionRepo, FakeAssigneeRepo, FakeProjec
         },
         user_lookup: FakeUser,
     });
-    MissionServiceImpl::from_usecase(usecase)
+    let issue_usecase = MissionIssueUsecase::new(MissionIssueUsecaseConfig {
+        mission_repo: FakeMissionRepo::default(),
+        assignee_repo: FakeAssigneeRepo::default(),
+        project_lookup: FakeProject {
+            leader_for: vec!["alice"],
+        },
+        issue_repo: FakeIssueRepo::default(),
+    });
+    MissionServiceImpl::from_usecase(usecase, issue_usecase)
 }
 
 #[tokio::test]

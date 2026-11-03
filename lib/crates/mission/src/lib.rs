@@ -4,7 +4,7 @@
 //! aggregates, their ports, the PostgreSQL-backed persistence
 //! adapters, the cross-crate `ProjectLookup` / `UserLookup`
 //! adapters, the usecase layers that orchestrate them with
-//! project-leader authorization, and the in-memory facade that
+//! project-leader authorization, and the facade that
 //! adapts both usecases to `apis::mission::MissionService`.
 //!
 //! Layered architecture:
@@ -31,7 +31,7 @@ pub mod adapter;
 pub mod domain;
 pub mod usecase;
 
-pub use adapter::facade::in_memory::service::MissionServiceImpl;
+pub use adapter::facade::internal::service::MissionServiceImpl;
 pub use adapter::persistence::postgres::{AssigneeRepo, IssueRepo, MissionRepo};
 pub use adapter::service::project::ProjectLookupImpl;
 pub use adapter::service::user::UserLookupImpl;

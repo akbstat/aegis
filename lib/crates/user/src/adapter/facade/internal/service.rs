@@ -1,4 +1,4 @@
-//! `UserService` adapter backed by an in-memory `UserRepository`.
+//! `UserService` adapter over the `UserRepository` port.
 //!
 //! Hosts `UserServiceImpl<R>` — the implementation of
 //! `apis::user::UserService` that adapts `user::UserUsecase` to the

@@ -9,7 +9,7 @@ PostgreSQL.
 ```
 domain-model crate
 └── adapter
-    ├── facade             (in-memory, generic over V/D/Va)
+    ├── facade             (internal, generic over V/D/Va)
     └── persistence        (postgres, sqlx runtime API)
 usecase
 └── DomainModelUsecase<V, D, Va>
@@ -24,7 +24,7 @@ domain
 ```
 
 `adapter::persistence::postgres::*RepoPg` implements the three
-ports. `adapter::facade::in_memory::service::DomainModelServiceImpl`
+ports. `adapter::facade::internal::service::DomainModelServiceImpl`
 adapts `DomainModelUsecase` to the
 `apis::domain_model::DomainModelService` outbound port.
 

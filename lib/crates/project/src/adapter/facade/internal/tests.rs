@@ -13,7 +13,7 @@ use apis::project::{
     UpdateProjectRequest,
 };
 
-use crate::adapter::facade::in_memory::ProjectServiceImpl;
+use crate::adapter::facade::internal::ProjectServiceImpl;
 use crate::domain::{
     DomainError, Project, ProjectMember, ProjectNew, ProjectRepository, ProjectTag, ProjectUpdate,
     RoleType, TeamType, UserService, UserSummary,

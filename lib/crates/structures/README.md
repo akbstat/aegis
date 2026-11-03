@@ -63,8 +63,8 @@ src/
     ├── service/project.rs
     ├── service/project/project_lookup_impl.rs
     ├── facade.rs
-    └── facade/in_memory.rs
-    └── facade/in_memory/
+    └── facade/internal.rs
+    └── facade/internal/
         ├── service.rs         # StructureServiceImpl
         └── tests.rs
 ```

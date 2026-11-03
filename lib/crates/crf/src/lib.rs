@@ -17,14 +17,14 @@
 //!   - `adapter::service::project::ProjectLookupImpl` — bridges
 //!     `apis::project::ProjectService` to the domain
 //!     `ProjectLookup`.
-//!   - `adapter::facade::in_memory::CrfServiceImpl` — adapts
+//!   - `adapter::facade::internal::CrfServiceImpl` — adapts
 //!     `CrfUsecase` to `apis::crf::CrfService`.
 
 pub mod adapter;
 pub mod domain;
 pub mod usecase;
 
-pub use adapter::facade::in_memory::CrfServiceImpl;
+pub use adapter::facade::internal::CrfServiceImpl;
 pub use adapter::persistence::postgres::annotation_repo::AnnotationRepoPg;
 pub use adapter::persistence::postgres::crf_bulk_form_repo::CrfBulkFormRepoPg;
 pub use adapter::persistence::postgres::crf_form_repo::CrfFormRepoPg;

@@ -10,7 +10,7 @@ pub mod adapter;
 pub mod domain;
 pub mod usecase;
 
-pub use adapter::facade::in_memory::ProjectServiceImpl;
+pub use adapter::facade::internal::ProjectServiceImpl;
 pub use adapter::persistence::postgres::ProjectRepo;
 pub use adapter::service::user::UserServiceImpl;
 pub use domain::{
