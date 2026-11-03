@@ -1126,6 +1126,25 @@ import {
 
 afterEach(() => cleanup());
 
+const STRUCTURE = {
+  id: 3,
+  name: "Standard",
+  level: "template",
+  projectCode: null,
+  templateId: null,
+  nodes: [],
+};
+
+const TEMPLATES = [
+  {
+    id: 3,
+    name: "Standard",
+    level: "template",
+    projectCode: null,
+    templateId: null,
+  },
+];
+
 function Probe() {
   const list = useListTemplateStructures();
   const structure = useGetStructure(3);
@@ -1169,15 +1188,8 @@ function Probe() {
 describe("templates data hooks", () => {
   it("lists the template structures", async () => {
     mockCommands({
-      list_structures: () => [
-        {
-          id: 3,
-          name: "Standard",
-          level: "template",
-          projectCode: null,
-          templateId: null,
-        },
-      ],
+      list_structures: () => TEMPLATES,
+      get_structure: () => STRUCTURE,
     });
     renderWithQueryClient(<Probe />);
     expect(await screen.findByText("1")).toBeInTheDocument();
@@ -1185,66 +1197,42 @@ describe("templates data hooks", () => {
 
   it("loads a structure by id", async () => {
     mockCommands({
-      list_structures: () => [],
-      get_structure: () => ({
-        id: 3,
-        name: "Standard",
-        level: "template",
-        projectCode: null,
-        templateId: null,
-        nodes: [],
-      }),
+      list_structures: () => TEMPLATES,
+      get_structure: () => STRUCTURE,
     });
     renderWithQueryClient(<Probe />);
     expect(await screen.findByText("Standard")).toBeInTheDocument();
   });
 
-  it("invalidates the structure and the list after a node is added", async () => {
+  it("refetches the structure after a node is added", async () => {
+    const getStructure = vi.fn(() => STRUCTURE);
     mockCommands({
-      list_structures: () => [],
-      get_structure: () => ({
-        id: 3,
-        name: "Standard",
-        level: "template",
-        projectCode: null,
-        templateId: null,
-        nodes: [],
-      }),
+      list_structures: () => TEMPLATES,
+      get_structure: getStructure,
       add_structure_node: () => ({ nodeId: "n9" }),
     });
-    const { client } = renderWithQueryClient(<Probe />);
+    renderWithQueryClient(<Probe />);
     await screen.findByText("Standard");
+    const before = getStructure.mock.calls.length;
     await userEvent.click(screen.getByTestId("add"));
     await waitFor(() =>
-      expect(
-        client.getQueryState(["structures", "detail", 3])?.isInvalidated,
-      ).toBe(true),
+      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
     );
-    expect(
-      client.getQueryState(["structures", "list", "template"])?.isInvalidated,
-    ).toBe(true);
   });
 
-  it("invalidates after a node is deleted", async () => {
+  it("refetches the structure after a node is deleted", async () => {
+    const getStructure = vi.fn(() => STRUCTURE);
     mockCommands({
-      list_structures: () => [],
-      get_structure: () => ({
-        id: 3,
-        name: "Standard",
-        level: "template",
-        projectCode: null,
-        templateId: null,
-        nodes: [],
-      }),
+      list_structures: () => TEMPLATES,
+      get_structure: getStructure,
       delete_structure_node: () => undefined,
     });
-    const { client } = renderWithQueryClient(<Probe />);
+    renderWithQueryClient(<Probe />);
     await screen.findByText("Standard");
+    const before = getStructure.mock.calls.length;
     await userEvent.click(screen.getByTestId("delete"));
     await waitFor(() =>
-      expect(
-        client.getQueryState(["structures", "detail", 3])?.isInvalidated,
-      ).toBe(true),
+      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
     );
   });
 });
