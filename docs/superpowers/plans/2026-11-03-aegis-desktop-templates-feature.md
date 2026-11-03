@@ -997,7 +997,8 @@ describe("nodeName", () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/tree.test.ts`
+Run: `npx vitest run src/test/features/templates/tree.test.ts` (from
+`apps/desktop/aegis-desktop`)
 Expected: FAIL — cannot resolve `features/templates/data/tree`.
 
 - [ ] **Step 3: Implement the transform**
@@ -1072,7 +1073,8 @@ export function flattenStructure(nodes: StructureNodeView[]): FlatEntry[] {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/tree.test.ts`
+Run: `npx vitest run src/test/features/templates/tree.test.ts` (from
+`apps/desktop/aegis-desktop`)
 Expected: PASS — 8 tests.
 
 - [ ] **Step 5: Commit**
@@ -1250,7 +1252,8 @@ describe("templates data hooks", () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/data.test.tsx`
+Run: `npx vitest run src/test/features/templates/data.test.tsx` (from
+`apps/desktop/aegis-desktop`)
 Expected: FAIL — cannot resolve `features/templates/data/structures`.
 
 - [ ] **Step 3: Implement the hooks**
@@ -1338,7 +1341,8 @@ export function useDeleteStructureNode() {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/data.test.tsx`
+Run: `npx vitest run src/test/features/templates/data.test.tsx` (from
+`apps/desktop/aegis-desktop`)
 Expected: PASS — 4 tests.
 
 - [ ] **Step 5: Commit**
@@ -1530,7 +1534,8 @@ describe("AppLayout — Templates sub-menu entry", () => {
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/templates-page.test.tsx src/test/features/app/app-layout-templates.test.tsx`
+Run: `npx vitest run src/test/features/templates/templates-page.test.tsx src/test/features/app/app-layout-templates.test.tsx` (from
+`apps/desktop/aegis-desktop`)
 Expected: FAIL — `TemplatesPage` is not exported, and "Templates" is not in the sidebar.
 
 - [ ] **Step 4: Implement the Templates page**
@@ -1649,7 +1654,8 @@ Add the entry to the Knowledge Base submenu in `metadataEntry`:
 
 - [ ] **Step 9: Run the tests to verify they pass**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/templates-page.test.tsx src/test/features/app/app-layout-templates.test.tsx`
+Run: `npx vitest run src/test/features/templates/templates-page.test.tsx src/test/features/app/app-layout-templates.test.tsx` (from
+`apps/desktop/aegis-desktop`)
 Expected: PASS — 4 tests.
 
 - [ ] **Step 10: Typecheck**
@@ -1795,7 +1801,8 @@ describe("StructureNodeRow", () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/node-row.test.tsx`
+Run: `npx vitest run src/test/features/templates/node-row.test.tsx` (from
+`apps/desktop/aegis-desktop`)
 Expected: FAIL — cannot resolve `features/templates/components/StructureNodeRow`.
 
 - [ ] **Step 3: Implement the action menu**
@@ -1975,7 +1982,8 @@ export function StructureNodeRow({
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/node-row.test.tsx`
+Run: `npx vitest run src/test/features/templates/node-row.test.tsx` (from
+`apps/desktop/aegis-desktop`)
 Expected: PASS — 7 tests.
 
 - [ ] **Step 6: Commit**
@@ -2235,7 +2243,8 @@ describe("DeleteNodeDialog", () => {
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/node-drawer.test.tsx src/test/features/templates/delete-node-dialog.test.tsx`
+Run: `npx vitest run src/test/features/templates/node-drawer.test.tsx src/test/features/templates/delete-node-dialog.test.tsx` (from
+`apps/desktop/aegis-desktop`)
 Expected: FAIL — the components do not exist.
 
 - [ ] **Step 4: Implement the drawer**
@@ -2535,7 +2544,8 @@ export function DeleteNodeDialog({
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/node-drawer.test.tsx src/test/features/templates/delete-node-dialog.test.tsx`
+Run: `npx vitest run src/test/features/templates/node-drawer.test.tsx src/test/features/templates/delete-node-dialog.test.tsx` (from
+`apps/desktop/aegis-desktop`)
 Expected: PASS — 12 tests.
 
 - [ ] **Step 7: Commit**
@@ -2774,7 +2784,8 @@ describe("StructureTemplatePage", () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/structure-template-page.test.tsx`
+Run: `npx vitest run src/test/features/templates/structure-template-page.test.tsx` (from
+`apps/desktop/aegis-desktop`)
 Expected: FAIL — `StructureTemplatePage` is not exported.
 
 - [ ] **Step 3: Implement the sidebar**
@@ -3199,7 +3210,8 @@ Expected: `src/routes/routeTree.gen.ts` gains the two structure routes.
 
 - [ ] **Step 9: Run the test to verify it passes**
 
-Run: `pnpm --filter aegis-desktop test -- src/test/features/templates/structure-template-page.test.tsx`
+Run: `npx vitest run src/test/features/templates/structure-template-page.test.tsx` (from
+`apps/desktop/aegis-desktop`)
 Expected: PASS — 7 tests.
 
 If the sidebar test cannot find "Standard", check that the page's `useGetStructure` is enabled: the test renders with `structureId = 3` via the route, so `get_structure` must be mocked with the `get_structure` key — it is.
