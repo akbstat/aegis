@@ -76,6 +76,14 @@ export AEGIS_DATABASE_URL=postgres://user:pass@localhost/aegis
 sqlx migrate run --source lib/crates/sdtm-project/migrations
 ```
 
+Adding a migration: let the sqlx CLI create the file, then write the
+DDL into the file it names. Never hand-write the file name — the CLI's
+timestamp prefix is the migration's version.
+
+```bash
+sqlx migrate add --source lib/crates/sdtm-project/migrations --timestamp <description>
+```
+
 ### Running the live tests
 
 ```bash
