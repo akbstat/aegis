@@ -10,7 +10,8 @@
     "./icons": "./src/icons/index.ts",
     "./theme": "./src/theme/index.ts",
     "./i18n": "./src/i18n/index.ts",
-    "./charts": "./src/charts/index.ts"
+    "./charts": "./src/charts/index.ts",
+    "./tree-view": "./src/tree-view/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -27,7 +28,8 @@
   },
   "dependencies": {
     "@dnd-kit/react": "0.5.0",
-    "@mui/x-charts": "9.16.0"
+    "@mui/x-charts": "9.16.0",
+    "@mui/x-tree-view": "9.16.0"
   },
   "devDependencies": {
     "@emotion/react": "^11",

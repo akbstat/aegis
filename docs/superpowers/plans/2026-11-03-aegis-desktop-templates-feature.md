@@ -71,20 +71,42 @@ Create `lib/packages/ui/src/tree-view/index.ts`:
 export * from '@mui/x-tree-view';
 ```
 
-- [ ] **Step 3: Install the new dependency**
+- [ ] **Step 3: Pin the subpath with a test**
+
+The repo gives every subpath a test — `src/charts/index.test.ts` is the
+model. Add `lib/packages/ui/src/tree-view/index.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+
+import { SimpleTreeView, TreeItem } from './index';
+
+describe('@aegis/ui/tree-view', () => {
+  it('re-exports the tree primitives', () => {
+    expect(SimpleTreeView).toBeDefined();
+    expect(TreeItem).toBeDefined();
+  });
+});
+```
+
+Watch it fail: move `src/tree-view/index.ts` aside, run the test, and
+confirm it fails to resolve the module. Then restore the file and run
+the test again — it passes.
+
+- [ ] **Step 4: Install the new dependency**
 
 Run: `pnpm install`
 Expected: the lockfile gains `@mui/x-tree-view@9.16.0`; `lib/packages/ui/node_modules/@mui/x-tree-view` exists.
 
-- [ ] **Step 4: Verify the UI package still typechecks**
+- [ ] **Step 5: Verify the UI package still typechecks**
 
 Run: `pnpm --filter @aegis/ui typecheck`
 Expected: PASS with no errors.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add lib/packages/ui/package.json lib/packages/ui/src/tree-view/index.ts pnpm-lock.yaml
+git add lib/packages/ui/package.json lib/packages/ui/src/tree-view/index.ts lib/packages/ui/src/tree-view/index.test.ts pnpm-lock.yaml
 git commit -m "feat(ui): add the @aegis/ui/tree-view subpath"
 ```
 
