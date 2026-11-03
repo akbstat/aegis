@@ -1,0 +1,7 @@
+{
+  "list_structures": ["level"],
+  "get_structure": ["id"],
+  "add_structure_node": ["structureId", "body"],
+  "update_structure_node": ["structureId", "nodeId", "body"],
+  "delete_structure_node": ["structureId", "nodeId"]
+}

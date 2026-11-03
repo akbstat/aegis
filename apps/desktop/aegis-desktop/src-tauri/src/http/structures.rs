@@ -182,9 +182,128 @@ pub async fn delete_node(
 mod tests {
     use super::*;
     use crate::http::client::{HttpClient, MemoryStore, TokenStore};
+    use serde_json::json;
     use std::sync::Arc;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_json, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// A client pointed at a fresh mock server, with an access token set.
+    async fn mock_client(server: &MockServer) -> HttpClient {
+        let store = Arc::new(MemoryStore::default());
+        store.set_access_token("AT").await.unwrap();
+        HttpClient::new(server.uri(), store)
+    }
+
+    #[tokio::test]
+    async fn list_structures_requests_the_level_filter() {
+        let server = MockServer::start().await;
+        server
+            .register(
+                Mock::given(method("GET"))
+                    .and(path("/api/structures"))
+                    .and(query_param("level", "template"))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                        "structures": [{
+                            "id": 3,
+                            "name": "Standard",
+                            "level": "template",
+                            "projectCode": null,
+                            "templateId": null
+                        }]
+                    }))),
+            )
+            .await;
+        let c = mock_client(&server).await;
+
+        let out = list_structures(&c, Some(StructureLevelResponse::Template))
+            .await
+            .unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, 3);
+        assert_eq!(out[0].level, StructureLevelResponse::Template);
+    }
+
+    #[tokio::test]
+    async fn add_node_posts_the_exact_body_to_the_nodes_path() {
+        let server = MockServer::start().await;
+        server
+            .register(
+                Mock::given(method("POST"))
+                    .and(path("/api/structures/7/nodes"))
+                    .and(body_json(json!({
+                        "path": "raw",
+                        "description": "d",
+                        "directory": true,
+                        "parent": null,
+                        "reference": null,
+                        "migration": null
+                    })))
+                    .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                        "nodeId": "n9",
+                        "description": "d",
+                        "path": "raw",
+                        "directory": true,
+                        "parent": null,
+                        "reference": null,
+                        "migration": null,
+                        "children": []
+                    }))),
+            )
+            .await;
+        let c = mock_client(&server).await;
+
+        let body = AddNodeRequest {
+            path: "raw".into(),
+            description: "d".into(),
+            directory: true,
+            parent: None,
+            reference: None,
+            migration: None,
+        };
+        let node = add_node(&c, 7, &body).await.unwrap();
+        assert_eq!(node.node_id, "n9");
+    }
+
+    #[tokio::test]
+    async fn update_node_puts_the_exact_body_to_the_node_path() {
+        let server = MockServer::start().await;
+        server
+            .register(
+                Mock::given(method("PUT"))
+                    .and(path("/api/structures/7/nodes/n1"))
+                    .and(body_json(json!({
+                        "path": "raw/data",
+                        "description": "d",
+                        "directory": true,
+                        "parent": "n0",
+                        "reference": null,
+                        "migration": null
+                    })))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                        "nodeId": "n1",
+                        "description": "d",
+                        "path": "raw/data",
+                        "directory": true,
+                        "parent": "n0",
+                        "reference": null,
+                        "migration": null,
+                        "children": []
+                    }))),
+            )
+            .await;
+        let c = mock_client(&server).await;
+
+        let body = UpdateNodeRequest {
+            path: "raw/data".into(),
+            description: "d".into(),
+            directory: true,
+            parent: Some("n0".into()),
+            reference: None,
+            migration: None,
+        };
+        let node = update_node(&c, 7, "n1", &body).await.unwrap();
+        assert_eq!(node.node_id, "n1");
+    }
 
     #[test]
     fn structure_level_serializes_lowercase() {

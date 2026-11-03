@@ -257,6 +257,109 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// The invoke payload keys Tauri v2 derives from a command's Rust
+    /// parameter names: `tauri-macros` lower-camel-cases each parameter,
+    /// and `tauri`'s resolver looks that key up in the payload with no
+    /// whole-payload fallback.
+    ///
+    /// This test extracts the parameter names from the command signatures
+    /// in this very file and checks them against the shared contract, so
+    /// renaming a Rust parameter breaks the TypeScript wrapper's contract
+    /// here instead of failing at runtime with "missing required key".
+    #[test]
+    fn invoke_keys_match_the_contract() {
+        let source = include_str!("structures.rs");
+        let contract: serde_json::Value =
+            serde_json::from_str(include_str!("../structures.contract.json")).unwrap();
+        let contract = contract.as_object().unwrap();
+
+        for (command, expected) in contract {
+            let marker = format!("pub async fn {command}(");
+            let start = source
+                .find(&marker)
+                .unwrap_or_else(|| panic!("command {command} not found in this file"));
+            let params = &source[start + marker.len()..];
+            let params = &params[..matching_paren(params)];
+
+            let keys: Vec<String> = split_params(params)
+                .iter()
+                .filter_map(|p| p.split_once(':').map(|(name, _)| name.trim()))
+                // `app_state` is the injected Tauri state, not an argument.
+                .filter(|name| *name != "app_state")
+                .map(to_lower_camel)
+                .collect();
+
+            let expected_keys: Vec<String> = expected
+                .as_array()
+                .expect("contract entry must be an array")
+                .iter()
+                .map(|k| k.as_str().expect("contract key must be a string").to_string())
+                .collect();
+
+            assert_eq!(keys, expected_keys, "invoke keys for {command}");
+        }
+    }
+
+    /// The index of the `)` that closes the parameter list.
+    fn matching_paren(s: &str) -> usize {
+        let mut depth = 0usize;
+        for (i, ch) in s.char_indices() {
+            match ch {
+                '(' | '<' | '[' => depth += 1,
+                ')' | '>' | ']' => {
+                    if depth == 0 {
+                        return i;
+                    }
+                    depth -= 1;
+                }
+                _ => {}
+            }
+        }
+        panic!("no closing parenthesis");
+    }
+
+    /// Split a parameter list on the commas that separate parameters.
+    fn split_params(s: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut depth = 0usize;
+        let mut current = String::new();
+        for ch in s.chars() {
+            match ch {
+                '(' | '<' | '[' => {
+                    depth += 1;
+                    current.push(ch);
+                }
+                ')' | '>' | ']' => {
+                    depth -= 1;
+                    current.push(ch);
+                }
+                ',' if depth == 0 => {
+                    out.push(current.trim().to_string());
+                    current.clear();
+                }
+                _ => current.push(ch),
+            }
+        }
+        if !current.trim().is_empty() {
+            out.push(current.trim().to_string());
+        }
+        out
+    }
+
+    /// `structure_id` → `structureId`, the shape Tauri v2 looks up.
+    fn to_lower_camel(snake: &str) -> String {
+        let mut out = String::new();
+        for (i, part) in snake.split('_').enumerate() {
+            if i == 0 {
+                out.push_str(part);
+            } else if let Some(first) = part.chars().next() {
+                out.extend(first.to_uppercase());
+                out.push_str(&part[1..]);
+            }
+        }
+        out
+    }
+
     #[test]
     fn add_node_request_deserializes_a_camel_case_payload() {
         let raw = json!({

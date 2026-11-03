@@ -232,6 +232,13 @@ mod tests {
 }
 ```
 
+
+> **Added during the final review.** The test module also carries a
+> wiremock test per call: `list_structures` asserts the request URI is
+> `/api/structures?level=template`, and `add_node` / `update_node` assert
+> the method, the path and the **exact** JSON body. (A mutation check —
+> breaking the `add_node` URL — fails three of these tests, so they have
+> teeth.)
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `cargo test -p aegis-desktop --lib http::structures`
@@ -444,6 +451,15 @@ mod tests {
 }
 ```
 
+
+> **Added during the final review.** The test module also carries
+> `invoke_keys_match_the_contract`, which extracts each command
+> signature's Rust parameter names from this very file, lower-camel-cases
+> them the way `tauri-macros` does, and checks them against
+> `src-tauri/src/structures.contract.json`. The TypeScript side reads the
+> same file and asserts each wrapper sends exactly those keys — so a
+> renamed Rust parameter, or a wrapper that flattens the `body` struct
+> parameter, fails a test instead of failing at runtime.
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `cargo test -p aegis-desktop --lib commands::structures`
@@ -722,6 +738,15 @@ Then add a `// structures` section to the `api` object:
 
 ```ts
   // structures
+  //
+  // Tauri v2 resolves each command argument by the lower-camel-case of
+  // the Rust parameter name and looks that key up in the invoke payload
+  // with no whole-payload fallback. The Rust commands take their node
+  // payload as a struct parameter named `body`, so the wrapper must
+  // nest it under that key — flattening it is rejected at runtime with
+  // "command add_structure_node missing required key body".
+  // The key list is pinned by src-tauri/src/structures.contract.json and
+  // checked by src/test/features/templates/api.test.ts.
   listStructures: (level?: StructureLevel): Promise<StructureSummaryView[]> =>
     call<StructureSummaryView[]>("list_structures", { level }),
   getStructure: (id: number): Promise<StructureView> =>
@@ -730,7 +755,10 @@ Then add a `// structures` section to the `api` object:
     structureId: number,
     input: StructureNodeInput,
   ): Promise<StructureNodeView> =>
-    call<StructureNodeView>("add_structure_node", { structureId, ...input }),
+    call<StructureNodeView>("add_structure_node", {
+      structureId,
+      body: { ...input },
+    }),
   updateStructureNode: (
     structureId: number,
     nodeId: string,
@@ -739,7 +767,7 @@ Then add a `// structures` section to the `api` object:
     call<StructureNodeView>("update_structure_node", {
       structureId,
       nodeId,
-      ...input,
+      body: { ...input },
     }),
   deleteStructureNode: (structureId: number, nodeId: string): Promise<void> =>
     call<void>("delete_structure_node", { structureId, nodeId }),
@@ -804,6 +832,7 @@ In `lib/packages/ui/src/i18n/locales/en.ts`, add:
   'templates.card.standardFolderStructure.description':
     'Statistical programming standard project folder structure, follow SOP CL-CSP-DOC-004-A01',
   'templates.structure.heading': 'Project Structure Template',
+  'templates.structure.list': 'Structures',
   'templates.structure.view.complete': 'Complete',
   'templates.structure.view.flat': 'Flat',
   'templates.structure.noTemplates': 'No templates yet',
@@ -845,6 +874,7 @@ Note: `zhCN.ts` closes with `} satisfies Record<keyof typeof en, string>;`, not
   'templates.card.standardFolderStructure.description':
     '统计编程工作标准文件夹结构, 遵循SOP CL-CSP-DOC-004-A01',
   'templates.structure.heading': '项目结构模板',
+  'templates.structure.list': '模板结构',
   'templates.structure.view.complete': '完整',
   'templates.structure.view.flat': '扁平',
   'templates.structure.noTemplates': '暂无模板',
@@ -875,7 +905,7 @@ Note: `zhCN.ts` closes with `} satisfies Record<keyof typeof en, string>;`, not
 - [ ] **Step 3: Verify the catalogs agree**
 
 Run: `pnpm --filter @aegis/ui typecheck`
-Expected: PASS. The `satisfies Record<Locale, TranslationCatalog>` in `registry.ts` fails the build if `zhCN.ts` is missing a key that `en.ts` has, so a PASS means both catalogs carry all 29 keys.
+Expected: PASS. The `satisfies Record<Locale, TranslationCatalog>` in `registry.ts` fails the build if `zhCN.ts` is missing a key that `en.ts` has, so a PASS means both catalogs carry all 30 keys.
 
 - [ ] **Step 4: Commit**
 
@@ -1111,168 +1141,130 @@ git commit -m "feat(desktop): add the flat structure tree transform"
 Create `apps/desktop/aegis-desktop/src/test/features/templates/data.test.tsx`:
 
 ```tsx
-import "@testing-library/jest-dom/vitest";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
-import { renderWithQueryClient } from "../../helpers/render-with-query-client";
-import { mockCommands } from "../../helpers/tauri-mock";
-import {
-  useAddStructureNode,
-  useDeleteStructureNode,
-  useGetStructure,
-  useListTemplateStructures,
-  useUpdateStructureNode,
-} from "../../../features/templates/data/structures";
+import { api } from "../../../shared/api";
+import { mockCommands, mockInvoke } from "../../helpers/tauri-mock";
+import CONTRACT_JSON from "../../../../src-tauri/src/structures.contract.json";
 
-afterEach(() => cleanup());
+/**
+ * The invoke payload keys Tauri v2 derives from the Rust commands' Rust
+ * parameter names. The Rust half of this contract lives in
+ * `src-tauri/src/structures.contract.json` and is checked against the
+ * command signatures by `commands::structures::tests::invoke_keys_match_the_contract`.
+ */
+const CONTRACT = CONTRACT_JSON as Record<string, string[]>;
 
-const STRUCTURE = {
-  id: 3,
-  name: "Standard",
-  level: "template",
-  projectCode: null,
-  templateId: null,
-  nodes: [],
-};
+describe("structures api", () => {
+  it("sends exactly the invoke keys the Rust commands expect", async () => {
+    // Tauri v2 resolves each command argument by the lower-camel-case of
+    // the Rust parameter name and looks the key up in the payload with
+    // no whole-payload fallback. A wrapper that flattens a struct
+    // parameter instead of nesting it under that parameter's name is
+    // rejected at runtime with "missing required key body".
+    const nodeInput = {
+      path: "raw",
+      description: "d",
+      directory: true,
+      parent: null,
+      reference: null,
+      migration: null,
+    };
+    const cases: Array<[string, () => Promise<unknown>]> = [
+      ["list_structures", () => api.listStructures("template")],
+      ["get_structure", () => api.getStructure(3)],
+      ["add_structure_node", () => api.addStructureNode(3, nodeInput)],
+      [
+        "update_structure_node",
+        () => api.updateStructureNode(3, "n1", nodeInput),
+      ],
+      ["delete_structure_node", () => api.deleteStructureNode(3, "n1")],
+    ];
 
-const TEMPLATES = [
-  {
-    id: 3,
-    name: "Standard",
-    level: "template",
-    projectCode: null,
-    templateId: null,
-  },
-];
-
-function Probe() {
-  const list = useListTemplateStructures();
-  const structure = useGetStructure(3);
-  const add = useAddStructureNode();
-  const update = useUpdateStructureNode();
-  const del = useDeleteStructureNode();
-  return (
-    <div>
-      <span data-testid="list-status">{list.status}</span>
-      <span data-testid="list-count">{list.data?.length ?? -1}</span>
-      <span data-testid="structure-status">{structure.status}</span>
-      <span data-testid="structure-name">{structure.data?.name ?? ""}</span>
-      <button
-        data-testid="add"
-        onClick={() =>
-          add.mutate({
-            structureId: 3,
-            input: {
-              path: "raw",
-              description: "",
-              directory: true,
-              parent: null,
-              reference: null,
-              migration: null,
-            },
-          })
-        }
-      >
-        add
-      </button>
-      <button
-        data-testid="update"
-        onClick={() =>
-          update.mutate({
-            structureId: 3,
-            nodeId: "n1",
-            input: {
-              path: "raw",
-              description: "d",
-              directory: true,
-              parent: null,
-              reference: null,
-              migration: null,
-            },
-          })
-        }
-      >
-        update
-      </button>
-      <button
-        data-testid="delete"
-        onClick={() => del.mutate({ structureId: 3, nodeId: "n1" })}
-      >
-        delete
-      </button>
-    </div>
-  );
-}
-
-describe("templates data hooks", () => {
-  it("lists the template structures", async () => {
     mockCommands({
-      list_structures: () => TEMPLATES,
-      get_structure: () => STRUCTURE,
-    });
-    renderWithQueryClient(<Probe />);
-    expect(await screen.findByText("1")).toBeInTheDocument();
-  });
-
-  it("loads a structure by id", async () => {
-    mockCommands({
-      list_structures: () => TEMPLATES,
-      get_structure: () => STRUCTURE,
-    });
-    renderWithQueryClient(<Probe />);
-    expect(await screen.findByText("Standard")).toBeInTheDocument();
-  });
-
-  it("refetches the structure after a node is added", async () => {
-    const getStructure = vi.fn(() => STRUCTURE);
-    mockCommands({
-      list_structures: () => TEMPLATES,
-      get_structure: getStructure,
-      add_structure_node: () => ({ nodeId: "n9" }),
-    });
-    renderWithQueryClient(<Probe />);
-    await screen.findByText("Standard");
-    const before = getStructure.mock.calls.length;
-    await userEvent.click(screen.getByTestId("add"));
-    await waitFor(() =>
-      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
-    );
-  });
-
-  it("refetches the structure after a node is updated", async () => {
-    const getStructure = vi.fn(() => STRUCTURE);
-    mockCommands({
-      list_structures: () => TEMPLATES,
-      get_structure: getStructure,
-      update_structure_node: () => ({ nodeId: "n1" }),
-    });
-    renderWithQueryClient(<Probe />);
-    await screen.findByText("Standard");
-    const before = getStructure.mock.calls.length;
-    await userEvent.click(screen.getByTestId("update"));
-    await waitFor(() =>
-      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
-    );
-  });
-
-  it("refetches the structure after a node is deleted", async () => {
-    const getStructure = vi.fn(() => STRUCTURE);
-    mockCommands({
-      list_structures: () => TEMPLATES,
-      get_structure: getStructure,
+      list_structures: () => [],
+      get_structure: () => ({}),
+      add_structure_node: () => ({}),
+      update_structure_node: () => ({}),
       delete_structure_node: () => undefined,
     });
-    renderWithQueryClient(<Probe />);
-    await screen.findByText("Standard");
-    const before = getStructure.mock.calls.length;
-    await userEvent.click(screen.getByTestId("delete"));
-    await waitFor(() =>
-      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
+
+    for (const [command, call] of cases) {
+      mockInvoke.mockClear();
+      await call();
+      const payload = mockInvoke.mock.calls[0][1] as Record<string, unknown>;
+      expect(Object.keys(payload).sort(), command).toEqual(
+        [...CONTRACT[command]].sort(),
+      );
+    }
+  });
+
+  it("invokes list_structures with the level", async () => {
+    mockCommands({ list_structures: () => [] });
+    await api.listStructures("template");
+    expect(mockInvoke).toHaveBeenCalledWith("list_structures", {
+      level: "template",
+    });
+  });
+
+  it("invokes get_structure with the id", async () => {
+    mockCommands({ get_structure: () => ({}) });
+    await api.getStructure(3);
+    expect(mockInvoke).toHaveBeenCalledWith("get_structure", { id: 3 });
+  });
+
+  it("invokes add_structure_node with camelCase arguments", async () => {
+    mockCommands({ add_structure_node: () => ({}) });
+    await api.addStructureNode(3, {
+      path: "raw",
+      description: "d",
+      directory: true,
+      parent: null,
+      reference: null,
+      migration: null,
+    });
+    expect(mockInvoke).toHaveBeenCalledWith("add_structure_node", {
+      structureId: 3,
+      body: {
+        path: "raw",
+        description: "d",
+        directory: true,
+        parent: null,
+        reference: null,
+        migration: null,
+      },
+    });
+  });
+
+  it("invokes update_structure_node with the node id", async () => {
+    mockCommands({ update_structure_node: () => ({}) });
+    await api.updateStructureNode(3, "n1", {
+      path: "raw",
+      description: "d",
+      directory: true,
+      parent: null,
+      reference: null,
+      migration: null,
+    });
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "update_structure_node",
+      expect.objectContaining({
+        structureId: 3,
+        nodeId: "n1",
+        body: expect.objectContaining({ path: "raw" }),
+      }),
     );
+  });
+
+  it("invokes delete_structure_node with the structure and node ids", async () => {
+    mockCommands({ delete_structure_node: () => undefined });
+    await api.deleteStructureNode(3, "n1");
+    expect(mockInvoke).toHaveBeenCalledWith("delete_structure_node", {
+      structureId: 3,
+      nodeId: "n1",
+    });
   });
 });
 ```
@@ -1400,82 +1392,78 @@ git commit -m "feat(desktop): add the templates data hooks"
 Create `apps/desktop/aegis-desktop/src/test/features/templates/templates-page.test.tsx`:
 
 ```tsx
-import "@testing-library/jest-dom/vitest";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { AegisI18nProvider } from "@aegis/ui/i18n";
-import { AegisThemeProvider } from "@aegis/ui/theme";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { renderInRouter } from "../../helpers/file-route-utils";
-import { TemplatesPage } from "../../../features/templates";
+import {
+  api,
+  type ApiError,
+  type StructureNodeInput,
+  type StructureNodeView,
+  type StructureSummaryView,
+  type StructureView,
+} from "../../../shared/api";
+import { queryKeys } from "../../../shared/query";
 
-function createMemoryStorage(): Storage {
-  const data = new Map<string, string>();
-  return {
-    get length() {
-      return data.size;
-    },
-    clear() {
-      data.clear();
-    },
-    getItem(key: string) {
-      return data.has(key) ? data.get(key)! : null;
-    },
-    key(index: number) {
-      return Array.from(data.keys())[index] ?? null;
-    },
-    removeItem(key: string) {
-      data.delete(key);
-    },
-    setItem(key: string, value: string) {
-      data.set(key, value);
-    },
-  } as unknown as Storage;
+/** The template-level structures, for the sidebar. */
+export function useListTemplateStructures() {
+  return useQuery<StructureSummaryView[], ApiError>({
+    queryKey: queryKeys.structures.list("template"),
+    queryFn: () => api.listStructures("template"),
+  });
 }
 
-beforeEach(() => {
-  vi.unstubAllGlobals();
-  vi.stubGlobal("localStorage", createMemoryStorage());
-});
-afterEach(() => cleanup());
-
-function renderTemplates() {
-  return renderInRouter(
-    <AegisThemeProvider>
-      <AegisI18nProvider>
-        <TemplatesPage />
-      </AegisI18nProvider>
-    </AegisThemeProvider>,
-  );
+/** One structure with its effective tree. */
+export function useGetStructure(id: number | null) {
+  return useQuery<StructureView, ApiError>({
+    queryKey: queryKeys.structures.detail(id ?? 0),
+    queryFn: () => api.getStructure(id!),
+    enabled: id != null && id > 0,
+  });
 }
 
-describe("TemplatesPage", () => {
-  it("renders the heading and the one card", async () => {
-    await renderTemplates();
-    expect(
-      screen.getByRole("heading", { level: 4, name: /templates/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("Standard Project Folder Structure"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /Statistical programming standard project folder structure/i,
-      ),
-    ).toBeInTheDocument();
-  });
+/** Invalidate the structure and the sidebar after a node write. */
+function useInvalidateStructures() {
+  const qc = useQueryClient();
+  return (structureId: number) => {
+    qc.invalidateQueries({ queryKey: queryKeys.structures.detail(structureId) });
+    qc.invalidateQueries({ queryKey: queryKeys.structures.list("template") });
+  };
+}
 
-  it("navigates to /templates/structure when the card is clicked", async () => {
-    const { router } = await renderTemplates();
-    await userEvent.click(
-      screen.getByText("Standard Project Folder Structure"),
-    );
-    await waitFor(() =>
-      expect(router.state.location.pathname).toBe("/templates/structure"),
-    );
+export function useAddStructureNode() {
+  const invalidate = useInvalidateStructures();
+  return useMutation<
+    StructureNodeView,
+    ApiError,
+    { structureId: number; input: StructureNodeInput }
+  >({
+    mutationFn: ({ structureId, input }) =>
+      api.addStructureNode(structureId, input),
+    onSuccess: (_node, vars) => invalidate(vars.structureId),
   });
-});
+}
+
+export function useUpdateStructureNode() {
+  const invalidate = useInvalidateStructures();
+  return useMutation<
+    StructureNodeView,
+    ApiError,
+    { structureId: number; nodeId: string; input: StructureNodeInput }
+  >({
+    mutationFn: ({ structureId, nodeId, input }) =>
+      api.updateStructureNode(structureId, nodeId, input),
+    onSuccess: (_node, vars) => invalidate(vars.structureId),
+  });
+}
+
+export function useDeleteStructureNode() {
+  const invalidate = useInvalidateStructures();
+  return useMutation<void, ApiError, { structureId: number; nodeId: string }>({
+    mutationFn: ({ structureId, nodeId }) =>
+      api.deleteStructureNode(structureId, nodeId),
+    onSuccess: (_void, vars) => invalidate(vars.structureId),
+  });
+}
 ```
 
 - [ ] **Step 2: Write the failing nav test**
@@ -1575,18 +1563,19 @@ import { Box, Card, CardContent, CardHeader, Typography } from "@aegis/ui/mui";
 import { useI18n } from "@aegis/ui/i18n";
 
 /**
- * The template catalogue. The entries are fixed text in the frontend —
- * they are not fetched — so each card is a launcher into one of the
- * template pages rather than a row of API data.
+ * The template catalogue.
+ *
+ * The entries are fixed text in the frontend — they are not fetched —
+ * so each card is a launcher into one of the template pages rather than
+ * a row of API data.
  */
 const TEMPLATES = [
   {
-    titleKey: "templates.card.standardFolderStructure.title" as const,
-    descriptionKey:
-      "templates.card.standardFolderStructure.description" as const,
+    titleKey: "templates.card.standardFolderStructure.title",
+    descriptionKey: "templates.card.standardFolderStructure.description",
     target: "/templates/structure",
   },
-];
+] as const;
 
 export function TemplatesPage() {
   const { t } = useI18n();
@@ -1890,21 +1879,23 @@ export function NodeActionMenu({
     <>
       <IconButton
         size="small"
-        aria-label={t("templates.node.add")}
+        aria-label={t("templates.node.actions")}
         onClick={(e) => setAnchor(e.currentTarget)}
       >
         <MoreHorizIcon fontSize="small" />
       </IconButton>
       <Menu anchorEl={anchor} open={anchor != null} onClose={close}>
-        <MenuItem
-          onClick={() => {
-            close();
-            onAdd(node);
-          }}
-        >
-          <AddIcon fontSize="small" sx={{ mr: 1 }} />
-          {t("templates.node.add")}
-        </MenuItem>
+        {node.directory && (
+          <MenuItem
+            onClick={() => {
+              close();
+              onAdd(node);
+            }}
+          >
+            <AddIcon fontSize="small" sx={{ mr: 1 }} />
+            {t("templates.node.add")}
+          </MenuItem>
+        )}
         <MenuItem
           onClick={() => {
             close();
@@ -1946,6 +1937,8 @@ export interface StructureNodeRowProps {
   onAdd: (node: StructureNodeView) => void;
   onEdit: (node: StructureNodeView) => void;
   onDelete: (node: StructureNodeView) => void;
+  /** Overrides the label; the flat view shows the node's own name. */
+  label?: string;
   /** The flat view's extra full-path line. */
   secondaryPath?: string;
 }
@@ -1967,9 +1960,9 @@ export function StructureNodeRow({
   const { t } = useI18n();
 
   return (
-    <Stack direction="row" spacing={1} alignItems="flex-start">
+    <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Typography variant="body2" fontWeight={600} noWrap>
+        <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
           {label ?? node.path}
         </Typography>
         {secondaryPath && (
@@ -2342,7 +2335,6 @@ import type {
 export interface NodeDrawerProps {
   open: boolean;
   mode: "create" | "edit";
-  structureId: number;
   /** The node being edited. `null` in create mode. */
   node: StructureNodeView | null;
   /** The parent the new node goes under. `null` means the root. */
@@ -2371,7 +2363,6 @@ export function isValidNodePath(path: string): boolean {
 export function NodeDrawer({
   open,
   mode,
-  structureId,
   node,
   parent,
   onClose,
@@ -2414,13 +2405,19 @@ export function NodeDrawer({
     const migration: MigrationView | null = directory
       ? migrationDirectory.trim() === ""
         ? null
-        : { directory: migrationDirectory.trim(), filter: migrationFilters }
+        : {
+            directory: migrationDirectory.trim(),
+            // A filter row the admin left blank is dropped, the same way
+            // the domain-model drawer drops an empty language row.
+            filter: migrationFilters.filter((f) => f.trim() !== ""),
+          }
       : null;
     onSubmit({
       path: path.trim(),
       description,
       directory,
-      parent: mode === "create" ? (parent?.nodeId ?? null) : (node?.parent ?? null),
+      parent:
+        mode === "create" ? (parent?.nodeId ?? null) : (node?.parent ?? null),
       reference: directory ? null : reference.trim() || null,
       migration,
     });
@@ -2503,11 +2500,9 @@ export function NodeDrawer({
               <Button
                 size="small"
                 sx={{ alignSelf: "flex-start" }}
-                onClick={() =>
-                  setMigrationFilters((filters) => [...filters, ""])
-                }
+                onClick={() => setMigrationFilters((filters) => [...filters, ""])}
               >
-                {t("templates.node.field.migrationFilter")}
+                {t("templates.node.field.migrationFilterAdd")}
               </Button>
             </>
           )}
@@ -2652,7 +2647,7 @@ import { AegisThemeProvider } from "@aegis/ui/theme";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { renderWithFullRouter } from "../../helpers/file-route-utils";
-import { mockCommands } from "../../helpers/tauri-mock";
+import { httpError, mockCommands } from "../../helpers/tauri-mock";
 import { TestQueryProvider } from "../../helpers/test-query-provider";
 
 function createMemoryStorage(): Storage {
@@ -2827,6 +2822,73 @@ describe("StructureTemplatePage", () => {
     ).toHaveLength(0);
   });
 
+  it("shows the files under each directory in the flat view", async () => {
+    mockCommands(baseCommands());
+    await renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Flat" }));
+    await waitFor(() => expect(screen.getByText("data")).toBeInTheDocument());
+    // The flat view exists to show a directory's files as its leaves, so
+    // they must be visible without expanding the directory first.
+    expect(screen.getByText("raw/data/a.sas7bdat")).toBeInTheDocument();
+  });
+
+  it("does not show the empty state while the structure is loading", async () => {
+    let resolveStructure: (value: unknown) => void = () => {};
+    mockCommands(
+      baseCommands({
+        get_structure: () =>
+          new Promise((resolve) => {
+            resolveStructure = resolve;
+          }),
+      }),
+    );
+    await renderPage();
+    expect(screen.queryByText("No folder structure yet")).not.toBeInTheDocument();
+    resolveStructure(STRUCTURE);
+    await waitFor(() => expect(screen.getByText("raw")).toBeInTheDocument());
+  });
+
+  it("does not offer to add a root node when no structure is selected", async () => {
+    mockCommands(
+      baseCommands({
+        list_structures: () => [],
+        current_user: () => ADMIN_USER,
+      }),
+    );
+    await renderPage("/templates/structure");
+    // Wait for the admin role to land — the app shell shows "Management"
+    // for an admin — so the assertion is not made before the user query
+    // has resolved.
+    await screen.findByText("Management");
+    expect(
+      screen.queryByRole("button", { name: /add root node/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show a stale save error in a freshly opened drawer", async () => {
+    mockCommands(
+      baseCommands({
+        add_structure_node: () => {
+          throw httpError(400, "validation_failed", "bad path");
+        },
+        current_user: () => ADMIN_USER,
+      }),
+    );
+    await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /add root node/i }),
+    );
+    await userEvent.type(screen.getByLabelText(/^Path/), "raw");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByText(/Save failed/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /add root node/i }),
+    );
+    expect(screen.queryByText(/Save failed/)).not.toBeInTheDocument();
+  });
+
   it("shows the node actions to an admin", async () => {
     mockCommands(
       baseCommands({
@@ -2852,7 +2914,13 @@ Expected: FAIL — `StructureTemplatePage` is not exported.
 Create `apps/desktop/aegis-desktop/src/features/templates/components/StructureSidebar.tsx`:
 
 ```tsx
-import { Box, List, ListItemButton, ListItemText, Typography } from "@aegis/ui/mui";
+import {
+  Box,
+  List,
+  ListItemButton,
+  ListItemText,
+  Typography,
+} from "@aegis/ui/mui";
 import { useI18n } from "@aegis/ui/i18n";
 
 import type { StructureSummaryView } from "../../../shared/api";
@@ -2875,6 +2943,7 @@ export function StructureSidebar({
 
   return (
     <Box
+      data-testid="structure-sidebar"
       sx={{
         width: 260,
         flexShrink: 0,
@@ -2885,7 +2954,7 @@ export function StructureSidebar({
       }}
     >
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        {t("templates.structure.heading")}
+        {t("templates.structure.list")}
       </Typography>
 
       {loading && <Typography variant="body2">…</Typography>}
@@ -2918,7 +2987,14 @@ Create `apps/desktop/aegis-desktop/src/features/templates/components/StructureTr
 
 ```tsx
 import { useState } from "react";
-import { Box, Button, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@aegis/ui/mui";
+import {
+  Box,
+  Button,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from "@aegis/ui/mui";
 import { Add as AddIcon } from "@aegis/ui/icons";
 import { useI18n } from "@aegis/ui/i18n";
 import { SimpleTreeView, TreeItem } from "@aegis/ui/tree-view";
@@ -2932,19 +3008,45 @@ export type StructureTreeViewMode = "complete" | "flat";
 export interface StructureTreeProps {
   nodes: StructureNodeView[];
   canMutate: boolean;
+  /** A root node can only be added to a selected structure. */
+  canAddRoot: boolean;
+  /** Whether the structure is still being fetched. */
+  loading: boolean;
   onAdd: (node: StructureNodeView | null) => void;
   onEdit: (node: StructureNodeView) => void;
   onDelete: (node: StructureNodeView) => void;
 }
 
-/** The Complete tree — the API's tree, nested by `parent`. */
-function CompleteTree(props: {
+interface TreeProps {
   nodes: StructureNodeView[];
   canMutate: boolean;
   onAdd: (node: StructureNodeView) => void;
   onEdit: (node: StructureNodeView) => void;
   onDelete: (node: StructureNodeView) => void;
-}) {
+}
+
+/**
+ * The ids of every directory in the tree.
+ *
+ * The tree renders fully expanded: a folder-structure page is read to
+ * see the whole layout, so a collapsed root would hide most of it.
+ */
+function directoryIds(nodes: StructureNodeView[]): string[] {
+  const ids: string[] = [];
+  const walk = (list: StructureNodeView[]) => {
+    for (const node of list) {
+      if (node.directory) {
+        ids.push(node.nodeId);
+        walk(node.children);
+      }
+    }
+  };
+  walk(nodes);
+  return ids;
+}
+
+/** The Complete tree — the API's tree, nested by `parent`. */
+function CompleteTree(props: TreeProps) {
   const renderNodes = (nodes: StructureNodeView[]) =>
     nodes.map((node) => (
       <TreeItem
@@ -2964,21 +3066,21 @@ function CompleteTree(props: {
       </TreeItem>
     ));
 
-  return <SimpleTreeView>{renderNodes(props.nodes)}</SimpleTreeView>;
+  return (
+    <SimpleTreeView defaultExpandedItems={directoryIds(props.nodes)}>
+      {renderNodes(props.nodes)}
+    </SimpleTreeView>
+  );
 }
 
 /** The Flat tree — one row per directory, with its files beneath it. */
-function FlatTree(props: {
-  nodes: StructureNodeView[];
-  canMutate: boolean;
-  onAdd: (node: StructureNodeView) => void;
-  onEdit: (node: StructureNodeView) => void;
-  onDelete: (node: StructureNodeView) => void;
-}) {
+function FlatTree(props: TreeProps) {
   const entries = flattenStructure(props.nodes);
 
   return (
-    <SimpleTreeView>
+    // The flat view exists to show a directory's files as its leaves,
+    // so every entry starts expanded.
+    <SimpleTreeView defaultExpandedItems={entries.map((e) => e.node.nodeId)}>
       {entries.map((entry) => (
         <TreeItem
           key={entry.node.nodeId}
@@ -3019,6 +3121,8 @@ function FlatTree(props: {
 export function StructureTree({
   nodes,
   canMutate,
+  canAddRoot,
+  loading,
   onAdd,
   onEdit,
   onDelete,
@@ -3026,11 +3130,11 @@ export function StructureTree({
   const { t } = useI18n();
   const [mode, setMode] = useState<StructureTreeViewMode>("complete");
 
-  const shared = { nodes, canMutate, onAdd, onEdit, onDelete };
+  const shared: TreeProps = { nodes, canMutate, onAdd, onEdit, onDelete };
 
   return (
     <Box sx={{ flexGrow: 1, minWidth: 0, p: 3, overflow: "auto" }}>
-      <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+      <Stack direction="row" spacing={2} sx={{ mb: 2, alignItems: "center" }}>
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -3047,7 +3151,7 @@ export function StructureTree({
           </ToggleButton>
         </ToggleButtonGroup>
 
-        {canMutate && (
+        {canMutate && canAddRoot && (
           <Button
             size="small"
             startIcon={<AddIcon />}
@@ -3060,7 +3164,7 @@ export function StructureTree({
 
       {nodes.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          {t("templates.structure.noNodes")}
+          {loading ? "…" : t("templates.structure.noNodes")}
         </Typography>
       ) : mode === "complete" ? (
         <CompleteTree {...shared} />
@@ -3118,8 +3222,12 @@ export function StructureTemplatePage({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<"create" | "edit">("create");
   const [drawerNode, setDrawerNode] = useState<StructureNodeView | null>(null);
-  const [drawerParent, setDrawerParent] = useState<StructureNodeView | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<StructureNodeView | null>(null);
+  const [drawerParent, setDrawerParent] = useState<StructureNodeView | null>(
+    null,
+  );
+  const [deleteTarget, setDeleteTarget] = useState<StructureNodeView | null>(
+    null,
+  );
 
   const canMutate =
     currentUser.data?.role === "root" || currentUser.data?.role === "admin";
@@ -3138,6 +3246,10 @@ export function StructureTemplatePage({
   }, [structureId, structures.data, navigate]);
 
   function openAdd(parent: StructureNodeView | null) {
+    // A mutation error belongs to the write that failed. Clear it so a
+    // freshly opened drawer never shows the previous failure.
+    addNode.reset();
+    updateNode.reset();
     setDrawerMode("create");
     setDrawerNode(null);
     setDrawerParent(parent);
@@ -3145,6 +3257,8 @@ export function StructureTemplatePage({
   }
 
   function openEdit(node: StructureNodeView) {
+    addNode.reset();
+    updateNode.reset();
     setDrawerMode("edit");
     setDrawerNode(node);
     setDrawerParent(null);
@@ -3166,6 +3280,11 @@ export function StructureTemplatePage({
     }
   }
 
+  function openDelete(node: StructureNodeView) {
+    deleteNode.reset();
+    setDeleteTarget(node);
+  }
+
   function handleDelete(node: StructureNodeView) {
     if (structureId == null) return;
     deleteNode.mutate(
@@ -3176,16 +3295,25 @@ export function StructureTemplatePage({
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
-      <Box sx={{ flexGrow: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+      <Box
+        sx={{
+          flexGrow: 1,
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         <Typography variant="h5" sx={{ p: 3, pb: 0 }}>
           {structure.data?.name ?? t("templates.structure.heading")}
         </Typography>
         <StructureTree
           nodes={structure.data?.nodes ?? []}
           canMutate={canMutate}
+          canAddRoot={structureId != null}
+          loading={structure.isLoading}
           onAdd={openAdd}
           onEdit={openEdit}
-          onDelete={setDeleteTarget}
+          onDelete={openDelete}
         />
       </Box>
 
@@ -3193,7 +3321,10 @@ export function StructureTemplatePage({
         structures={structures.data ?? []}
         selectedId={structureId}
         onSelect={(id) =>
-          navigate({ to: "/templates/structure/$structureId", params: { structureId: String(id) } })
+          navigate({
+            to: "/templates/structure/$structureId",
+            params: { structureId: String(id) },
+          })
         }
         loading={structures.isLoading}
       />
@@ -3201,7 +3332,6 @@ export function StructureTemplatePage({
       <NodeDrawer
         open={drawerOpen}
         mode={drawerMode}
-        structureId={structureId ?? 0}
         node={drawerNode}
         parent={drawerParent}
         onClose={() => setDrawerOpen(false)}
@@ -3293,6 +3423,32 @@ git commit -m "feat(desktop): add the project structure template page"
 ```
 
 ---
+
+## Changes made by the final review
+
+The whole-branch review found one Critical defect and four Important ones.
+The plan text below was updated to match the shipped code, so it cannot
+lead a future reader back into them:
+
+- **The invoke payload must nest the node body.** Tauri v2 resolves each
+  command argument by the lower-camel-case of the Rust parameter name and
+  looks that key up in the payload with no whole-payload fallback
+  (`tauri` `src/ipc/command.rs`, `tauri-macros` `src/command/wrapper.rs`).
+  The Rust commands take their node payload as a struct parameter named
+  `body`, so the wrapper must send `{ structureId, body: {...} }` — the
+  flattened form is rejected at runtime with *"missing required key body"*.
+  The key list now lives in `src-tauri/src/structures.contract.json` and is
+  checked from both sides: a Rust test extracts each command signature's
+  parameters and compares them to the contract, and a TypeScript test
+  asserts each wrapper sends exactly the contract's keys.
+- **The tree pane needs a loading state**, otherwise a fetch in flight is
+  indistinguishable from a template with no nodes.
+- **The root-add button needs a selected structure**, otherwise it is a
+  silent no-op on the index route with an empty template list.
+- **The mutations must be reset when the drawer opens**, or a stale error
+  from a previous write is shown against a different node.
+- **The flat view must start expanded** — it exists to show a directory's
+  files as its leaves.
 
 ## Final Verification
 

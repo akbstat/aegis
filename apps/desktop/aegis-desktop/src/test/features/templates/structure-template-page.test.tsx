@@ -8,7 +8,7 @@ import { AegisThemeProvider } from "@aegis/ui/theme";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { renderWithFullRouter } from "../../helpers/file-route-utils";
-import { mockCommands } from "../../helpers/tauri-mock";
+import { httpError, mockCommands } from "../../helpers/tauri-mock";
 import { TestQueryProvider } from "../../helpers/test-query-provider";
 
 function createMemoryStorage(): Storage {
@@ -181,6 +181,73 @@ describe("StructureTemplatePage", () => {
     expect(
       screen.queryAllByRole("button", { name: /node actions/i }),
     ).toHaveLength(0);
+  });
+
+  it("shows the files under each directory in the flat view", async () => {
+    mockCommands(baseCommands());
+    await renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Flat" }));
+    await waitFor(() => expect(screen.getByText("data")).toBeInTheDocument());
+    // The flat view exists to show a directory's files as its leaves, so
+    // they must be visible without expanding the directory first.
+    expect(screen.getByText("raw/data/a.sas7bdat")).toBeInTheDocument();
+  });
+
+  it("does not show the empty state while the structure is loading", async () => {
+    let resolveStructure: (value: unknown) => void = () => {};
+    mockCommands(
+      baseCommands({
+        get_structure: () =>
+          new Promise((resolve) => {
+            resolveStructure = resolve;
+          }),
+      }),
+    );
+    await renderPage();
+    expect(screen.queryByText("No folder structure yet")).not.toBeInTheDocument();
+    resolveStructure(STRUCTURE);
+    await waitFor(() => expect(screen.getByText("raw")).toBeInTheDocument());
+  });
+
+  it("does not offer to add a root node when no structure is selected", async () => {
+    mockCommands(
+      baseCommands({
+        list_structures: () => [],
+        current_user: () => ADMIN_USER,
+      }),
+    );
+    await renderPage("/templates/structure");
+    // Wait for the admin role to land — the app shell shows "Management"
+    // for an admin — so the assertion is not made before the user query
+    // has resolved.
+    await screen.findByText("Management");
+    expect(
+      screen.queryByRole("button", { name: /add root node/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show a stale save error in a freshly opened drawer", async () => {
+    mockCommands(
+      baseCommands({
+        add_structure_node: () => {
+          throw httpError(400, "validation_failed", "bad path");
+        },
+        current_user: () => ADMIN_USER,
+      }),
+    );
+    await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /add root node/i }),
+    );
+    await userEvent.type(screen.getByLabelText(/^Path/), "raw");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByText(/Save failed/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /add root node/i }),
+    );
+    expect(screen.queryByText(/Save failed/)).not.toBeInTheDocument();
   });
 
   it("shows the node actions to an admin", async () => {

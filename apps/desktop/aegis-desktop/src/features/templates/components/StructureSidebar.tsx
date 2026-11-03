@@ -38,7 +38,7 @@ export function StructureSidebar({
       }}
     >
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        {t("templates.structure.heading")}
+        {t("templates.structure.list")}
       </Typography>
 
       {loading && <Typography variant="body2">…</Typography>}

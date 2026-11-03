@@ -515,6 +515,15 @@ export const api = {
     call<IssueViewResponse>("append_comment", { issueId, body: { ...body } }),
 
   // structures
+  //
+  // Tauri v2 resolves each command argument by the lower-camel-case of
+  // the Rust parameter name and looks that key up in the invoke payload
+  // with no whole-payload fallback. The Rust commands take their node
+  // payload as a struct parameter named `body`, so the wrapper must
+  // nest it under that key — flattening it is rejected at runtime with
+  // "command add_structure_node missing required key body".
+  // The key list is pinned by src-tauri/src/structures.contract.json and
+  // checked by src/test/features/templates/api.test.ts.
   listStructures: (level?: StructureLevel): Promise<StructureSummaryView[]> =>
     call<StructureSummaryView[]>("list_structures", { level }),
   getStructure: (id: number): Promise<StructureView> =>
@@ -523,7 +532,10 @@ export const api = {
     structureId: number,
     input: StructureNodeInput,
   ): Promise<StructureNodeView> =>
-    call<StructureNodeView>("add_structure_node", { structureId, ...input }),
+    call<StructureNodeView>("add_structure_node", {
+      structureId,
+      body: { ...input },
+    }),
   updateStructureNode: (
     structureId: number,
     nodeId: string,
@@ -532,7 +544,7 @@ export const api = {
     call<StructureNodeView>("update_structure_node", {
       structureId,
       nodeId,
-      ...input,
+      body: { ...input },
     }),
   deleteStructureNode: (structureId: number, nodeId: string): Promise<void> =>
     call<void>("delete_structure_node", { structureId, nodeId }),

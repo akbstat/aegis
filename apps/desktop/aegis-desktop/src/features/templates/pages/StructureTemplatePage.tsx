@@ -63,6 +63,10 @@ export function StructureTemplatePage({
   }, [structureId, structures.data, navigate]);
 
   function openAdd(parent: StructureNodeView | null) {
+    // A mutation error belongs to the write that failed. Clear it so a
+    // freshly opened drawer never shows the previous failure.
+    addNode.reset();
+    updateNode.reset();
     setDrawerMode("create");
     setDrawerNode(null);
     setDrawerParent(parent);
@@ -70,6 +74,8 @@ export function StructureTemplatePage({
   }
 
   function openEdit(node: StructureNodeView) {
+    addNode.reset();
+    updateNode.reset();
     setDrawerMode("edit");
     setDrawerNode(node);
     setDrawerParent(null);
@@ -89,6 +95,11 @@ export function StructureTemplatePage({
         { onSuccess },
       );
     }
+  }
+
+  function openDelete(node: StructureNodeView) {
+    deleteNode.reset();
+    setDeleteTarget(node);
   }
 
   function handleDelete(node: StructureNodeView) {
@@ -115,9 +126,11 @@ export function StructureTemplatePage({
         <StructureTree
           nodes={structure.data?.nodes ?? []}
           canMutate={canMutate}
+          canAddRoot={structureId != null}
+          loading={structure.isLoading}
           onAdd={openAdd}
           onEdit={openEdit}
-          onDelete={setDeleteTarget}
+          onDelete={openDelete}
         />
       </Box>
 

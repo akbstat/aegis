@@ -20,6 +20,10 @@ export type StructureTreeViewMode = "complete" | "flat";
 export interface StructureTreeProps {
   nodes: StructureNodeView[];
   canMutate: boolean;
+  /** A root node can only be added to a selected structure. */
+  canAddRoot: boolean;
+  /** Whether the structure is still being fetched. */
+  loading: boolean;
   onAdd: (node: StructureNodeView | null) => void;
   onEdit: (node: StructureNodeView) => void;
   onDelete: (node: StructureNodeView) => void;
@@ -86,7 +90,9 @@ function FlatTree(props: TreeProps) {
   const entries = flattenStructure(props.nodes);
 
   return (
-    <SimpleTreeView>
+    // The flat view exists to show a directory's files as its leaves,
+    // so every entry starts expanded.
+    <SimpleTreeView defaultExpandedItems={entries.map((e) => e.node.nodeId)}>
       {entries.map((entry) => (
         <TreeItem
           key={entry.node.nodeId}
@@ -127,6 +133,8 @@ function FlatTree(props: TreeProps) {
 export function StructureTree({
   nodes,
   canMutate,
+  canAddRoot,
+  loading,
   onAdd,
   onEdit,
   onDelete,
@@ -155,7 +163,7 @@ export function StructureTree({
           </ToggleButton>
         </ToggleButtonGroup>
 
-        {canMutate && (
+        {canMutate && canAddRoot && (
           <Button
             size="small"
             startIcon={<AddIcon />}
@@ -168,7 +176,7 @@ export function StructureTree({
 
       {nodes.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          {t("templates.structure.noNodes")}
+          {loading ? "…" : t("templates.structure.noNodes")}
         </Typography>
       ) : mode === "complete" ? (
         <CompleteTree {...shared} />
