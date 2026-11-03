@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -67,6 +67,25 @@ function Probe() {
         add
       </button>
       <button
+        data-testid="update"
+        onClick={() =>
+          update.mutate({
+            structureId: 3,
+            nodeId: "n1",
+            input: {
+              path: "raw",
+              description: "d",
+              directory: true,
+              parent: null,
+              reference: null,
+              migration: null,
+            },
+          })
+        }
+      >
+        update
+      </button>
+      <button
         data-testid="delete"
         onClick={() => del.mutate({ structureId: 3, nodeId: "n1" })}
       >
@@ -106,6 +125,22 @@ describe("templates data hooks", () => {
     await screen.findByText("Standard");
     const before = getStructure.mock.calls.length;
     await userEvent.click(screen.getByTestId("add"));
+    await waitFor(() =>
+      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+
+  it("refetches the structure after a node is updated", async () => {
+    const getStructure = vi.fn(() => STRUCTURE);
+    mockCommands({
+      list_structures: () => TEMPLATES,
+      get_structure: getStructure,
+      update_structure_node: () => ({ nodeId: "n1" }),
+    });
+    renderWithQueryClient(<Probe />);
+    await screen.findByText("Standard");
+    const before = getStructure.mock.calls.length;
+    await userEvent.click(screen.getByTestId("update"));
     await waitFor(() =>
       expect(getStructure.mock.calls.length).toBeGreaterThan(before),
     );
