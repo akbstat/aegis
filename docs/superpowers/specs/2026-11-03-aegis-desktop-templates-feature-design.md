@@ -385,11 +385,13 @@ module name — the existing convention.
 
 ## Open items
 
-None that block the build. Two things the builder settles:
+None that block the build. Both open items were settled in the implementation
+plan (`docs/superpowers/plans/2026-11-03-aegis-desktop-templates-feature.md`):
 
-1. Whether the flat view's "full path" is the node's own `path` (as designed
-   above) or a path recomputed by walking the ancestors. The server does not
+1. The flat view's "full path" is the node's own `path`. The server does not
    enforce that a node's `path` lies inside its parent's `path`, so the two can
    disagree in principle; the spec says the desktop owns the path, so the
-   node's own `path` is used.
-2. The exact wording of the two card strings and of the delete confirmation.
+   node's own `path` is used. The flat view shows the directory by its **name**
+   (the last segment) plus that full path.
+2. The exact wording of the two card strings and of the delete confirmation is
+   pinned by the i18n catalog in the plan.
