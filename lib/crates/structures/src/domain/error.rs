@@ -9,8 +9,8 @@ pub enum DomainError {
     // ---- validation (constructor-time) ----
     #[error("empty name")]
     EmptyName,
-    #[error("invalid path: {0}")]
-    InvalidPath(String),
+    #[error("invalid name: {0}")]
+    InvalidName(String),
     #[error("invalid structure level: {0}")]
     InvalidStructureLevel(String),
     #[error("missing project code")]
@@ -45,8 +45,8 @@ pub enum DomainError {
     TemplateNotFound(i64),
     #[error("structure {0} is not a template structure")]
     NotATemplate(i64),
-    #[error("path already used: {0}")]
-    DuplicatePath(String),
+    #[error("name already used under the same parent: {0}")]
+    DuplicateName(String),
     #[error("project {0} already has a structure")]
     DuplicateProjectStructure(String),
     #[error("template structure {0} is still in use")]

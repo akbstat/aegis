@@ -249,7 +249,7 @@ fn structures_status(e: &apis::structures::StructureApiError) -> StatusCode {
         | StructureApiError::NodeNotFound(_)
         | StructureApiError::TemplateNotFound(_)
         | StructureApiError::ProjectNotFound(_) => StatusCode::NOT_FOUND,
-        StructureApiError::DuplicatePath(_)
+        StructureApiError::DuplicateName(_)
         | StructureApiError::DuplicateProjectStructure(_)
         | StructureApiError::TemplateInUse(_) => StatusCode::CONFLICT,
         StructureApiError::Repository(_) => StatusCode::INTERNAL_SERVER_ERROR,
@@ -265,7 +265,7 @@ fn structures_code(e: &apis::structures::StructureApiError) -> &'static str {
         StructureApiError::NodeNotFound(_) => "node_not_found",
         StructureApiError::TemplateNotFound(_) => "template_not_found",
         StructureApiError::ProjectNotFound(_) => "project_not_found",
-        StructureApiError::DuplicatePath(_) => "duplicate_path",
+        StructureApiError::DuplicateName(_) => "duplicate_name",
         StructureApiError::DuplicateProjectStructure(_) => "duplicate_project_structure",
         StructureApiError::TemplateInUse(_) => "template_in_use",
         StructureApiError::Repository(_) => "repository_error",

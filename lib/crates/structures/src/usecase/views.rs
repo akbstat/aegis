@@ -48,7 +48,8 @@ pub struct StructureTreeView {
 pub struct NodeView {
     pub node_id: String,
     pub description: String,
-    pub path: String,
+    /// The node's own name — a folder or a file name.
+    pub entry_name: String,
     pub directory: bool,
     pub parent: Option<String>,
     pub reference: Option<String>,
@@ -65,7 +66,8 @@ pub struct NodeView {
 pub struct OwnNodeView {
     pub node_id: String,
     pub description: String,
-    pub path: String,
+    /// The node's own name — a folder or a file name.
+    pub entry_name: String,
     pub directory: bool,
     pub parent: Option<String>,
     pub reference: Option<String>,
@@ -95,7 +97,7 @@ impl From<MergedNode> for NodeView {
         Self {
             node_id: m.node.node_id,
             description: m.node.description,
-            path: m.node.path,
+            entry_name: m.node.entry_name,
             directory: m.node.directory,
             parent: m.node.parent,
             reference: m.node.reference,
@@ -114,7 +116,7 @@ impl NodeView {
         Self {
             node_id: node.node_id.clone(),
             description: node.description.clone(),
-            path: node.path.clone(),
+            entry_name: node.entry_name.clone(),
             directory: node.directory,
             parent: node.parent.clone(),
             reference: node.reference.clone(),

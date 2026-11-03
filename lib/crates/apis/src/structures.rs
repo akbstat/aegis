@@ -35,8 +35,8 @@ pub enum StructureApiError {
     #[error("project not found: {0}")]
     ProjectNotFound(String),
 
-    #[error("path already used: {0}")]
-    DuplicatePath(String),
+    #[error("name already used under the same parent: {0}")]
+    DuplicateName(String),
 
     #[error("project already has a structure: {0}")]
     DuplicateProjectStructure(String),
@@ -71,7 +71,7 @@ pub struct MigrationView {
 pub struct NodeView {
     pub node_id: String,
     pub description: String,
-    pub path: String,
+    pub entry_name: String,
     pub directory: bool,
     pub parent: Option<String>,
     pub reference: Option<String>,
@@ -126,7 +126,7 @@ pub struct StructureTreeView {
 pub struct OwnNodeView {
     pub node_id: String,
     pub description: String,
-    pub path: String,
+    pub entry_name: String,
     pub directory: bool,
     pub parent: Option<String>,
     pub reference: Option<String>,
@@ -169,13 +169,13 @@ pub struct ListStructuresRequest {
     pub project_code: Option<String>,
 }
 
-/// Place a node at a path.
+/// Place a node under a parent.
 ///
 /// `parent` is always explicit: `None` means "at the root".
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddNodeRequest {
     pub structure_id: i64,
-    pub path: String,
+    pub entry_name: String,
     pub description: String,
     pub directory: bool,
     pub parent: Option<String>,
@@ -192,7 +192,7 @@ pub struct AddNodeRequest {
 pub struct UpdateNodeRequest {
     pub structure_id: i64,
     pub node_id: String,
-    pub path: String,
+    pub entry_name: String,
     pub description: String,
     pub directory: bool,
     pub parent: Option<String>,

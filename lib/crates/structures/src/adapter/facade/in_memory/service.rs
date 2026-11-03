@@ -124,7 +124,7 @@ where
             .usecase
             .add_node(AddNode {
                 structure_id: req.structure_id,
-                path: req.path,
+                entry_name: req.entry_name,
                 description: req.description,
                 directory: req.directory,
                 parent: req.parent,
@@ -142,7 +142,7 @@ where
             .update_node(UpdateNode {
                 structure_id: req.structure_id,
                 node_id: req.node_id,
-                path: req.path,
+                entry_name: req.entry_name,
                 description: req.description,
                 directory: req.directory,
                 parent: req.parent,
@@ -258,7 +258,7 @@ impl From<InternalNodeView> for NodeView {
         Self {
             node_id: v.node_id,
             description: v.description,
-            path: v.path,
+            entry_name: v.entry_name,
             directory: v.directory,
             parent: v.parent,
             reference: v.reference,
@@ -273,7 +273,7 @@ impl From<crate::usecase::OwnNodeView> for OwnNodeView {
         Self {
             node_id: v.node_id,
             description: v.description,
-            path: v.path,
+            entry_name: v.entry_name,
             directory: v.directory,
             parent: v.parent,
             reference: v.reference,
@@ -300,7 +300,7 @@ impl From<UsecaseError> for StructureApiError {
                 DomainError::NodeNotFound(node_id) => StructureApiError::NodeNotFound(node_id),
                 DomainError::TemplateNotFound(id) => StructureApiError::TemplateNotFound(id),
                 DomainError::ProjectNotFound(code) => StructureApiError::ProjectNotFound(code),
-                DomainError::DuplicatePath(path) => StructureApiError::DuplicatePath(path),
+                DomainError::DuplicateName(name) => StructureApiError::DuplicateName(name),
                 DomainError::DuplicateProjectStructure(code) => {
                     StructureApiError::DuplicateProjectStructure(code)
                 }

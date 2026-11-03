@@ -166,7 +166,7 @@ impl FakeNodeRepo {
             .filter(|((sid, _), _)| *sid == structure_id)
             .map(|(_, node)| node.clone())
             .collect();
-        out.sort_by(|a, b| a.path.cmp(&b.path));
+        out.sort_by(|a, b| a.entry_name.cmp(&b.entry_name));
         out
     }
 }
@@ -208,12 +208,16 @@ impl NodeRepository for FakeNodeRepo {
         Ok(self.all(structure_id))
     }
 
-    async fn find_by_path(
+    async fn find_by_name(
         &self,
         structure_id: i64,
-        path: &str,
+        parent_id: Option<&str>,
+        name: &str,
     ) -> Result<Option<Node>, DomainError> {
-        Ok(self.all(structure_id).into_iter().find(|n| n.path == path))
+        Ok(self
+            .all(structure_id)
+            .into_iter()
+            .find(|n| n.parent.as_deref() == parent_id && n.entry_name == name))
     }
 }
 
@@ -272,11 +276,11 @@ pub(crate) fn harness(project_codes: &[&str]) -> Harness {
 }
 
 /// A node with only the fields a test cares about.
-pub(crate) fn node(node_id: &str, path: &str, directory: bool, parent: Option<&str>) -> Node {
+pub(crate) fn node(node_id: &str, entry_name: &str, directory: bool, parent: Option<&str>) -> Node {
     Node {
         node_id: node_id.to_string(),
         description: String::new(),
-        path: path.to_string(),
+        entry_name: entry_name.to_string(),
         hidden: None,
         directory,
         parent: parent.map(str::to_string),
@@ -551,7 +555,7 @@ async fn building_a_template_structure_returns_its_own_nodes_as_a_tree() {
     let tree = h.usecase.build_structure(template.id).await.unwrap();
     assert_eq!(tree.structure_id, template.id);
     assert_eq!(tree.nodes.len(), 1);
-    assert_eq!(tree.nodes[0].path, "raw");
+    assert_eq!(tree.nodes[0].entry_name, "raw");
     assert!(tree.nodes[0].children.is_empty());
 }
 
@@ -560,10 +564,8 @@ async fn building_a_project_structure_returns_the_merged_tree() {
     let h = harness(&["ABC"]);
     let template = h.structures.put(template_with_child());
     h.nodes.put(template.id, node("t_root", "raw", true, None));
-    h.nodes.put(
-        template.id,
-        node("t_file", "raw/a.txt", false, Some("t_root")),
-    );
+    h.nodes
+        .put(template.id, node("t_file", "a.txt", false, Some("t_root")));
     let project = h
         .usecase
         .create_structure(CreateStructure {
@@ -574,21 +576,16 @@ async fn building_a_project_structure_returns_the_merged_tree() {
         })
         .await
         .unwrap();
-    h.nodes.put(
-        project.id,
-        node("n_new", "raw/b.txt", false, Some("t_root")),
-    );
+    h.nodes
+        .put(project.id, node("n_new", "b.txt", false, Some("t_root")));
     let tree = h.usecase.build_structure(project.id).await.unwrap();
     assert_eq!(tree.nodes.len(), 1);
     let root = &tree.nodes[0];
-    assert_eq!(root.path, "raw");
+    assert_eq!(root.entry_name, "raw");
     // the template's child and the project's own addition are both there
-    let mut children: Vec<String> = root.children.iter().map(|c| c.path.clone()).collect();
+    let mut children: Vec<String> = root.children.iter().map(|c| c.entry_name.clone()).collect();
     children.sort();
-    assert_eq!(
-        children,
-        vec!["raw/a.txt".to_string(), "raw/b.txt".to_string()]
-    );
+    assert_eq!(children, vec!["a.txt".to_string(), "b.txt".to_string()]);
 }
 
 #[tokio::test]
@@ -679,10 +676,8 @@ async fn listing_structures_filters_by_level_and_project() {
 async fn template_and_project(h: &Harness) -> (Structure, StructureView) {
     let template = h.structures.put(template_with_child());
     h.nodes.put(template.id, node("t_root", "raw", true, None));
-    h.nodes.put(
-        template.id,
-        node("t_file", "raw/a.txt", false, Some("t_root")),
-    );
+    h.nodes
+        .put(template.id, node("t_file", "a.txt", false, Some("t_root")));
     let project = h
         .usecase
         .create_structure(CreateStructure {
@@ -697,10 +692,10 @@ async fn template_and_project(h: &Harness) -> (Structure, StructureView) {
 }
 
 /// An `AddNode` command with the boring fields filled in.
-fn add(structure_id: i64, path: &str, parent: Option<&str>) -> AddNode {
+fn add(structure_id: i64, entry_name: &str, parent: Option<&str>) -> AddNode {
     AddNode {
         structure_id,
-        path: path.to_string(),
+        entry_name: entry_name.to_string(),
         description: String::new(),
         directory: false,
         parent: parent.map(str::to_string),
@@ -711,11 +706,11 @@ fn add(structure_id: i64, path: &str, parent: Option<&str>) -> AddNode {
 }
 
 /// An `UpdateNode` command with the boring fields filled in.
-fn update(structure_id: i64, node_id: &str, path: &str, parent: Option<&str>) -> UpdateNode {
+fn update(structure_id: i64, node_id: &str, entry_name: &str, parent: Option<&str>) -> UpdateNode {
     UpdateNode {
         structure_id,
         node_id: node_id.to_string(),
-        path: path.to_string(),
+        entry_name: entry_name.to_string(),
         description: String::new(),
         directory: false,
         parent: parent.map(str::to_string),
@@ -726,11 +721,11 @@ fn update(structure_id: i64, node_id: &str, path: &str, parent: Option<&str>) ->
 }
 
 #[tokio::test]
-async fn adding_a_node_at_a_new_path_mints_a_node_id() {
+async fn adding_a_node_with_a_new_name_mints_a_node_id() {
     let h = harness(&["ABC"]);
     let (_t, p) = template_and_project(&h).await;
     h.usecase
-        .add_node(add(p.id, "raw/b.txt", Some("t_root")))
+        .add_node(add(p.id, "b.txt", Some("t_root")))
         .await
         .unwrap();
     let own = h.nodes.all(p.id);
@@ -740,7 +735,7 @@ async fn adding_a_node_at_a_new_path_mints_a_node_id() {
 }
 
 #[tokio::test]
-async fn adding_a_node_at_a_path_the_template_uses_overrides_the_inherited_node() {
+async fn adding_a_node_with_a_name_the_template_uses_overrides_the_inherited_node() {
     // Review Focus #5
     let h = harness(&["ABC"]);
     let (_t, p) = template_and_project(&h).await;
@@ -756,21 +751,64 @@ async fn adding_a_node_at_a_path_the_template_uses_overrides_the_inherited_node(
 }
 
 #[tokio::test]
-async fn adding_a_node_at_a_path_this_structure_already_records_is_rejected() {
+async fn adding_a_node_with_a_name_this_structure_already_records_is_rejected() {
     // Review Focus #5
     let h = harness(&["ABC"]);
     let (_t, p) = template_and_project(&h).await;
     h.nodes
-        .put(p.id, node("n_own", "raw/c.txt", false, Some("t_root")));
+        .put(p.id, node("n_own", "c.txt", false, Some("t_root")));
     let err = h
         .usecase
-        .add_node(add(p.id, "raw/c.txt", Some("t_root")))
+        .add_node(add(p.id, "c.txt", Some("t_root")))
         .await
         .unwrap_err();
     assert!(matches!(
         err,
-        UsecaseError::Repository(DomainError::DuplicatePath(path)) if path == "raw/c.txt"
+        UsecaseError::Repository(DomainError::DuplicateName(name)) if name == "c.txt"
     ));
+}
+
+#[tokio::test]
+async fn the_same_name_may_be_used_under_two_different_parents() {
+    // A name is unique among the *siblings*, not across the structure:
+    // the same file name may live under two different directories.
+    let h = harness(&["ABC"]);
+    let (_t, p) = template_and_project(&h).await;
+    h.nodes.put(p.id, node("n_doc", "docs", true, None));
+    h.usecase
+        .add_node(add(p.id, "notes.txt", Some("n_doc")))
+        .await
+        .unwrap();
+    h.usecase
+        .add_node(add(p.id, "notes.txt", Some("t_root")))
+        .await
+        .unwrap();
+    let own = h.nodes.all(p.id);
+    let mut parents: Vec<String> = own
+        .iter()
+        .filter(|n| n.entry_name == "notes.txt")
+        .map(|n| n.parent.clone().unwrap_or_default())
+        .collect();
+    parents.sort();
+    assert_eq!(parents, vec!["n_doc".to_string(), "t_root".to_string()]);
+}
+
+#[tokio::test]
+async fn a_name_the_project_renamed_away_is_free_again() {
+    // The project renamed the inherited `raw`, so the template's
+    // original name is not in the effective tree any more — and may be
+    // used again.
+    let h = harness(&["ABC"]);
+    let (_t, p) = template_and_project(&h).await;
+    let mut cmd = update(p.id, "t_root", "renamed", None);
+    cmd.directory = true;
+    h.usecase.update_node(cmd).await.unwrap();
+    h.usecase.add_node(add(p.id, "raw", None)).await.unwrap();
+    let own = h.nodes.all(p.id);
+    assert_eq!(own.len(), 2);
+    let mut names: Vec<String> = own.iter().map(|n| n.entry_name.clone()).collect();
+    names.sort();
+    assert_eq!(names, vec!["raw".to_string(), "renamed".to_string()]);
 }
 
 #[tokio::test]
@@ -779,7 +817,7 @@ async fn adding_a_node_with_an_unknown_parent_is_rejected() {
     let (_t, p) = template_and_project(&h).await;
     let err = h
         .usecase
-        .add_node(add(p.id, "raw/b.txt", Some("t_missing")))
+        .add_node(add(p.id, "b.txt", Some("t_missing")))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -794,7 +832,7 @@ async fn adding_a_node_whose_parent_is_a_file_is_rejected() {
     let (_t, p) = template_and_project(&h).await;
     let err = h
         .usecase
-        .add_node(add(p.id, "raw/b.txt", Some("t_file")))
+        .add_node(add(p.id, "b.txt", Some("t_file")))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -807,7 +845,7 @@ async fn adding_a_node_whose_parent_is_a_file_is_rejected() {
 async fn hiding_a_node_that_overrides_nothing_is_rejected() {
     let h = harness(&["ABC"]);
     let (_t, p) = template_and_project(&h).await;
-    let mut cmd = add(p.id, "raw/b.txt", Some("t_root"));
+    let mut cmd = add(p.id, "b.txt", Some("t_root"));
     cmd.hidden = Some(true);
     let err = h.usecase.add_node(cmd).await.unwrap_err();
     assert!(matches!(
@@ -820,7 +858,7 @@ async fn hiding_a_node_that_overrides_nothing_is_rejected() {
 async fn hiding_a_node_on_a_template_structure_is_rejected() {
     let h = harness(&[]);
     let template = h.structures.put(template_with_child());
-    let mut cmd = add(template.id, "raw/b.txt", None);
+    let mut cmd = add(template.id, "b.txt", None);
     cmd.hidden = Some(true);
     let err = h.usecase.add_node(cmd).await.unwrap_err();
     assert!(matches!(
@@ -859,19 +897,19 @@ async fn updating_an_unknown_node_is_rejected() {
 }
 
 #[tokio::test]
-async fn updating_a_node_to_a_path_another_node_uses_is_rejected() {
+async fn updating_a_node_to_a_name_another_node_uses_is_rejected() {
     let h = harness(&["ABC"]);
     let (_t, p) = template_and_project(&h).await;
     h.nodes
-        .put(p.id, node("n_own", "raw/c.txt", false, Some("t_root")));
+        .put(p.id, node("n_own", "c.txt", false, Some("t_root")));
     let err = h
         .usecase
-        .update_node(update(p.id, "n_own", "raw/a.txt", Some("t_root")))
+        .update_node(update(p.id, "n_own", "a.txt", Some("t_root")))
         .await
         .unwrap_err();
     assert!(matches!(
         err,
-        UsecaseError::Repository(DomainError::DuplicatePath(path)) if path == "raw/a.txt"
+        UsecaseError::Repository(DomainError::DuplicateName(name)) if name == "a.txt"
     ));
 }
 
@@ -880,11 +918,9 @@ async fn updating_a_node_under_its_own_descendant_is_rejected() {
     let h = harness(&["ABC"]);
     let (_t, p) = template_and_project(&h).await;
     h.nodes
-        .put(p.id, node("n_child", "raw/sub", true, Some("t_root")));
-    h.nodes.put(
-        p.id,
-        node("n_grand", "raw/sub/deep.txt", false, Some("n_child")),
-    );
+        .put(p.id, node("n_child", "sub", true, Some("t_root")));
+    h.nodes
+        .put(p.id, node("n_grand", "deep.txt", false, Some("n_child")));
     // `t_root` cannot become a child of its own descendant `n_child`
     let err = h
         .usecase
@@ -904,7 +940,7 @@ async fn renaming_an_inherited_node_does_not_resurrect_the_template_original() {
     h.usecase.update_node(cmd).await.unwrap();
     let tree = h.usecase.build_structure(p.id).await.unwrap();
     assert_eq!(tree.nodes.len(), 1);
-    assert_eq!(tree.nodes[0].path, "renamed");
+    assert_eq!(tree.nodes[0].entry_name, "renamed");
 }
 
 #[tokio::test]
@@ -915,7 +951,7 @@ async fn deleting_a_recorded_node_removes_it_and_its_descendants() {
     // the project records `raw` (an override) and a file under it
     h.nodes.put(p.id, node("t_root", "raw", true, None));
     h.nodes
-        .put(p.id, node("n_new", "raw/b.txt", false, Some("t_root")));
+        .put(p.id, node("n_new", "b.txt", false, Some("t_root")));
     h.usecase
         .delete_node(DeleteNode {
             structure_id: p.id,
@@ -1007,7 +1043,7 @@ async fn a_hidden_record_is_still_addressable_so_a_hide_can_be_undone() {
     assert_eq!(own[0].hidden, Some(false));
     let tree = h.usecase.build_structure(p.id).await.unwrap();
     assert_eq!(tree.nodes.len(), 1);
-    assert_eq!(tree.nodes[0].path, "raw");
+    assert_eq!(tree.nodes[0].entry_name, "raw");
 }
 
 #[tokio::test]
@@ -1034,7 +1070,7 @@ async fn listing_own_nodes_reports_the_hidden_flag_and_the_override_flag() {
     let (_t, p) = template_and_project(&h).await;
     h.nodes.put(p.id, node("t_root", "raw", true, None));
     h.nodes
-        .put(p.id, node("n_new", "raw/b.txt", false, Some("t_root")));
+        .put(p.id, node("n_new", "b.txt", false, Some("t_root")));
     let own = h.usecase.list_own_nodes(p.id).await.unwrap();
     assert_eq!(own.len(), 2);
     let root = own.iter().find(|n| n.node_id == "t_root").unwrap();

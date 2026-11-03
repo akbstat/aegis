@@ -85,7 +85,7 @@ async fn the_facade_translates_the_structure_level_both_ways() {
 }
 
 #[tokio::test]
-async fn the_facade_maps_a_duplicate_path_to_the_duplicate_path_error() {
+async fn the_facade_maps_a_duplicate_name_to_the_duplicate_name_error() {
     let h = harness(&["ABC"]);
     let svc = service(&h);
     let template = h
@@ -101,14 +101,12 @@ async fn the_facade_maps_a_duplicate_path_to_the_duplicate_path_error() {
         })
         .await
         .unwrap();
-    h.nodes.put(
-        project.id,
-        node("n_own", "raw/c.txt", false, Some("t_root")),
-    );
+    h.nodes
+        .put(project.id, node("n_own", "c.txt", false, Some("t_root")));
     let err = svc
         .add_node(AddNodeRequest {
             structure_id: project.id,
-            path: "raw/c.txt".into(),
+            entry_name: "c.txt".into(),
             description: String::new(),
             directory: false,
             parent: Some("t_root".into()),
@@ -120,7 +118,7 @@ async fn the_facade_maps_a_duplicate_path_to_the_duplicate_path_error() {
         .unwrap_err();
     assert!(matches!(
         err,
-        StructureApiError::DuplicatePath(path) if path == "raw/c.txt"
+        StructureApiError::DuplicateName(name) if name == "c.txt"
     ));
 }
 
@@ -144,7 +142,7 @@ async fn the_facade_maps_a_missing_node_to_the_node_not_found_error() {
         .update_node(UpdateNodeRequest {
             structure_id: project.id,
             node_id: "t_missing".into(),
-            path: "x".into(),
+            entry_name: "x".into(),
             description: String::new(),
             directory: false,
             parent: None,
@@ -194,10 +192,8 @@ async fn the_facade_lists_own_nodes_with_the_hidden_and_override_flags() {
         .await
         .unwrap();
     h.nodes.put(project.id, node("t_root", "raw", true, None));
-    h.nodes.put(
-        project.id,
-        node("n_new", "raw/b.txt", false, Some("t_root")),
-    );
+    h.nodes
+        .put(project.id, node("n_new", "b.txt", false, Some("t_root")));
     let own = svc.list_own_nodes(project.id).await.unwrap();
     assert_eq!(own.nodes.len(), 2);
     let root = own.nodes.iter().find(|n| n.node_id == "t_root").unwrap();

@@ -1,8 +1,8 @@
 //! The merge algorithm.
 //!
 //! Joins a template's nodes with a project structure's extension
-//! records on **`node_id`**, never on `path`. See the spec's "The merge
-//! algorithm" section for the seven rules this implements.
+//! records on **`node_id`**, never on `entry_name`. See the spec's "The
+//! merge algorithm" section for the seven rules this implements.
 //!
 //! The merge is **total** — it never fails and never panics. Malformed
 //! input (a `parent` naming a node that is not in the merged set, a
@@ -32,6 +32,23 @@ pub struct MergedTree {
     pub roots: Vec<MergedNode>,
 }
 
+/// The effective record for each `node_id`: the template's rows with
+/// this structure's own rows layered on top. An own record wins.
+///
+/// This is the set of nodes the structure actually has — a template
+/// node that the project has overridden does not also exist under its
+/// template name.
+pub fn effective_records<'a>(template: &'a [Node], own: &'a [Node]) -> HashMap<&'a str, &'a Node> {
+    let mut effective: HashMap<&str, &Node> = HashMap::with_capacity(template.len() + own.len());
+    for node in template {
+        effective.insert(node.node_id.as_str(), node);
+    }
+    for node in own {
+        effective.insert(node.node_id.as_str(), node);
+    }
+    effective
+}
+
 /// Combine a template's nodes with a project structure's extension
 /// records.
 ///
@@ -40,13 +57,7 @@ pub struct MergedTree {
 /// template does know **overrides** that template node.
 pub fn merge(template: &[Node], own: &[Node]) -> MergedTree {
     // 1. The effective record for each node_id. An own record wins.
-    let mut effective: HashMap<&str, &Node> = HashMap::with_capacity(template.len() + own.len());
-    for node in template {
-        effective.insert(node.node_id.as_str(), node);
-    }
-    for node in own {
-        effective.insert(node.node_id.as_str(), node);
-    }
+    let effective = effective_records(template, own);
 
     // 2. The node_ids this structure has a record for.
     let own_ids: HashSet<&str> = own.iter().map(|n| n.node_id.as_str()).collect();
@@ -94,7 +105,7 @@ pub fn merge(template: &[Node], own: &[Node]) -> MergedTree {
         .filter_map(|root| build(root, &children, &mut visited))
         .collect();
 
-    sort_by_path(&mut built);
+    sort_by_name(&mut built);
     MergedTree { roots: built }
 }
 
@@ -118,20 +129,20 @@ fn build<'a>(
             }
         }
     }
-    sort_by_path(&mut kids);
+    sort_by_name(&mut kids);
     Some(MergedNode {
         node: node.clone(),
         children: kids,
     })
 }
 
-/// Sort by path, then by node_id, so the order is deterministic even
-/// when two nodes share a path.
-fn sort_by_path(nodes: &mut [MergedNode]) {
+/// Sort by name, then by node_id, so the order is deterministic even
+/// when two nodes share a name.
+fn sort_by_name(nodes: &mut [MergedNode]) {
     nodes.sort_by(|a, b| {
         a.node
-            .path
-            .cmp(&b.node.path)
+            .entry_name
+            .cmp(&b.node.entry_name)
             .then_with(|| a.node.node_id.cmp(&b.node.node_id))
     });
 }

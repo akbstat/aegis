@@ -1614,7 +1614,7 @@ pub struct MigrationViewResponse {
 pub struct NodeViewResponse {
     pub node_id: String,
     pub description: String,
-    pub path: String,
+    pub entry_name: String,
     pub directory: bool,
     pub parent: Option<String>,
     pub reference: Option<String>,
@@ -1633,7 +1633,10 @@ impl utoipa::PartialSchema for NodeViewResponse {
                 "description",
                 Object::with_type(SchemaType::Type(Type::String)),
             )
-            .property("path", Object::with_type(SchemaType::Type(Type::String)))
+            .property(
+                "entryName",
+                Object::with_type(SchemaType::Type(Type::String)),
+            )
             .property(
                 "directory",
                 Object::with_type(SchemaType::Type(Type::Boolean)),
@@ -1648,7 +1651,7 @@ impl utoipa::PartialSchema for NodeViewResponse {
             )
             .required("nodeId")
             .required("description")
-            .required("path")
+            .required("entryName")
             .required("directory")
             .required("children")
             .into()
@@ -1725,7 +1728,7 @@ pub struct StructureTreeResponse {
 pub struct OwnNodeResponse {
     pub node_id: String,
     pub description: String,
-    pub path: String,
+    pub entry_name: String,
     pub directory: bool,
     pub parent: Option<String>,
     pub reference: Option<String>,
@@ -1765,12 +1768,12 @@ pub struct RenameStructureRequest {
     pub name: String,
 }
 
-/// Place a node at a path. `parent` is always present; `null` means
-/// "at the root".
+/// Place a node under a parent. `parent` is always present; `null`
+/// means "at the root".
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AddNodeRequest {
-    pub path: String,
+    pub entry_name: String,
     pub description: String,
     pub directory: bool,
     pub parent: Option<String>,
@@ -1783,7 +1786,7 @@ pub struct AddNodeRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateNodeRequest {
-    pub path: String,
+    pub entry_name: String,
     pub description: String,
     pub directory: bool,
     pub parent: Option<String>,
@@ -1836,7 +1839,7 @@ impl From<apis::structures::NodeView> for NodeViewResponse {
         Self {
             node_id: v.node_id,
             description: v.description,
-            path: v.path,
+            entry_name: v.entry_name,
             directory: v.directory,
             parent: v.parent,
             reference: v.reference,
@@ -1897,7 +1900,7 @@ impl From<apis::structures::OwnNodeView> for OwnNodeResponse {
         Self {
             node_id: v.node_id,
             description: v.description,
-            path: v.path,
+            entry_name: v.entry_name,
             directory: v.directory,
             parent: v.parent,
             reference: v.reference,

@@ -1,5 +1,16 @@
 # Structures Crate Design
 
+> **Revision — 2026-11-03.** A node's `path` was renamed to `entry_name`,
+> and the value it holds changed from a path relative to the structure root
+> to the node's **own** name — one folder or one file name. The `parent`
+> link carries the nesting; the full path of a node is the chain of names
+> above it. Uniqueness follows from that: a name is unique among the
+> node's **siblings** (`(structure_id, parent_id, entry_name)`), so the
+> same name may appear under two different parents. The `path` column
+> became `entry_name`, `structure_nodes_unique_path` became the
+> `structure_nodes_unique_name_per_parent` index, and the errors became
+> `InvalidName` / `DuplicateName` (`duplicate_name` on the wire).
+
 ## Goal
 
 Add `lib/crates/structures` as a reusable Rust library that owns the
@@ -48,6 +59,11 @@ The crate does **not** own projects. Project existence is checked through the
   or a hide.
 - **Effective structure** — the merge of a template's nodes with a project
   structure's extension records. It is what the caller sees.
+- **Node name** (`entry_name`) — a node's *own* name: one folder or one file
+  name, not a path. The nesting comes from the `parent` link, and the full
+  path of a node is the chain of names above it. A name is unique among the
+  node's **siblings** — the same name may appear under two different
+  parents, but never twice under the same one.
 
 ## Architecture
 
@@ -161,8 +177,9 @@ pub struct Node {
     pub node_id: String,
     /// Free-text label. May be empty.
     pub description: String,
-    /// The node's path relative to the structure root.
-    pub path: String,
+    /// The node's own name — a folder or a file name, NOT a path. The
+    /// nesting comes from `parent`.
+    pub entry_name: String,
     /// When true the node is filtered out of the effective structure.
     /// Only meaningful at project level.
     pub hidden: Option<bool>,
@@ -199,7 +216,7 @@ pub struct Structure {
 
 A project structure's extension record and the template node it overrides
 carry the **same** `node_id`. This is what makes the merge a join on
-`node_id` rather than on `path`, and it is what lets a newly added node
+`node_id` rather than on `entry_name`, and it is what lets a newly added node
 point its `parent` at an inherited template node.
 
 The client never picks a `node_id`. The system mints one (a 21-character
@@ -243,7 +260,7 @@ usecase validates those shapes before the merge ever sees them.
    extension record whose `node_id` the template does not know is an
    **addition**.
 2. **An override is a wholesale replacement.** The extension record's
-   `description`, `path`, `directory`, `reference` and `migration` replace
+   `description`, `entry_name`, `directory`, `reference` and `migration` replace
    the template node's — including an empty description and an absent
    reference or migration. Nothing is inherited field by field.
 3. **Each `node_id` appears exactly once in the merged tree**, under its
@@ -261,20 +278,25 @@ usecase validates those shapes before the merge ever sees them.
    and a template child share a `node_id`, the extension record wins and the
    child appears once.
 6. **Hidden nodes are filtered out**, together with their whole subtree.
-7. **Ordering is deterministic**: children and roots are sorted by `path`
-   ascending, then by `node_id` so that two nodes at the same path — which
-   only a later template edit can produce — still have a stable order.
+7. **Ordering is deterministic**: children and roots are sorted by
+   `entry_name` ascending, then by `node_id` so that two nodes with the same
+   name — which only a later template edit can produce — still have a
+   stable order.
 
 ### The merge renders; it does not look up
 
 `merge()` is a **pure renderer**. It produces the tree a caller sees.
 
-The usecase's *lookups* — which node does this `POST` at path `p` refer
-to, which node does this `PUT` at `node_id` `n` refer to — run over a
-different index: **this structure's own records ∪ the template's nodes**,
-hidden own records included. The rendered tree excludes hidden nodes, so a
-hidden node is not in the tree, but it *is* still addressable by `node_id`.
-That is what makes a hide reversible.
+The usecase's *lookups* — which node does this `POST` for name `n` under
+parent `p` refer to, which node does this `PUT` at `node_id` `n` refer to —
+run over a different index: **the effective records**, the template's nodes
+with this structure's own records layered on top, the own record winning.
+Hidden own records are in the index. The rendered tree excludes hidden
+nodes, so a hidden node is not in the tree, but it *is* still addressable by
+`node_id`. That is what makes a hide reversible.
+
+Because the own record wins, a node the project has renamed does **not**
+also answer to its template name: the template's name is free again.
 
 The two indexes are deliberately different. The tree answers "what does
 this structure look like"; the index answers "what does this write refer
@@ -284,38 +306,38 @@ to".
 
 Template `T` (template structure `1`):
 
-| node_id | path | directory | parent |
+| node_id | entry_name | directory | parent |
 | --- | --- | --- | --- |
 | `t_root` | `raw` | true | — |
-| `t_file` | `raw/a.txt` | false | `t_root` |
+| `t_file` | `a.txt` | false | `t_root` |
 | `t_doc` | `docs` | true | — |
 
 Project structure `2` extends template `1` with these extension records:
 
-| node_id | path | directory | parent | note |
+| node_id | entry_name | directory | parent | note |
 | --- | --- | --- | --- | --- |
 | `t_root` | `raw` | true | — | overrides the template's `raw` |
-| `n_new` | `raw/b.txt` | false | `t_root` | new file inside the overridden dir |
+| `n_new` | `b.txt` | false | `t_root` | new file inside the overridden dir |
 | `t_doc` | `docs` | true | — | hides the template's `docs` |
 
 Effective tree:
 
 - `raw` — overridden, so its children are the extension records under it:
-  - `raw/b.txt`
-  - (`raw/a.txt` is gone — it was a *template* child of an overridden node)
+  - `b.txt`
+  - (`a.txt` is gone — it was a *template* child of an overridden node)
 - `docs` — hidden, filtered out with its subtree.
 
-Had the project **not** overridden `raw`, `raw/a.txt` would still be there
-and `raw/b.txt` would sit beside it.
+Had the project **not** overridden `raw`, `a.txt` would still be there and
+`b.txt` would sit beside it.
 
-### Why the join key is `node_id` and not `path`
+### Why the join key is `node_id` and not `entry_name`
 
-With `path` as the join key, renaming an inherited node breaks the merge:
-the record stops matching its template node, so the template's original
-reappears alongside the renamed copy. With `node_id` as the join key the
-rename simply wins. The `path` is still what the *system* uses at write
-time to decide whether a write refers to an existing node — that decision is
-made by the server, never by the client.
+With `entry_name` as the join key, renaming an inherited node breaks the
+merge: the record stops matching its template node, so the template's
+original reappears alongside the renamed copy. With `node_id` as the join
+key the rename simply wins. The `entry_name` is still what the *system* uses
+at write time to decide whether a write refers to an existing node — that
+decision is made by the server, never by the client.
 
 ## Write semantics
 
@@ -323,29 +345,31 @@ made by the server, never by the client.
 
 | Operation | Addressing | Target |
 | --- | --- | --- |
-| `POST …/nodes` | by `path` | the node at that path in *own records ∪ template nodes* |
-| `PUT …/nodes/{node_id}` | by `node_id` | that node in *own records ∪ template nodes* |
-| `DELETE …/nodes/{node_id}` | by `node_id` | that node in *own records ∪ template nodes* |
+| `POST …/nodes` | by `entry_name` under `parent` | the node with that name under that parent in the *effective records* |
+| `PUT …/nodes/{node_id}` | by `node_id` | that node in the *effective records* |
+| `DELETE …/nodes/{node_id}` | by `node_id` | that node in the *effective records* |
 
-**`POST` — place a node at a path.**
+**`POST` — place a node under a parent.**
 
-1. The system looks the `path` up in own records ∪ template nodes.
-2. **No node at that path** → the system mints a `node_id` and inserts a new
-   record. `201`.
-3. **A node at that path, recorded by this structure** → `409`
-   `duplicate_path`. The record already exists; the client should `PUT` it.
-4. **A node at that path, inherited from the template** → the system writes
-   an **override record** reusing that node's `node_id`. The effective
-   structure now shows the project's version of it. `201`.
+1. The system looks the `entry_name` up among the effective records whose
+   `parent` is the requested parent.
+2. **No node with that name under that parent** → the system mints a
+   `node_id` and inserts a new record. `201`.
+3. **A node with that name under that parent, recorded by this structure** →
+   `409` `duplicate_name`. The record already exists; the client should
+   `PUT` it.
+4. **A node with that name under that parent, inherited from the template**
+   → the system writes an **override record** reusing that node's `node_id`.
+   The effective structure now shows the project's version of it. `201`.
 
 Case 4 is the "the system decides the override" rule: the client asked for a
-node at a path that already exists, and the system bound the write to the
-existing node rather than creating a duplicate beside it.
+node with a name that already exists under that parent, and the system bound
+the write to the existing node rather than creating a duplicate beside it.
 
 **`PUT` — update a node.**
 
-The `node_id` must exist in own records ∪ template nodes — including a
-node this structure recorded and then hid, which is how a hide is undone.
+The `node_id` must exist in the effective records — including a node this
+structure recorded and then hid, which is how a hide is undone.
 
 - **Own record** → the row is updated. `200`.
 - **Inherited template node** → an override record is created carrying the
@@ -400,31 +424,33 @@ re-parented under one of its own descendants — both are `400` (cycle).
 "this node is at the root". Both operations are full replacements, so an
 omitted `parent` must never silently re-parent a node.
 
-### `path`
+### `entry_name`
 
-- Non-blank, and normalised: no leading or trailing `/`, no `\`, no empty
-  segment, no `.` or `..` segment.
-- **Unique within own records ∪ template nodes.** A path already used by a
-  different node is `409` `duplicate_path`.
+- Non-blank, and a **single segment**: it names one folder or one file, so
+  no `/`, no `\`, and neither `.` nor `..`.
+- **Unique among the siblings.** No other node under the *same* parent may
+  carry that name — a name already used by a different node under the same
+  parent is `409` `duplicate_name`. The same name under two *different*
+  parents is fine.
 
-A path collision produced by a *later template edit* — the template adds a
-node at a path a project already uses for its own addition — is accepted
+The name is the node's own — it says nothing about where the node sits. The
+tree is defined by the `parent` links; the full path of a node is the chain
+of names above it, and the desktop app owns composing it. A directory
+rename therefore does not force a rename of the descendants.
+
+A name collision produced by a *later template edit* — the template adds a
+node with a name a project already uses under the same parent — is accepted
 rather than rejected: the template repository cannot see project structures
 through the current ports. The merge renders both nodes and sorts by
-`(path, node_id)` so the order stays deterministic.
-
-The server does **not** require a node's `path` to lie inside its parent's
-`path`. The tree is defined by the `parent` links; the `path` is the
-relative path the caller records, and the desktop app owns computing it. A
-directory rename therefore does not force a re-path of the descendants.
+`(entry_name, node_id)` so the order stays deterministic.
 
 ## Validation
 
 | Rule | Error |
 | --- | --- |
 | `name` non-blank | `DomainError::EmptyName` |
-| `path` non-blank and normalised | `DomainError::InvalidPath` |
-| `path` unique in the effective structure | `DomainError::DuplicatePath` |
+| `entry_name` non-blank and a single segment | `DomainError::InvalidName` |
+| `entry_name` unique among the siblings | `DomainError::DuplicateName` |
 | project-level structure has a `project_code` | `DomainError::MissingProjectCode` |
 | project-level structure has a `template_id` | `DomainError::MissingTemplate` |
 | template-level structure has neither | `DomainError::UnexpectedOwner` |
@@ -469,7 +495,7 @@ CREATE TABLE structure_nodes (
   structure_id       BIGINT NOT NULL REFERENCES structures(id) ON DELETE CASCADE,
   node_id            TEXT NOT NULL,
   description        TEXT NOT NULL DEFAULT '',
-  path               TEXT NOT NULL,
+  entry_name        TEXT NOT NULL,
   directory          BOOLEAN NOT NULL DEFAULT TRUE,
   parent_id          TEXT,
   hidden             BOOLEAN NOT NULL DEFAULT FALSE,
@@ -479,7 +505,6 @@ CREATE TABLE structure_nodes (
   created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT structure_nodes_unique_node UNIQUE (structure_id, node_id),
-  CONSTRAINT structure_nodes_unique_path UNIQUE (structure_id, path),
   CONSTRAINT structure_nodes_migration_filter_array
     CHECK (jsonb_typeof(migration_filter) = 'array'),
   CONSTRAINT structure_nodes_reference_only_on_file
@@ -487,6 +512,13 @@ CREATE TABLE structure_nodes (
   CONSTRAINT structure_nodes_migration_only_on_directory
     CHECK (migration_directory IS NULL OR directory = TRUE)
 );
+
+-- A name is unique among the node's siblings. COALESCE folds the root
+-- (parent_id IS NULL) into one bucket, so two roots may not share a name
+-- either -- a plain UNIQUE constraint would let them through, because
+-- NULLs are distinct.
+CREATE UNIQUE INDEX structure_nodes_unique_name_per_parent
+  ON structure_nodes (structure_id, COALESCE(parent_id, ''), entry_name);
 
 CREATE INDEX structure_nodes_by_parent ON structure_nodes (structure_id, parent_id);
 
@@ -527,7 +559,7 @@ does.
 | Driver error | Domain error |
 | --- | --- |
 | `RowNotFound` | `DomainError::NotFound` |
-| `Database` with SQLSTATE `23505` | `DomainError::DuplicatePath` / `DuplicateProjectStructure` |
+| `Database` with SQLSTATE `23505` | `DomainError::DuplicateName` / `DuplicateProjectStructure` |
 | `Database` with SQLSTATE `23503` | `DomainError::TemplateInUse` / `DomainError::NotFound` |
 | anything else | `DomainError::Repository(msg)` |
 
@@ -562,8 +594,8 @@ pub enum DomainError {
     // ---- validation (constructor-time) ----
     #[error("empty name")]
     EmptyName,
-    #[error("invalid path: {0}")]
-    InvalidPath(String),
+    #[error("invalid name: {0}")]
+    InvalidName(String),
     #[error("missing project code")]
     MissingProjectCode,
     #[error("missing template")]
@@ -596,8 +628,8 @@ pub enum DomainError {
     TemplateNotFound(i64),
     #[error("structure {0} is not a template structure")]
     NotATemplate(i64),
-    #[error("path already used: {0}")]
-    DuplicatePath(String),
+    #[error("name already used under the same parent: {0}")]
+    DuplicateName(String),
     #[error("project {0} already has a structure")]
     DuplicateProjectStructure(String),
     #[error("template structure {0} is still in use")]
@@ -721,7 +753,7 @@ pub struct StructureMetaView {
 pub struct OwnNodeView {
     pub node_id: String,
     pub description: String,
-    pub path: String,
+    pub entry_name: String,
     pub directory: bool,
     pub parent: Option<String>,
     pub reference: Option<String>,
@@ -741,7 +773,7 @@ pub struct StructureTreeView {
 pub struct NodeView {
     pub node_id: String,
     pub description: String,
-    pub path: String,
+    pub entry_name: String,
     pub directory: bool,
     pub parent: Option<String>,
     pub reference: Option<String>,
@@ -799,7 +831,7 @@ pub trait StructureService: Send + Sync {
 
 `StructureApiError` mirrors `SdtmProjectApiError`'s shape: `Validation`,
 `NotFound`, `StructureNotFound`, `NodeNotFound`, `TemplateNotFound`,
-`ProjectNotFound`, `DuplicatePath`, `DuplicateProjectStructure`,
+`ProjectNotFound`, `DuplicateName`, `DuplicateProjectStructure`,
 `TemplateInUse`, `Repository`.
 
 ## Server HTTP surface
@@ -849,18 +881,18 @@ wire types, all `#[serde(rename_all = "camelCase")]` and
 - `StructureMetaResponse` — `id`, `name`, `level`, `projectCode`,
   `templateId`.
 - `StructureListResponse` — `{ "structures": [...] }`.
-- `NodeViewResponse` — `nodeId`, `description`, `path`, `directory`, `parent`,
-  `reference`, `migration`, `children`.
+- `NodeViewResponse` — `nodeId`, `description`, `entryName`, `directory`,
+  `parent`, `reference`, `migration`, `children`.
 - `MigrationViewResponse` — `directory`, `filter`.
 - `StructureTreeResponse` — `structureId`, `nodes`.
-- `OwnNodeResponse` — `nodeId`, `description`, `path`, `directory`, `parent`,
-  `reference`, `migration`, `hidden`, `overridesTemplate`.
+- `OwnNodeResponse` — `nodeId`, `description`, `entryName`, `directory`,
+  `parent`, `reference`, `migration`, `hidden`, `overridesTemplate`.
 - `OwnNodeListResponse` — `{ "nodes": [...] }`.
 - `CreateStructureRequest` — `name`, `level`, `projectCode?`, `templateId?`.
 - `RenameStructureRequest` — `name`.
-- `AddNodeRequest` — `path`, `description`, `directory`, `parent`,
+- `AddNodeRequest` — `entryName`, `description`, `directory`, `parent`,
   `reference?`, `migration?`, `hidden?`.
-- `UpdateNodeRequest` — `path`, `description`, `directory`, `parent`,
+- `UpdateNodeRequest` — `entryName`, `description`, `directory`, `parent`,
   `reference?`, `migration?`, `hidden?`.
 - `DeleteNodeRequest` — `structureId`, `nodeId`.
 - `ListStructuresQuery` — `level?`, `projectCode?`.
@@ -893,7 +925,7 @@ plus the `status()` / `code()` dispatch arms:
 | `NodeNotFound(_)` | 404 | `node_not_found` |
 | `TemplateNotFound(_)` | 404 | `template_not_found` |
 | `ProjectNotFound(_)` | 404 | `project_not_found` |
-| `DuplicatePath(_)` | 409 | `duplicate_path` |
+| `DuplicateName(_)` | 409 | `duplicate_name` |
 | `DuplicateProjectStructure(_)` | 409 | `duplicate_project_structure` |
 | `TemplateInUse(_)` | 409 | `template_in_use` |
 | `Repository(_)` | 500 | `repository_error` |
@@ -957,8 +989,8 @@ fn build_structure_service(
 Per the workspace guideline (§9), in this order:
 
 1. **Domain unit tests** — `src/domain/tests.rs`: the merge algorithm's five
-   rules, worked end to end; `StructureLevel::as_str`; path normalisation;
-   the validating constructors rejecting blank names and paths.
+   rules, worked end to end; `StructureLevel::as_str`; name normalisation;
+   the validating constructors rejecting blank names and malformed names.
 2. **Adapter unit tests** — `src/adapter/persistence/postgres/*_repo.rs`, each
    with a `#[cfg(test)] mod tests` that reads its migration file with
    `include_str!` and asserts the table, the unique constraints, the CHECK
@@ -966,7 +998,7 @@ Per the workspace guideline (§9), in this order:
    silently.
 3. **Usecase tests** — `src/usecase/tests.rs`: in-memory fakes for both
    repositories plus a fake `ProjectLookup`, exercising each write rule
-   (add / override / hide / duplicate path / cycle), the merge round trip and
+   (add / override / hide / duplicate name / cycle), the merge round trip and
    each validation failure.
 4. **Facade tests** — `src/adapter/facade/in_memory/tests.rs`: the facade
    wired on top of in-memory ports, exercising the api-level round trip and
@@ -1093,10 +1125,10 @@ cargo test -p structures -- --ignored --test-threads=1   # when AEGIS_STRUCTURES
 1. **Structure identity and ownership** — every structure carries its own
    `id`; a project-level structure carries the `project_code` of its owner;
    template structures are global.
-2. **The join key is `node_id`, not `path`** — so renaming an inherited node
-   works and the template's original does not reappear. The *system* resolves
-   which node a write refers to, from the path; the client never picks a
-   `node_id`.
+2. **The join key is `node_id`, not `entry_name`** — so renaming an inherited
+   node works and the template's original does not reappear. The *system*
+   resolves which node a write refers to, from the name and the parent; the
+   client never picks a `node_id`.
 3. **`node_id` is a shared identity space** across a template and the project
    structures that extend it, so a new node can point its `parent` at an
    inherited template node.
@@ -1133,10 +1165,10 @@ cargo test -p structures -- --ignored --test-threads=1   # when AEGIS_STRUCTURES
 4. `migration` is stored as two columns (`migration_directory` TEXT,
    `migration_filter` JSONB) rather than one JSONB object, so it is
    inspectable in SQL.
-5. The server does **not** require a node's `path` to lie inside its
-   parent's `path`. The tree is defined by the `parent` links; the path is
-   the relative path the caller records, and the desktop owns computing it.
-   A directory rename therefore does not force a re-path of the descendants.
+5. A node's `entry_name` is its own name — one folder or one file name —
+   and the tree is defined by the `parent` links. The full path of a node is
+   the chain of names above it, and the desktop owns composing it. A
+   directory rename therefore does not force a rename of the descendants.
 6. `PUT` on a node is a **full replacement** of its mutable attributes, so
    `parent: null` moves the node to the root and `hidden: false` un-hides
    it.

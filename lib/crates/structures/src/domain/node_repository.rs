@@ -20,12 +20,14 @@ pub trait NodeRepository: Send + Sync {
         structure_id: i64,
         node_id: &str,
     ) -> Result<Option<Node>, DomainError>;
-    /// Every row of the structure, ordered by `path ASC`.
+    /// Every row of the structure, ordered by `entry_name ASC`.
     async fn list(&self, structure_id: i64) -> Result<Vec<Node>, DomainError>;
-    /// `Ok(None)` when the structure has no row with that path.
-    async fn find_by_path(
+    /// `Ok(None)` when the structure has no row with that name under
+    /// that parent.
+    async fn find_by_name(
         &self,
         structure_id: i64,
-        path: &str,
+        parent_id: Option<&str>,
+        name: &str,
     ) -> Result<Option<Node>, DomainError>;
 }
