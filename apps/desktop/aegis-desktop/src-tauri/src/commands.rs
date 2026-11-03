@@ -6,6 +6,7 @@ pub mod healthz;
 pub mod identity;
 pub mod mission;
 pub mod project;
+pub mod structures;
 pub mod terminology;
 pub mod user;
 pub mod user_credential;
