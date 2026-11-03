@@ -61,6 +61,9 @@ pub enum ApiError {
     SdtmProject(#[from] apis::sdtm_project::SdtmProjectApiError),
 
     #[error("{0}")]
+    Structures(#[from] apis::structures::StructureApiError),
+
+    #[error("{0}")]
     LogIngest(#[from] logging_utils::IngestorError),
 
     #[error("validation failed: {0}")]
@@ -81,6 +84,7 @@ impl ApiError {
             Self::DomainModel(e) => domain_model_status(e),
             Self::Crf(e) => crf_status(e),
             Self::SdtmProject(e) => sdtm_project_status(e),
+            Self::Structures(e) => structures_status(e),
             Self::Mission(e) => mission_status(e),
             Self::LogIngest(e) => log_ingest_status(e),
             Self::Validation(_) => StatusCode::BAD_REQUEST,
@@ -98,6 +102,7 @@ impl ApiError {
             Self::DomainModel(e) => domain_model_code(e),
             Self::Crf(e) => crf_code(e),
             Self::SdtmProject(e) => sdtm_project_code(e),
+            Self::Structures(e) => structures_code(e),
             Self::Mission(e) => mission_code(e),
             Self::LogIngest(e) => log_ingest_code(e),
             Self::Validation(_) => "validation_failed",
@@ -232,6 +237,38 @@ fn domain_model_code(e: &apis::domain_model::DomainModelApiError) -> &'static st
         DomainModelApiError::FkSdtmVersionNotFound(_) => "fk_sdtm_version_not_found",
         DomainModelApiError::FkSdtmDomainNotFound(_) => "fk_sdtm_domain_not_found",
         DomainModelApiError::Repository(_) => "repository_error",
+    }
+}
+
+fn structures_status(e: &apis::structures::StructureApiError) -> StatusCode {
+    use apis::structures::StructureApiError;
+    match e {
+        StructureApiError::Validation(_) => StatusCode::BAD_REQUEST,
+        StructureApiError::NotFound
+        | StructureApiError::StructureNotFound(_)
+        | StructureApiError::NodeNotFound(_)
+        | StructureApiError::TemplateNotFound(_)
+        | StructureApiError::ProjectNotFound(_) => StatusCode::NOT_FOUND,
+        StructureApiError::DuplicatePath(_)
+        | StructureApiError::DuplicateProjectStructure(_)
+        | StructureApiError::TemplateInUse(_) => StatusCode::CONFLICT,
+        StructureApiError::Repository(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+fn structures_code(e: &apis::structures::StructureApiError) -> &'static str {
+    use apis::structures::StructureApiError;
+    match e {
+        StructureApiError::Validation(_) => "validation_failed",
+        StructureApiError::NotFound => "not_found",
+        StructureApiError::StructureNotFound(_) => "structure_not_found",
+        StructureApiError::NodeNotFound(_) => "node_not_found",
+        StructureApiError::TemplateNotFound(_) => "template_not_found",
+        StructureApiError::ProjectNotFound(_) => "project_not_found",
+        StructureApiError::DuplicatePath(_) => "duplicate_path",
+        StructureApiError::DuplicateProjectStructure(_) => "duplicate_project_structure",
+        StructureApiError::TemplateInUse(_) => "template_in_use",
+        StructureApiError::Repository(_) => "repository_error",
     }
 }
 

@@ -1,0 +1,29 @@
+[package]
+name = "structures"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sqlx = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+# `serde` + `serde_json` are required for the JSONB round-trip of the
+# migration filter list.
+serde = { workspace = true }
+serde_json = { workspace = true }
+# `nanoid` mints the `node_id` of a genuinely new node. The default
+# 21-character length gives ~10^36 ids, so a collision needs no
+# coordination — which matters because a node_id is unique across a
+# template and every project structure that extends it.
+nanoid = { workspace = true }
+# `apis` provides the outbound `StructureService` port the facade
+# implements. Path-dep because both crates share the workspace.
+apis = { path = "../apis" }
+
+[dev-dependencies]
+dotenvy = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+# `async-trait` implements `#[async_trait]` for the in-memory fakes the
+# public-API test declares for the repository ports.
+async-trait = { workspace = true }

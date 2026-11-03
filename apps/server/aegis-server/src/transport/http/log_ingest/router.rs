@@ -40,6 +40,8 @@ mod tests {
             crf: Arc::new(test_support::NullCrfService) as Arc<dyn apis::crf::CrfService>,
             sdtm_project: Arc::new(test_support::NullSdtmProjectService)
                 as Arc<dyn apis::sdtm_project::SdtmProjectService>,
+            structures: std::sync::Arc::new(crate::state::test_support::NullStructureService)
+                as std::sync::Arc<dyn apis::structures::StructureService>,
             log_ingestor,
         }
     }

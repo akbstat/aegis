@@ -19,6 +19,7 @@ pub mod openapi;
 pub mod project;
 pub mod router;
 pub mod sdtm_project;
+pub mod structures;
 pub mod terminology;
 pub mod trace_id;
 pub mod user;

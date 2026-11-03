@@ -8,6 +8,7 @@ members = [
     "lib/crates/mission",
     "lib/crates/project",
     "lib/crates/sdtm-project",
+    "lib/crates/structures",
     "lib/crates/terminology",
     "lib/crates/user",
     "lib/crates/windows-utils",

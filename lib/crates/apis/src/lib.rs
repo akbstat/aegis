@@ -12,5 +12,6 @@ pub mod domain_model;
 pub mod mission;
 pub mod project;
 pub mod sdtm_project;
+pub mod structures;
 pub mod terminology;
 pub mod user;

@@ -41,7 +41,7 @@ use crate::transport::http::error::ErrorBody;
     info(
         title = "aegis-server API",
         version = "0.1.0",
-        description = "HTTP transport for the aegis auth + user + project + terminology + domain-model + crf + mission services."
+        description = "HTTP transport for the aegis auth + user + project + terminology + domain-model + crf + mission + structures services."
     ),
     modifiers(&SecurityAddon),
     components(schemas(
@@ -121,6 +121,21 @@ use crate::transport::http::error::ErrorBody;
         dto::SdtmProjectDomainDescriptionDetail,
         dto::SdtmProjectVariableDescription,
         dto::SdtmProjectVariableDescriptionDetail,
+        dto::StructureLevelResponse,
+        dto::MigrationViewResponse,
+        dto::NodeViewResponse,
+        dto::StructureViewResponse,
+        dto::StructureSummaryResponse,
+        dto::StructureMetaResponse,
+        dto::StructureTreeResponse,
+        dto::OwnNodeResponse,
+        dto::OwnNodeListResponse,
+        dto::StructureListResponse,
+        dto::CreateStructureRequest,
+        dto::RenameStructureRequest,
+        dto::AddNodeRequest,
+        dto::UpdateNodeRequest,
+        dto::ListStructuresQuery,
         dto::CreateSdtmProjectVersionRequest,
         dto::UpdateSdtmProjectVersionRequest,
         dto::CreateSdtmProjectDomainRequest,
