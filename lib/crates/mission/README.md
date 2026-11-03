@@ -68,8 +68,8 @@ covers the issue + comment aggregate.
     ├── adapter/
     │   ├── facade/
     │   │   ├── facade.rs                       # MissionService facade module
-    │   │   └── in_memory/
-    │   │       ├── in_memory.rs                # module index
+    │   │   └── internal/
+    │   │       ├── internal.rs                 # module index
     │   │       ├── service.rs                  # MissionServiceImpl composes both usecases
     │   │       └── issue_service.rs            # InMemoryIssueRepo for the facade
     │   ├── persistence.rs

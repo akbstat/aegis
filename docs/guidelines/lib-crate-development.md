@@ -53,9 +53,12 @@ usecase  ← orchestrates ports. Holds command DTOs, view DTOs, and a
 adapter  ← concrete implementations of domain ports. Sub-organised by the
            *direction* of the dependency, not by feature:
              adapter/persistence/<backend>/   storage adapters (Postgres, …)
-             adapter/facade/<backend>/        outbound-port adapters that
+             adapter/facade/internal/        outbound-port adapters that
                                               adapt usecase → API-facing
-                                              traits in other workspace crates
+                                              traits in other workspace crates.
+                                              One per crate, generic over the
+                                              storage ports — so a single impl
+                                              serves every backend.
              adapter/cache/<backend>/         cache ports (in-memory, Redis, …)
              adapter/service/<other_port>/    adapt *another* workspace crate's
                                               port into a *domain* port, so the
@@ -183,7 +186,7 @@ the adapter translates driver errors into domain errors.
    schema, read the migration file as a string (via
    `std::fs::read_to_string` + `env!("CARGO_MANIFEST_DIR")`) and assert the
    column / constraint / trigger set so the schema cannot regress silently.
-3. **Facade unit tests** in `src/adapter/facade/<backend>/tests.rs` that
+3. **Facade unit tests** in `src/adapter/facade/internal/tests.rs` that
    wire the adapter on top of an in-memory port (`Arc<Mutex<Vec<Foo>>>`
    + an `AtomicI32` for ids). They exercise the public-facing behaviour
    without touching infrastructure and lock in object-safety / `Send + Sync`.
@@ -213,7 +216,7 @@ Every business lib crate gets a `README.md` covering:
 - One-sentence purpose.
 - A `src/` tree matching the actual module shape (e.g. `domain/`,
   `usecase/`, `adapter/persistence/postgres/`, `adapter/cache/in_memory/`,
-  `adapter/facade/in_memory/`).
+  `adapter/facade/internal/`).
 - Database setup if the crate owns a schema: the `sqlx migrate run --source
   lib/crates/<crate>/migrations` command, the env var
   (`AEGIS_<CRATE>_DATABASE_URL`), and a small constructor snippet.

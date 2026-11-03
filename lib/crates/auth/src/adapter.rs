@@ -10,5 +10,5 @@ pub(crate) mod persistence;
 pub mod service;
 
 pub use cache::in_memory::token_version::InMemoryTokenVersionCache;
-pub use facade::in_memory::AuthServiceImpl;
+pub use facade::internal::AuthServiceImpl;
 pub use persistence::postgres::{DomainIdentityRepo, UserCredentialsRepo};

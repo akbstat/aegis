@@ -3,8 +3,8 @@
 //! `CrfUsecase<V, F, I, O, U, Da, A, P>` orchestrates the seven
 //! aggregates and the cross-crate project lookup, projects
 //! domain aggregates into view DTOs, and surfaces
-//! `UsecaseError`. The in-memory facade in
-//! `adapter::facade::in_memory::CrfServiceImpl` adapts this
+//! `UsecaseError`. The facade in
+//! `adapter::facade::internal::CrfServiceImpl` adapts this
 //! type to `apis::crf::CrfService`.
 
 mod commands;

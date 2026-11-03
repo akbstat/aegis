@@ -1,4 +1,4 @@
-//! `SdtmProjectService` adapter backed by in-memory repositories.
+//! `SdtmProjectService` adapter over the repository ports.
 //!
 //! Hosts `SdtmProjectServiceImpl<V, D, DO, Va, VO, P>` — the
 //! implementation of `apis::sdtm_project::SdtmProjectService` that

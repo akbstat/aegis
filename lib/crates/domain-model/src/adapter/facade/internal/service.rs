@@ -1,5 +1,4 @@
-//! `DomainModelService` adapter backed by an in-memory trio of
-//! repositories.
+//! `DomainModelService` adapter over the repository ports.
 //!
 //! Hosts `DomainModelServiceImpl<V, D, Va>` — the implementation
 //! of `apis::domain_model::DomainModelService` that adapts

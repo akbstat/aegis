@@ -3,7 +3,7 @@
 Workspace library implementing the `apis::auth::AuthService` port. Mints
 HS256 JWTs, validates them against an in-memory `token_version` cache
 backed by Postgres, and adapts the usecase layer into the `AuthService`
-contract through an in-memory facade.
+contract through a storage-agnostic facade.
 
 > See [docs/guidelines/lib-crate-development.md](../../docs/guidelines/lib-crate-development.md)
 > for the cross-cutting conventions this crate follows (workspace deps,
@@ -23,7 +23,7 @@ src/
     cache/
       in_memory/                # InMemoryTokenVersionCache (Arc<RwLock<HashMap>>)
     facade/
-      in_memory/                # AuthServiceImpl wiring usecase -> apis::auth::AuthService
+      internal/                 # AuthServiceImpl wiring usecase -> apis::auth::AuthService
 migrations/                     # SQLx migrations applied to the database
 ```
 

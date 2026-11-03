@@ -1,5 +1,5 @@
 //! Shared test fakes for the mission crate. Used by
-//! `usecase::tests` and `adapter::facade::in_memory::tests` so
+//! `usecase::tests` and `adapter::facade::internal::tests` so
 //! the fake definitions live in one place.
 
 #![allow(dead_code)]

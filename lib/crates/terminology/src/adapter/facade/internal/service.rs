@@ -1,5 +1,4 @@
-//! `TerminologyService` adapter backed by an in-memory trio of
-//! repositories.
+//! `TerminologyService` adapter over the repository ports.
 //!
 //! Hosts `TerminologyServiceImpl<V, L, I>` — the implementation of
 //! `apis::terminology::TerminologyService` that adapts

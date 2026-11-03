@@ -1,5 +1,4 @@
-//! Outbound-port adapters that sit on top of in-memory
-//! repositories.
+//! Outbound-port adapters that sit on top of the usecase.
 //!
 //! Hosts [`DomainModelServiceImpl`] — the implementation of
 //! `apis::domain_model::DomainModelService` that adapts

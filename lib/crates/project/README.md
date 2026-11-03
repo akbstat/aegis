@@ -26,7 +26,7 @@ src/
     persistence/
       postgres/                 # SQLx-backed ProductRepo, ProjectRepo
     facade/
-      in_memory/                # ProjectServiceImpl wiring usecase ->
+      internal/                 # ProjectServiceImpl wiring usecase ->
                                 # apis::project::ProjectService
 migrations/                     # SQLx migrations applied to the database
 ```
@@ -157,7 +157,7 @@ The crate enforces the test-tier order from the guideline:
    service; covers validation paths, optional membership,
    `ProjectConfiguration` (language + tag-list) hydration, and
    whole-list replacement of membership + configuration.
-4. **facade unit** — `src/adapter/facade/in_memory/tests.rs`: in-memory
+4. **facade unit** — `src/adapter/facade/internal/tests.rs`: in-memory
    repo + user-service fakes; end-to-end CRUD through the apis port,
    including `Box<dyn ProjectService>` object-safe dispatch.
 5. **public_api compile-only** — `tests/public_api.rs`: locks the

@@ -44,7 +44,7 @@ src/
     ├── service.rs
     ├── service/project/          # ProjectLookupImpl -> apis::project::ProjectService
     ├── facade.rs
-    └── facade/in_memory/         # SdtmProjectServiceImpl -> the apis port
+    └── facade/internal/          # SdtmProjectServiceImpl -> the apis port
 ```
 
 ## The data model
