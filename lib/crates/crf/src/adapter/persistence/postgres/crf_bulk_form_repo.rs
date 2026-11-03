@@ -225,15 +225,16 @@ fn map_db_err(err: sqlx::Error) -> DomainError {
 mod tests {
     #[test]
     fn migration_files_are_present_and_idempotent() {
-        let forms_sql = include_str!("../../../../migrations/0002_create_crf_forms.sql");
+        let forms_sql = include_str!("../../../../migrations/20261103135352_create_crf_forms.sql");
         assert!(forms_sql.contains("CREATE TABLE IF NOT EXISTS crf_forms"));
         assert!(forms_sql.contains("crf_forms_version_code_unique"));
-        let items_sql = include_str!("../../../../migrations/0003_create_crf_items.sql");
+        let items_sql = include_str!("../../../../migrations/20261103135353_create_crf_items.sql");
         assert!(items_sql.contains("CREATE TABLE IF NOT EXISTS crf_items"));
         assert!(items_sql.contains("crf_items_form_code_unique"));
-        let options_sql = include_str!("../../../../migrations/0004_create_crf_options.sql");
+        let options_sql =
+            include_str!("../../../../migrations/20261103135354_create_crf_options.sql");
         assert!(options_sql.contains("CREATE TABLE IF NOT EXISTS crf_options"));
-        let units_sql = include_str!("../../../../migrations/0005_create_crf_units.sql");
+        let units_sql = include_str!("../../../../migrations/20261103135355_create_crf_units.sql");
         assert!(units_sql.contains("CREATE TABLE IF NOT EXISTS crf_units"));
     }
 }

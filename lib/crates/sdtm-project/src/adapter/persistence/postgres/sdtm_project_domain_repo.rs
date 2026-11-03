@@ -254,7 +254,8 @@ fn map_domain_err(err: sqlx::Error, parent_version_id: i64) -> DomainError {
 mod tests {
     #[test]
     fn migration_file_declares_domain_tables() {
-        let sql = include_str!("../../../../migrations/0002_create_sdtm_project_domains.sql");
+        let sql =
+            include_str!("../../../../migrations/20261103135412_create_sdtm_project_domains.sql");
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS sdtm_project_domains"));
         assert!(sql.contains(
             "CONSTRAINT sdtm_project_domains_version_code_unique UNIQUE (version_id, domain_code)"

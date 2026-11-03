@@ -315,7 +315,7 @@ fn map_db_err(err: sqlx::Error) -> DomainError {
 mod tests {
     #[test]
     fn migration_file_is_present_and_idempotent() {
-        let sql = include_str!("../../../../migrations/0007_create_crf_annotations.sql");
+        let sql = include_str!("../../../../migrations/20261103135357_create_crf_annotations.sql");
         assert!(sql.contains("crf_annotations_polymorphic_owner"));
         assert!(sql.contains("form_id IS NOT NULL"));
     }

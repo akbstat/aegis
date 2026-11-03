@@ -167,7 +167,8 @@ fn map_db_err(err: sqlx::Error) -> DomainError {
 mod tests {
     #[test]
     fn migration_file_is_present_and_idempotent() {
-        let sql = include_str!("../../../../migrations/0006_create_crf_domain_annotations.sql");
+        let sql =
+            include_str!("../../../../migrations/20261103135356_create_crf_domain_annotations.sql");
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS crf_domain_annotations"));
         assert!(sql.contains("crf_domain_annotations_form_name_unique"));
     }

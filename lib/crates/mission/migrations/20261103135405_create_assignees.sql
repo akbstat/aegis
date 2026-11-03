@@ -1,4 +1,4 @@
--- 0002_create_assignees.sql
+-- 20261103135405_create_assignees.sql
 --
 -- Per-mission assignee rows. FK to `missions(id)` with
 -- `ON DELETE CASCADE` so mission deletion cascades to its

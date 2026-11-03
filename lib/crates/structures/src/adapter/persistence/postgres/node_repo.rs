@@ -217,7 +217,7 @@ fn map_error(err: sqlx::Error) -> DomainError {
 mod tests {
     #[test]
     fn the_structure_nodes_table_keeps_its_constraints() {
-        let sql = include_str!("../../../../migrations/0002_create_structure_nodes.sql");
+        let sql = include_str!("../../../../migrations/20261103135418_create_structure_nodes.sql");
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS structure_nodes"));
         assert!(
             sql.contains("CONSTRAINT structure_nodes_unique_node UNIQUE (structure_id, node_id)")
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn a_name_is_unique_among_the_siblings_not_across_the_structure() {
-        let sql = include_str!("../../../../migrations/0002_create_structure_nodes.sql");
+        let sql = include_str!("../../../../migrations/20261103135418_create_structure_nodes.sql");
         // The name is scoped by the parent, so the same name may appear
         // under two different parents.
         assert!(

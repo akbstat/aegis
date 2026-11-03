@@ -164,7 +164,8 @@ mod tests {
     /// connection — see `tests/integration_persistence.rs` for that.
     #[test]
     fn migration_file_declares_version_table() {
-        let sql = include_str!("../../../../migrations/0001_create_sdtm_project_versions.sql");
+        let sql =
+            include_str!("../../../../migrations/20261103135411_create_sdtm_project_versions.sql");
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS sdtm_project_versions"));
         assert!(sql.contains(
             "CONSTRAINT sdtm_project_versions_project_name_unique UNIQUE (project_code, version_name)"

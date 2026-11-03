@@ -1,4 +1,4 @@
--- 0001_create_projects.sql
+-- 20261103135407_create_projects.sql
 --
 -- Single migration for the `project` crate. Replaces the previous
 -- two-file history (products + projects + project_members) now that

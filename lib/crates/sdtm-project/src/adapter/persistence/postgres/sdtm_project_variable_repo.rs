@@ -259,7 +259,8 @@ fn map_variable_err(err: sqlx::Error, parent_domain_id: i64) -> DomainError {
 mod tests {
     #[test]
     fn migration_file_declares_variable_table() {
-        let sql = include_str!("../../../../migrations/0004_create_sdtm_project_variables.sql");
+        let sql =
+            include_str!("../../../../migrations/20261103135414_create_sdtm_project_variables.sql");
         assert!(sql.contains("CREATE TABLE IF NOT EXISTS sdtm_project_variables"));
         assert!(sql.contains(
             "CONSTRAINT sdtm_project_variables_domain_code_unique UNIQUE (domain_id, variable_code)"

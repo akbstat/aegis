@@ -1,7 +1,7 @@
 //! Tests for the PostgreSQL adapter that do NOT
 //! require a live database connection.
 //!
-//! 1. The `0001_create_users.sql` migration file content (the schema
+//! 1. The `20261103135422_create_users.sql` migration file content (the schema
 //!    that downstream consumers will apply). The leading doc comment
 //!    is stripped before assertion so the tests anchor on the `CREATE
 //!    TABLE` block, not on keywords in the header.
@@ -42,12 +42,12 @@ fn migration_path() -> PathBuf {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     PathBuf::from(manifest_dir)
         .join("migrations")
-        .join("0001_create_users.sql")
+        .join("20261103135422_create_users.sql")
 }
 
 fn load_migration() -> String {
     fs::read_to_string(migration_path())
-        .expect("migration file lib/crates/user/migrations/0001_create_users.sql must exist")
+        .expect("migration file 20261103135422_create_users.sql must exist")
 }
 
 /// Slice the migration down to the `CREATE TABLE users (...)` body so

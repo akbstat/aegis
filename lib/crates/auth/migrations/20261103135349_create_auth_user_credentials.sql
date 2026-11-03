@@ -1,4 +1,4 @@
--- 0001_create_auth_user_credentials.sql
+-- 20261103135349_create_auth_user_credentials.sql
 --
 -- Per-user password hash + token version used by the auth crate. The
 -- auth crate does NOT own the user lifecycle; `code` is the join key

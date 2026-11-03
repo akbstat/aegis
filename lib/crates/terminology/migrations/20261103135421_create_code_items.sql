@@ -1,4 +1,4 @@
--- 0003_create_code_items.sql
+-- 20261103135421_create_code_items.sql
 --
 -- Permissible values inside each codelist, one row per
 -- (codelist, code) pair.
