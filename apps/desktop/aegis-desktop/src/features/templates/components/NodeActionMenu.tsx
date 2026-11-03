@@ -37,7 +37,7 @@ export function NodeActionMenu({
     <>
       <IconButton
         size="small"
-        aria-label={t("templates.node.add")}
+        aria-label={t("templates.node.actions")}
         onClick={(e) => setAnchor(e.currentTarget)}
       >
         <MoreHorizIcon fontSize="small" />

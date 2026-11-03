@@ -541,4 +541,5 @@ export const en = {
 'templates.node.delete.message':
   'Delete "{path}" and everything under it?',
 'templates.node.delete.failed': 'Delete failed: {message}',
+  'templates.node.actions': 'Node actions',
 } as const;

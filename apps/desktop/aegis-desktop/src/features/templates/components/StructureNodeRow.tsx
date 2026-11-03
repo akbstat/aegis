@@ -33,9 +33,9 @@ export function StructureNodeRow({
   const { t } = useI18n();
 
   return (
-    <Stack direction="row" spacing={1} alignItems="flex-start">
+    <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Typography variant="body2" fontWeight={600} noWrap>
+        <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
           {label ?? node.path}
         </Typography>
         {secondaryPath && (

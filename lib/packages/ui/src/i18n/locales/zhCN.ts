@@ -516,4 +516,5 @@ export const zhCN = {
 'templates.node.delete.title': '删除节点',
 'templates.node.delete.message': '删除 "{path}" 及其所有子节点?',
 'templates.node.delete.failed': '删除失败: {message}',
+  'templates.node.actions': '节点操作',
 } satisfies Record<keyof typeof en, string>;

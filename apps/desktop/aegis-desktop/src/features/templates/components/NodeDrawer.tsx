@@ -23,7 +23,6 @@ import type {
 export interface NodeDrawerProps {
   open: boolean;
   mode: "create" | "edit";
-  structureId: number;
   /** The node being edited. `null` in create mode. */
   node: StructureNodeView | null;
   /** The parent the new node goes under. `null` means the root. */
@@ -52,7 +51,6 @@ export function isValidNodePath(path: string): boolean {
 export function NodeDrawer({
   open,
   mode,
-  structureId,
   node,
   parent,
   onClose,
