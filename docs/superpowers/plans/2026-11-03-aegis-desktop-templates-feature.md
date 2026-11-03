@@ -808,6 +808,7 @@ In `lib/packages/ui/src/i18n/locales/en.ts`, add:
   'templates.structure.view.flat': 'Flat',
   'templates.structure.noTemplates': 'No templates yet',
   'templates.structure.noNodes': 'No folder structure yet',
+  'templates.node.actions': 'Node actions',
   'templates.node.add': 'Add node',
   'templates.node.edit': 'Edit node',
   'templates.node.delete': 'Delete node',
@@ -847,6 +848,7 @@ Note: `zhCN.ts` closes with `} satisfies Record<keyof typeof en, string>;`, not
   'templates.structure.view.flat': '扁平',
   'templates.structure.noTemplates': '暂无模板',
   'templates.structure.noNodes': '暂无文件夹结构',
+  'templates.node.actions': '节点操作',
   'templates.node.add': '添加节点',
   'templates.node.edit': '编辑节点',
   'templates.node.delete': '删除节点',
@@ -871,7 +873,7 @@ Note: `zhCN.ts` closes with `} satisfies Record<keyof typeof en, string>;`, not
 - [ ] **Step 3: Verify the catalogs agree**
 
 Run: `pnpm --filter @aegis/ui typecheck`
-Expected: PASS. The `satisfies Record<Locale, TranslationCatalog>` in `registry.ts` fails the build if `zhCN.ts` is missing a key that `en.ts` has, so a PASS means both catalogs carry all 27 keys.
+Expected: PASS. The `satisfies Record<Locale, TranslationCatalog>` in `registry.ts` fails the build if `zhCN.ts` is missing a key that `en.ts` has, so a PASS means both catalogs carry all 28 keys.
 
 - [ ] **Step 4: Commit**
 
@@ -1109,7 +1111,7 @@ Create `apps/desktop/aegis-desktop/src/test/features/templates/data.test.tsx`:
 ```tsx
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -1176,6 +1178,25 @@ function Probe() {
         add
       </button>
       <button
+        data-testid="update"
+        onClick={() =>
+          update.mutate({
+            structureId: 3,
+            nodeId: "n1",
+            input: {
+              path: "raw",
+              description: "d",
+              directory: true,
+              parent: null,
+              reference: null,
+              migration: null,
+            },
+          })
+        }
+      >
+        update
+      </button>
+      <button
         data-testid="delete"
         onClick={() => del.mutate({ structureId: 3, nodeId: "n1" })}
       >
@@ -1215,6 +1236,22 @@ describe("templates data hooks", () => {
     await screen.findByText("Standard");
     const before = getStructure.mock.calls.length;
     await userEvent.click(screen.getByTestId("add"));
+    await waitFor(() =>
+      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+
+  it("refetches the structure after a node is updated", async () => {
+    const getStructure = vi.fn(() => STRUCTURE);
+    mockCommands({
+      list_structures: () => TEMPLATES,
+      get_structure: getStructure,
+      update_structure_node: () => ({ nodeId: "n1" }),
+    });
+    renderWithQueryClient(<Probe />);
+    await screen.findByText("Standard");
+    const before = getStructure.mock.calls.length;
+    await userEvent.click(screen.getByTestId("update"));
     await waitFor(() =>
       expect(getStructure.mock.calls.length).toBeGreaterThan(before),
     );
@@ -1347,7 +1384,7 @@ git commit -m "feat(desktop): add the templates data hooks"
 **Files:**
 - Create: `apps/desktop/aegis-desktop/src/features/templates/pages/TemplatesPage.tsx`
 - Create: `apps/desktop/aegis-desktop/src/features/templates/index.ts`
-- Create: `apps/desktop/aegis-desktop/src/routes/_authed/_layout/templates.tsx`
+- Create: `apps/desktop/aegis-desktop/src/routes/_authed/_layout/templates/index.tsx`
 - Modify: `apps/desktop/aegis-desktop/src/features/app/components/AppLayout.tsx`
 - Test: `apps/desktop/aegis-desktop/src/test/features/templates/templates-page.test.tsx`
 - Test: `apps/desktop/aegis-desktop/src/test/features/app/app-layout-templates.test.tsx`
@@ -1588,7 +1625,12 @@ export { TemplatesPage } from "./pages/TemplatesPage";
 
 - [ ] **Step 6: Add the route**
 
-Create `apps/desktop/aegis-desktop/src/routes/_authed/_layout/templates.tsx`:
+Create `apps/desktop/aegis-desktop/src/routes/_authed/_layout/templates/index.tsx`:
+
+**Note:** it must be an **index** route. A `templates.tsx` file sitting next to a
+`templates/` folder becomes the *layout parent* of `templates/structure/*` in
+TanStack file routing — the card page would render instead of the structure
+page, and the structure page would be unreachable.
 
 ```tsx
 import { createFileRoute } from "@tanstack/react-router";
@@ -1744,6 +1786,7 @@ describe("StructureNodeRow", () => {
     expect(
       screen.getByText("Statistical programming raw data"),
     ).toBeInTheDocument();
+    expect(screen.getByText("Migration")).toBeInTheDocument();
     expect(screen.getByText("/opt/sop/raw")).toBeInTheDocument();
     expect(screen.getByText("*.sas7bdat")).toBeInTheDocument();
   });
@@ -1775,9 +1818,7 @@ describe("StructureNodeRow", () => {
   it("offers add, edit and delete to an admin", async () => {
     const onAdd = vi.fn();
     renderRow(DIRECTORY, { canMutate: true, onAdd });
-    await userEvent.click(
-      screen.getByRole("button", { name: /node actions/i }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: /node actions/i }));
     expect(screen.getByText("Add node")).toBeInTheDocument();
     expect(screen.getByText("Edit node")).toBeInTheDocument();
     expect(screen.getByText("Delete node")).toBeInTheDocument();
@@ -1994,7 +2035,7 @@ git commit -m "feat(desktop): add the structure node row and its action menu"
 **Interfaces:**
 - Consumes: `StructureNodeInput` and `StructureNodeView` from `src/shared/api`; the i18n keys from Task 5; `errorMessage` from `src/shared/api/error`.
 - Produces:
-  - `NodeDrawerProps { open: boolean; mode: "create" | "edit"; structureId: number; node: StructureNodeView | null; parent: StructureNodeView | null; onClose: () => void; onSubmit: (input: StructureNodeInput) => void; pending: boolean; error: ApiError | null }`
+  - `NodeDrawerProps { open: boolean; mode: "create" | "edit"; node: StructureNodeView | null; parent: StructureNodeView | null; onClose: () => void; onSubmit: (input: StructureNodeInput) => void; pending: boolean; error: ApiError | null }`
   - `DeleteNodeDialogProps { open: boolean; node: StructureNodeView | null; onClose: () => void; onConfirm: (node: StructureNodeView) => void; pending: boolean; error: unknown }`
   - `isValidNodePath(path: string): boolean` — exported from `NodeDrawer.tsx` so the page can reuse it.
 
@@ -2030,14 +2071,15 @@ const PARENT: StructureNodeView = {
   children: [],
 };
 
-function renderDrawer(props: Partial<ComponentProps<typeof NodeDrawer>> = {}) {
+function renderDrawer(
+  props: Partial<ComponentProps<typeof NodeDrawer>> = {},
+) {
   return render(
     <AegisThemeProvider>
       <AegisI18nProvider>
         <NodeDrawer
           open
           mode="create"
-          structureId={3}
           node={null}
           parent={PARENT}
           onClose={() => {}}
@@ -2079,7 +2121,7 @@ describe("isValidNodePath", () => {
 describe("NodeDrawer", () => {
   it("prefills the path with the parent's path when adding", () => {
     renderDrawer();
-    expect(screen.getByLabelText("Path")).toHaveValue("raw/");
+    expect(screen.getByLabelText(/^Path/)).toHaveValue("raw/");
   });
 
   it("shows the reference field only for a file", async () => {
@@ -2107,18 +2149,18 @@ describe("NodeDrawer", () => {
     renderDrawer();
     const save = screen.getByRole("button", { name: "Create" });
     expect(save).toBeDisabled();
-    await userEvent.clear(screen.getByLabelText("Path"));
-    await userEvent.type(screen.getByLabelText("Path"), "raw//data");
+    await userEvent.clear(screen.getByLabelText(/^Path/));
+    await userEvent.type(screen.getByLabelText(/^Path/), "raw//data");
     expect(save).toBeDisabled();
-    await userEvent.clear(screen.getByLabelText("Path"));
-    await userEvent.type(screen.getByLabelText("Path"), "raw/data");
+    await userEvent.clear(screen.getByLabelText(/^Path/));
+    await userEvent.type(screen.getByLabelText(/^Path/), "raw/data");
     expect(save).toBeEnabled();
   });
 
   it("sends the parent id when adding under a parent", async () => {
     const onSubmit = vi.fn();
     renderDrawer({ onSubmit });
-    await userEvent.type(screen.getByLabelText("Path"), "data");
+    await userEvent.type(screen.getByLabelText(/^Path/), "data");
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ path: "raw/data", parent: "n0" }),
@@ -2128,7 +2170,7 @@ describe("NodeDrawer", () => {
   it("sends a null parent when adding at the root", async () => {
     const onSubmit = vi.fn();
     renderDrawer({ parent: null, onSubmit });
-    await userEvent.type(screen.getByLabelText("Path"), "raw");
+    await userEvent.type(screen.getByLabelText(/^Path/), "raw");
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ path: "raw", parent: null }),
@@ -2150,7 +2192,7 @@ describe("NodeDrawer", () => {
       },
       parent: null,
     });
-    expect(screen.getByLabelText("Path")).toHaveValue("raw/data");
+    expect(screen.getByLabelText(/^Path/)).toHaveValue("raw/data");
     expect(screen.getByLabelText("Description")).toHaveValue("raw data");
   });
 });
@@ -2567,7 +2609,7 @@ Create `apps/desktop/aegis-desktop/src/test/features/templates/structure-templat
 ```tsx
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AegisI18nProvider } from "@aegis/ui/i18n";
 import { AegisThemeProvider } from "@aegis/ui/theme";
@@ -2577,7 +2619,6 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { renderWithFullRouter } from "../../helpers/file-route-utils";
 import { mockCommands } from "../../helpers/tauri-mock";
 import { TestQueryProvider } from "../../helpers/test-query-provider";
-import { StructureTemplatePage } from "../../../features/templates";
 
 function createMemoryStorage(): Storage {
   const data = new Map<string, string>();
@@ -2655,18 +2696,22 @@ const TEMPLATES = [
   },
 ];
 
+const GENERAL_USER = {
+  id: 1,
+  code: "alice",
+  name: "Alice",
+  role: "general",
+  active: true,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
+
+const ADMIN_USER = { ...GENERAL_USER, role: "admin" };
+
 function baseCommands(extra: Record<string, unknown> = {}) {
   return {
     is_logged_in: () => true,
-    current_user: () => ({
-      id: 1,
-      code: "alice",
-      name: "Alice",
-      role: "general",
-      active: true,
-      createdAt: "2026-01-01T00:00:00Z",
-      updatedAt: "2026-01-01T00:00:00Z",
-    }),
+    current_user: () => GENERAL_USER,
     list_structures: () => TEMPLATES,
     get_structure: () => STRUCTURE,
     ...extra,
@@ -2688,7 +2733,7 @@ function renderPage(path = "/templates/structure/3") {
           <AegisI18nProvider>{children}</AegisI18nProvider>
         </TestQueryProvider>
       </AegisThemeProvider>
-    }),
+    ),
   });
 }
 
@@ -2696,7 +2741,8 @@ describe("StructureTemplatePage", () => {
   it("lists the template structures in the sidebar", async () => {
     mockCommands(baseCommands());
     await renderPage();
-    expect(await screen.findByText("Standard")).toBeInTheDocument();
+    const sidebar = await screen.findByTestId("structure-sidebar");
+    expect(within(sidebar).getByText("Standard")).toBeInTheDocument();
   });
 
   it("renders the tree of the selected structure", async () => {
@@ -2740,32 +2786,22 @@ describe("StructureTemplatePage", () => {
   it("hides the node actions from a general user", async () => {
     mockCommands(baseCommands());
     await renderPage();
+    expect(await screen.findByText("raw")).toBeInTheDocument();
     expect(
-      await screen.findByText("raw"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /add node/i }),
-    ).not.toBeInTheDocument();
+      screen.queryAllByRole("button", { name: /node actions/i }),
+    ).toHaveLength(0);
   });
 
   it("shows the node actions to an admin", async () => {
     mockCommands(
       baseCommands({
-        current_user: () => ({
-          id: 1,
-          code: "alice",
-          name: "Alice",
-          role: "admin",
-          active: true,
-          createdAt: "2026-01-01T00:00:00Z",
-          updatedAt: "2026-01-01T00:00:00Z",
-        }),
+        current_user: () => ADMIN_USER,
       }),
     );
     await renderPage();
     expect(
-      await screen.findByRole("button", { name: /add node/i }),
-    ).toBeInTheDocument();
+      (await screen.findAllByRole("button", { name: /node actions/i })).length,
+    ).toBeGreaterThan(0);
   });
 });
 ```
