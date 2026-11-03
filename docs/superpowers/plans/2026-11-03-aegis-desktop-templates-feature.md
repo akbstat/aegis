@@ -143,7 +143,7 @@ Create `apps/desktop/aegis-desktop/src-tauri/src/http/structures.rs` with the `u
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::http::client::{HttpClient, MemoryStore};
+    use crate::http::client::{HttpClient, MemoryStore, TokenStore};
     use std::sync::Arc;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -350,6 +350,24 @@ Expected: PASS — 4 tests.
 
 Run: `cargo clippy -p aegis-desktop --all-targets --all-features -- -D warnings`
 Expected: no warnings.
+
+**Known pre-existing failure (measured 2026-11-03).** This crate does
+**not** pass that gate on the current toolchain. The baseline *before*
+this feature is **120 clippy errors** in `aegis-desktop` — `needless_borrow`
+×75, `let_underscore_future` ×26, `too_many_arguments` ×6, dead code —
+plus a hard failure in `lib/crates/windows-utils/src/user.rs`
+(`useless_conversion`). The toolchain has moved ahead of what the repo
+was written against.
+
+So the lint gate runs as a **delta**, not as an absolute:
+
+- The error count must not grow beyond the 120 baseline.
+- This task's new module contributes dead-code warnings (its types and
+  functions are unused until Task 3 wires the commands). They are
+  expected here and must be gone by the end of Task 3.
+
+Do not "fix" the pre-existing lints — that is an unrelated sweep across
+the crate, far outside this feature.
 
 - [ ] **Step 7: Commit**
 
