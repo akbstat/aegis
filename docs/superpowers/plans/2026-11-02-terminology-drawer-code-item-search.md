@@ -283,3 +283,40 @@ mounted component reused across codes.
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
+
+---
+
+## Implementation notes (deviations from the plan above)
+
+Recorded after the branch review, so a reader comparing this plan to the
+code is not left guessing.
+
+1. **The reset moved from an effect into render, and the settled value
+   is scoped by code.** The plan prescribed
+   `useEffect(() => setSearch(""), [code])`. The review showed that is
+   one step too late: the debounced value lags the reset by a debounce
+   window, so the previous code's term reached the new code list's
+   request in between — the new list flashed "no matching code items".
+   The search state now carries the code it was typed for, the reset
+   happens during render, and the fragment passed to the query is the
+   settled value *scoped by that code*.
+
+2. **A failed search no longer replaces the drawer body.** The
+   code-item query's error is rendered inside the table (the
+   `CodeItemTable` `error` prop), the way the code-list detail page
+   does it, so the search box survives a rejected fragment and the
+   user can correct it.
+
+3. **Two tests were tightened.** "Scopes the search to the resolved code
+   list" and "clearing the search restores every code item" asserted
+   conditions that were already true before the action they claimed to
+   check — the review showed both survive a mutation that breaks the
+   behaviour. Both now look at the request that carries the fragment
+   / the request issued after the clear.
+
+4. **The debounce test is deterministic.** It used real timers and
+   asserted that no request had gone out yet — a wall-clock margin
+   against a 300 ms debounce. It now runs under fake timers and
+   advances the clock explicitly. The test file restores real timers
+   after every test, so a failure under fake timers cannot leak into
+   the tests that follow.

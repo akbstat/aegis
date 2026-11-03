@@ -99,15 +99,39 @@ opens. A search term left over from the previous code would silently
 filter the new list — showing "no matching code items" for a code list
 that has plenty.
 
-So the search text resets when the code changes:
+So the search text carries the code it was typed for, and the settled
+value is scoped by that code:
 
 ```tsx
-useEffect(() => {
-  setSearch("");
-}, [code]);
+const [search, setSearch] = useState<{ code: string | null; text: string }>(
+  { code, text: "" },
+);
+if (search.code !== code) {
+  setSearch({ code, text: "" });
+}
+const debouncedSearch = useDebouncedValue(search, { delayMs: 300, maxWaitMs: 1000 });
+const fragment = debouncedSearch.code === code ? debouncedSearch.text : "";
 ```
 
+The reset happens *during render*, not in an effect, and the scoping
+covers the settled value rather than the input. An effect-based reset is
+one step too late: the debounced value lags the reset by a debounce
+window, so the previous code's term would reach the new code list's
+request in between — the new list would briefly be searched with the
+old term and flash "no matching code items", which is the exact symptom
+the reset exists to prevent.
+
 This is the only behavioural difference from the detail page.
+
+### A failed search keeps the search box
+
+The server rejects some fragments — a multi-word query, or one holding a
+character Postgres reserves for `tsquery` (`& | ! ( ) :`). When the
+code-item query fails, the error is rendered *inside* the table, the way
+the code-list detail page does it, rather than replacing the drawer
+body. The input stays on screen, so the user can correct the query;
+replacing the body would leave them with no way out but closing the
+drawer.
 
 ## Tests
 
@@ -121,7 +145,9 @@ This is the only behavioural difference from the detail page.
   that code list's id, not a version-wide one;
 - the empty message switches to "no matching code items" once a search
   is active;
-- changing the code clears the search box.
+- changing the code clears the search box;
+- the previous code's search term never reaches the new code list;
+- a failed search leaves the search box in place.
 
 ## What's left for the builder
 
