@@ -822,6 +822,7 @@ In `lib/packages/ui/src/i18n/locales/en.ts`, add:
   'templates.node.field.migration': 'Migration',
   'templates.node.field.migrationDirectory': 'Migration source directory',
   'templates.node.field.migrationFilter': 'Migration filter',
+  'templates.node.field.migrationFilterAdd': 'Add filter',
   'templates.node.field.invalidPath':
     'Enter a relative path — no leading or trailing "/", and no "." or ".." segment.',
   'templates.node.saveFailed': 'Save failed: {message}',
@@ -862,6 +863,7 @@ Note: `zhCN.ts` closes with `} satisfies Record<keyof typeof en, string>;`, not
   'templates.node.field.migration': '迁移',
   'templates.node.field.migrationDirectory': '迁移源目录',
   'templates.node.field.migrationFilter': '迁移过滤条件',
+  'templates.node.field.migrationFilterAdd': '添加过滤条件',
   'templates.node.field.invalidPath':
     '请输入相对路径 —— 不能以 "/" 开头或结尾, 也不能包含 "." 或 ".." 段。',
   'templates.node.saveFailed': '保存失败: {message}',
@@ -873,7 +875,7 @@ Note: `zhCN.ts` closes with `} satisfies Record<keyof typeof en, string>;`, not
 - [ ] **Step 3: Verify the catalogs agree**
 
 Run: `pnpm --filter @aegis/ui typecheck`
-Expected: PASS. The `satisfies Record<Locale, TranslationCatalog>` in `registry.ts` fails the build if `zhCN.ts` is missing a key that `en.ts` has, so a PASS means both catalogs carry all 28 keys.
+Expected: PASS. The `satisfies Record<Locale, TranslationCatalog>` in `registry.ts` fails the build if `zhCN.ts` is missing a key that `en.ts` has, so a PASS means both catalogs carry all 29 keys.
 
 - [ ] **Step 4: Commit**
 
@@ -1815,6 +1817,16 @@ describe("StructureNodeRow", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("does not offer to add a child under a file", async () => {
+    renderRow(FILE, { canMutate: true });
+    await userEvent.click(screen.getByRole("button", { name: /node actions/i }));
+    // The server rejects a parent that is not a directory, so the action
+    // is not offered on a file.
+    expect(screen.queryByText("Add node")).not.toBeInTheDocument();
+    expect(screen.getByText("Edit node")).toBeInTheDocument();
+    expect(screen.getByText("Delete node")).toBeInTheDocument();
+  });
+
   it("offers add, edit and delete to an admin", async () => {
     const onAdd = vi.fn();
     renderRow(DIRECTORY, { canMutate: true, onAdd });
@@ -2174,6 +2186,29 @@ describe("NodeDrawer", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ path: "raw", parent: null }),
+    );
+  });
+
+  it("drops a blank migration filter", async () => {
+    const onSubmit = vi.fn();
+    renderDrawer({ onSubmit });
+    await userEvent.type(
+      screen.getByLabelText("Migration source directory"),
+      "/opt/sop",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Add filter" }));
+    await userEvent.type(
+      screen.getAllByLabelText("Migration filter")[0],
+      "*.sas7bdat",
+    );
+    // A second, blank filter row.
+    await userEvent.click(screen.getByRole("button", { name: "Add filter" }));
+    await userEvent.type(screen.getByLabelText(/^Path/), "raw");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        migration: { directory: "/opt/sop", filter: ["*.sas7bdat"] },
+      }),
     );
   });
 
