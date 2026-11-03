@@ -89,14 +89,14 @@ describe("StructureNodeRow", () => {
   it("hides the action menu from a read-only user", () => {
     renderRow(DIRECTORY, { canMutate: false });
     expect(
-      screen.queryByRole("button", { name: /add node/i }),
+      screen.queryByRole("button", { name: /node actions/i }),
     ).not.toBeInTheDocument();
   });
 
   it("offers add, edit and delete to an admin", async () => {
     const onAdd = vi.fn();
     renderRow(DIRECTORY, { canMutate: true, onAdd });
-    await userEvent.click(screen.getByRole("button", { name: /add node/i }));
+    await userEvent.click(screen.getByRole("button", { name: /node actions/i }));
     expect(screen.getByText("Add node")).toBeInTheDocument();
     expect(screen.getByText("Edit node")).toBeInTheDocument();
     expect(screen.getByText("Delete node")).toBeInTheDocument();

@@ -34,7 +34,6 @@ function renderDrawer(
         <NodeDrawer
           open
           mode="create"
-          structureId={3}
           node={null}
           parent={PARENT}
           onClose={() => {}}
