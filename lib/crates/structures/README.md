@@ -17,10 +17,14 @@ desktop app's job.
   and is a **shared identity space**: a project structure's record for an
   inherited node carries the template node's `node_id`.
 - A node's **`entry_name`** is its own name — one folder or one file name, *not*
-  a path. The nesting comes from the `parent` link, and the full path of a node
-  is the chain of names above it. A name is unique among the node's **siblings**:
-  the same name may appear under two different parents, but never twice under
-  the same one.
+  a path. The nesting comes from the `parent` link, and a node's path relative
+  to the structure's root path is the chain of names above it. A name is unique
+  among the node's **siblings**: the same name may appear under two different
+  parents, but never twice under the same one.
+- A structure's **`rootpath`** is the absolute base directory its tree is rooted
+  at. Every structure has one, at every level; it is set when the structure is
+  created and can be changed afterwards. A node's full path is the root path
+  followed by the chain of ancestor names.
 - A **migration** says what to copy into a directory once it has been created.
 
 Reading a project structure returns the **effective tree**: the template's nodes

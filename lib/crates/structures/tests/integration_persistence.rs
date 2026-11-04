@@ -155,6 +155,7 @@ async fn a_template_structure_round_trips_through_postgres() {
         assert_eq!(fetched.nodes[0].node_id, "t_root");
         assert_eq!(fetched.nodes[0].entry_name, "raw");
         assert_eq!(fetched.nodes[0].description, "the raw folder");
+        assert_eq!(fetched.rootpath, "/abs/root");
     })
     .await;
 }
@@ -528,6 +529,27 @@ async fn a_project_can_only_have_one_structure() {
             structures::UsecaseError::Repository(DomainError::DuplicateProjectStructure(code))
                 if code == project_code
         ));
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+async fn a_structure_written_before_the_rootpath_reads_back_empty() {
+    with_pool(|pool| async move {
+        // A row that predates the rootpath column: the column is NOT
+        // NULL with a default, so a direct insert without it lands an
+        // empty root path.
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO structures (name, rootpath, level) VALUES ($1, '', 'template') RETURNING id",
+        )
+        .bind(unique("template"))
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let uc = usecase(pool.clone());
+        let view = uc.get_structure(id).await.unwrap();
+        assert_eq!(view.rootpath, "");
     })
     .await;
 }
