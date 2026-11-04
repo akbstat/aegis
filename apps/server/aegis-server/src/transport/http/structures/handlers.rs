@@ -175,7 +175,10 @@ pub async fn get_structure_meta(
     Ok(Json(meta.into()))
 }
 
-/// `PUT /api/structures/{id}` — rename a structure.
+/// `PUT /api/structures/{id}` — update a structure.
+///
+/// The name is always replaced. The root path is optional: omit it (or send
+/// `null`) to keep the stored one.
 #[utoipa::path(
     put, path = "/{id}", tag = "structures",
     operation_id = "structures_rename_structure",
@@ -184,7 +187,7 @@ pub async fn get_structure_meta(
     ),
     request_body = dto::RenameStructureRequest,
     responses(
-        (status = 200, description = "Structure renamed", body = dto::StructureViewResponse),
+        (status = 200, description = "Structure updated", body = dto::StructureViewResponse),
         (status = 400, description = "Validation failed", body = crate::transport::http::error::ErrorBody),
         (status = 401, description = "Missing / invalid token", body = crate::transport::http::error::ErrorBody),
         (status = 403, description = "Admin or root required to change a template", body = crate::transport::http::error::ErrorBody),

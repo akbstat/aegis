@@ -26,7 +26,7 @@ use std::sync::Arc;
 use structures::{
     CreateStructure, DeleteNode, DomainError, Migration, Node, NodeAttributes, NodeRepoPg,
     NodeRepository, ProjectLookup, StructureLevel, StructureRepoPg, StructureUsecase,
-    StructureUsecaseConfig, UpdateNode,
+    StructureUsecaseConfig, UpdateNode, UpdateStructure,
 };
 
 async fn with_pool<F, Fut, T>(f: F) -> T
@@ -550,6 +550,72 @@ async fn a_structure_written_before_the_rootpath_reads_back_empty() {
         let uc = usecase(pool.clone());
         let view = uc.get_structure(id).await.unwrap();
         assert_eq!(view.rootpath, "");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+async fn updating_a_structure_stores_a_new_rootpath_and_keeps_the_old_one() {
+    with_pool(|pool| async move {
+        let uc = usecase(pool.clone());
+        let view = uc
+            .create_structure(CreateStructure {
+                name: unique("template"),
+                rootpath: "/abs/root".into(),
+                level: StructureLevel::Template,
+                project_code: None,
+                template_id: None,
+            })
+            .await
+            .unwrap();
+
+        // A supplied root path replaces the stored one.
+        let moved = uc
+            .update_structure(UpdateStructure {
+                id: view.id,
+                name: "Moved".into(),
+                rootpath: Some("/abs/other".into()),
+            })
+            .await
+            .unwrap();
+        assert_eq!(moved.rootpath, "/abs/other");
+        assert_eq!(moved.name, "Moved");
+
+        // An absent root path leaves the stored one alone -- this is
+        // the `COALESCE` in the UPDATE statement, and only a live
+        // database can show it.
+        let kept = uc
+            .update_structure(UpdateStructure {
+                id: view.id,
+                name: "Kept".into(),
+                rootpath: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(kept.rootpath, "/abs/other");
+        assert_eq!(kept.name, "Kept");
+
+        // A blank root path is rejected, and the name is not changed
+        // either -- the whole update is rejected.
+        let err = uc
+            .update_structure(UpdateStructure {
+                id: view.id,
+                name: "Rejected".into(),
+                rootpath: Some("   ".into()),
+            })
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                structures::UsecaseError::Validation(DomainError::EmptyRootpath)
+            ),
+            "got {err:?}"
+        );
+        let unchanged = uc.get_structure(view.id).await.unwrap();
+        assert_eq!(unchanged.name, "Kept");
+        assert_eq!(unchanged.rootpath, "/abs/other");
     })
     .await;
 }

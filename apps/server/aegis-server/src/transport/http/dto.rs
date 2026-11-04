@@ -1765,7 +1765,10 @@ pub struct CreateStructureRequest {
     pub template_id: Option<i64>,
 }
 
-/// Rename a structure.
+/// Update a structure.
+///
+/// The name is replaced. The root path is optional: omit it (or send `null`)
+/// to keep the stored one.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RenameStructureRequest {

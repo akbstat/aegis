@@ -24,8 +24,19 @@ desktop app's job.
 - A structure's **`rootpath`** is the absolute base directory its tree is rooted
   at. Every structure has one, at every level; it is set when the structure is
   created and can be changed afterwards. A node's full path is the root path
-  followed by the chain of ancestor names.
+  followed by the chain of ancestor names. Structures created before the column
+  existed read back with an empty root path until one is set.
 - A **migration** says what to copy into a directory once it has been created.
+
+> **The desktop client needs a follow-up.** `POST /api/structures` now requires
+> a `rootpath`, and the desktop's `CreateStructureRequest` does not send one, so
+> the desktop's create-structure call is rejected with a 422 until it is
+> updated. The desktop's *reads* are unaffected (its wire DTOs ignore unknown
+> fields) and its update call is unaffected (the root path is optional there).
+> Three places need the field: the desktop's Rust `CreateStructureRequest` in
+> `src-tauri/src/http/structures.rs`, its TypeScript `CreateStructureInput`
+> mirror in `src/shared/api/types.ts`, and the create form in
+> `src/features/templates/components/StructureDrawer.tsx`.
 
 Reading a project structure returns the **effective tree**: the template's nodes
 merged with the project structure's extension records. The merge joins on
@@ -83,6 +94,11 @@ sqlx migrate run --source lib/crates/structures/migrations
 
 against the database named by `AEGIS_DATABASE_URL` for the server, or against a
 database of its own for the live tests.
+
+> **Apply the migrations before deploying a binary that reads the new
+> columns.** The server does not auto-migrate. Every structures query selects
+> `structures.rootpath`, so a binary deployed ahead of the migration fails
+> every structures request with "column rootpath does not exist".
 
 > **The URL must point at a dedicated database.** SQLx keeps a single
 > `_sqlx_migrations` table *per database*, shared by every crate that migrates

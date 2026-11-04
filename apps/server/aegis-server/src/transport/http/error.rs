@@ -970,6 +970,40 @@ mod tests {
         assert_eq!(body.code, "validation_failed");
     }
 
+    async fn render_structures(
+        err: apis::structures::StructureApiError,
+    ) -> (StatusCode, ErrorBody) {
+        let api = ApiError::from(err);
+        let response = api.into_response();
+        let status = response.status();
+        let body = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        let parsed: ErrorBody = serde_json::from_slice(&body).unwrap();
+        (status, parsed)
+    }
+
+    #[tokio::test]
+    async fn structures_validation_maps_to_400() {
+        // A blank root path reaches the client as a validation error,
+        // not a 500 — the domain's `EmptyRootpath` is a validation
+        // failure, not a repository failure.
+        let (status, body) = render_structures(apis::structures::StructureApiError::Validation(
+            "validation failed: empty rootpath".into(),
+        ))
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body.code, "validation_failed");
+    }
+
+    #[tokio::test]
+    async fn structures_missing_structure_maps_to_404() {
+        let (status, body) =
+            render_structures(apis::structures::StructureApiError::StructureNotFound(7)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.code, "structure_not_found");
+    }
+
     #[tokio::test]
     async fn crf_empty_search_fragment_maps_to_400() {
         let (status, body) = render_crf(apis::crf::CrfApiError::EmptySearchFragment).await;
