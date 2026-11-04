@@ -43,8 +43,11 @@ pub trait CodeListRepository: Send + Sync {
     async fn find_by_id(&self, id: i64) -> Result<CodeList, DomainError>;
     /// Unified list+search under a version. Returns a single page.
     /// - `fragment = None`           → `WHERE version_id = $1 ORDER BY id ASC`
-    /// - `fragment = Some(_)`        → `WHERE version_id = $1 AND tsv @@ to_tsquery('english', $2 || ':*')
-    ///                                  ORDER BY ts_rank(tsv, to_tsquery('english', $2 || ':*')) DESC, id ASC`
+    /// - `fragment = Some(_)`        → the fragment is split into terms; every term
+    ///                                  becomes a prefix-matched lexeme and the terms are
+    ///                                  ANDed, so `"vital sign"` becomes `vital:* & sign:*`:
+    ///                                  `WHERE version_id = $1 AND tsv @@ to_tsquery('english', $2)
+    ///                                  ORDER BY ts_rank(tsv, to_tsquery('english', $2)) DESC, id ASC`
     /// Implementations fetch `limit + 1` rows to compute `next_offset`.
     async fn search_or_list(&self, query: CodeListListQuery)
     -> Result<Page<CodeList>, DomainError>;

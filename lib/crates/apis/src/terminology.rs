@@ -109,6 +109,10 @@ pub struct Page<T> {
 /// + search under a single signature: `fragment = None` is a plain
 ///   `ORDER BY id ASC` list; `fragment = Some(_)` is a FTS query with
 ///   `ts_rank DESC, id ASC` ordering.
+///
+/// The fragment is free text: it is split into terms, every term is
+/// prefix-matched, and all of them have to match — `"vital sign"`
+/// matches the rows whose text contains both `vital` and `sign`.
 #[derive(Debug, Clone)]
 pub struct CodeListListQuery {
     pub version_id: i64,
@@ -296,7 +300,10 @@ pub trait TerminologyService: Send + Sync {
     /// `CodeListView`s. `query.fragment = None` (or `Some("")`)
     /// returns the plain list path ordered by `id ASC`;
     /// `query.fragment = Some(non-empty)` runs the FTS prefix-match
-    /// path with `ts_rank DESC, id ASC`. `query.offset` / `query.limit`
+    /// path with `ts_rank DESC, id ASC`. The fragment is split into
+    /// terms and every term has to match, so `"vital sign"` matches
+    /// the rows containing both `vital` and `sign`.
+    /// `query.offset` / `query.limit`
     /// are clamped by the backend (default 50, max 500).
     async fn list_code_lists(
         &self,

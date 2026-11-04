@@ -10,6 +10,8 @@ use crate::domain::{
     CodeList, CodeListListQuery, CodeListNew, CodeListRepository, CodeListUpdate, DomainError, Page,
 };
 
+use super::tsquery;
+
 const SQLSTATE_UNIQUE_VIOLATION: &str = "23505";
 const SQLSTATE_FK_VIOLATION: &str = "23503";
 
@@ -109,11 +111,11 @@ impl CodeListRepository for CodeListRepo {
         );
         qb.push_bind(q.version_id);
 
-        if let Some(frag) = q.fragment.as_deref().filter(|s| !s.trim().is_empty()) {
+        if let Some(expr) = tsquery::build(q.fragment.as_deref().unwrap_or_default()) {
             qb.push(" AND tsv @@ to_tsquery('english', ");
-            qb.push_bind(format!("{frag}:*"));
+            qb.push_bind(expr.clone());
             qb.push(") ORDER BY ts_rank(tsv, to_tsquery('english', ");
-            qb.push_bind(format!("{frag}:*"));
+            qb.push_bind(expr);
             qb.push(")) DESC, id ASC LIMIT ");
         } else {
             qb.push(" ORDER BY id ASC LIMIT ");

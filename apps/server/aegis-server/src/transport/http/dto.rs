@@ -921,6 +921,9 @@ pub struct BatchCreateCodeItemsResponse {
 /// + search: `fragment = None` (or empty) yields a plain
 ///   `ORDER BY id ASC` list; `fragment = Some(_)` runs the FTS
 ///   prefix-match path with `ts_rank DESC, id ASC` ordering.
+///   The fragment is free text: it is split into terms, every term
+///   is prefix-matched, and all of them have to match — `"vital
+///   sign"` matches the rows containing both `vital` and `sign`.
 ///   `offset` / `limit` are clamped by the backend (default 50,
 ///   max 500).
 #[derive(Serialize, Deserialize, ToSchema, Default)]
