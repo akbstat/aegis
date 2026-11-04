@@ -5,6 +5,8 @@ use crate::domain::{MergedNode, Migration, StructureLevel};
 pub struct StructureView {
     pub id: i64,
     pub name: String,
+    /// The absolute base directory this structure's tree is rooted at.
+    pub rootpath: String,
     pub level: StructureLevel,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,
@@ -17,6 +19,8 @@ pub struct StructureView {
 pub struct StructureSummaryView {
     pub id: i64,
     pub name: String,
+    /// The absolute base directory this structure's tree is rooted at.
+    pub rootpath: String,
     pub level: StructureLevel,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,
@@ -30,6 +34,8 @@ pub struct StructureSummaryView {
 pub struct StructureMetaView {
     pub id: i64,
     pub name: String,
+    /// The absolute base directory this structure's tree is rooted at.
+    pub rootpath: String,
     pub level: StructureLevel,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,

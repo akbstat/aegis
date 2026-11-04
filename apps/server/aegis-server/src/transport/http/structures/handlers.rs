@@ -82,6 +82,7 @@ pub async fn create_structure(
         .structures
         .create_structure(apis::structures::CreateStructureRequest {
             name: req.name,
+            rootpath: req.rootpath,
             level,
             project_code: req.project_code,
             template_id: req.template_id,
@@ -540,6 +541,7 @@ mod tests {
         apis::structures::StructureView {
             id: 1,
             name: "Standard".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Template,
             project_code: None,
             template_id: None,
@@ -581,6 +583,7 @@ mod tests {
             Ok(apis::structures::StructureMetaView {
                 id: 1,
                 name: "Standard".into(),
+                rootpath: "/abs/root".into(),
                 level: self.level.unwrap_or(StructureLevel::Template),
                 project_code: None,
                 template_id: None,
@@ -594,6 +597,7 @@ mod tests {
                 structures: vec![apis::structures::StructureSummaryView {
                     id: 1,
                     name: "Standard".into(),
+                    rootpath: "/abs/root".into(),
                     level: StructureLevel::Template,
                     project_code: None,
                     template_id: None,
@@ -714,7 +718,7 @@ mod tests {
             (
                 "POST",
                 "/api/structures",
-                Some(r#"{"name":"Standard","level":"template"}"#),
+                Some(r#"{"name":"Standard","rootpath":"/abs/root","level":"template"}"#),
                 AxStatus::CREATED,
             ),
             ("GET", "/api/structures", None, AxStatus::OK),
@@ -802,7 +806,7 @@ mod tests {
         let response = app
             .oneshot(post(
                 "/api/structures",
-                r#"{"name":"Standard","level":"template"}"#,
+                r#"{"name":"Standard","rootpath":"/abs/root","level":"template"}"#,
             ))
             .await
             .unwrap();
@@ -816,7 +820,7 @@ mod tests {
         let response = app
             .oneshot(post(
                 "/api/structures",
-                r#"{"name":"Study","level":"project","projectCode":"ABC","templateId":1}"#,
+                r#"{"name":"Study","rootpath":"/abs/root","level":"project","projectCode":"ABC","templateId":1}"#,
             ))
             .await
             .unwrap();
@@ -834,5 +838,21 @@ mod tests {
             .unwrap();
         let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), AxStatus::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn a_create_without_a_rootpath_is_rejected() {
+        let state = test_state(MockStructureService::default(), apis::user::Role::Admin);
+        let app = app(state);
+        let response = app
+            .oneshot(post(
+                "/api/structures",
+                r#"{"name":"Standard","level":"template"}"#,
+            ))
+            .await
+            .unwrap();
+        // the body does not deserialize -- axum rejects it before the
+        // handler runs
+        assert_eq!(response.status(), AxStatus::UNPROCESSABLE_ENTITY);
     }
 }

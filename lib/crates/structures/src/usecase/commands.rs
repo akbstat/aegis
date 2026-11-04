@@ -7,6 +7,8 @@ use crate::domain::{Migration, StructureLevel};
 #[derive(Debug, Clone)]
 pub struct CreateStructure {
     pub name: String,
+    /// The absolute base directory the structure's tree is rooted at.
+    pub rootpath: String,
     pub level: StructureLevel,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,

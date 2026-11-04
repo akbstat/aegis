@@ -35,6 +35,7 @@ async fn the_facade_round_trips_a_template_structure() {
     let created = svc
         .create_structure(CreateStructureRequest {
             name: "Standard".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Template,
             project_code: None,
             template_id: None,
@@ -43,10 +44,35 @@ async fn the_facade_round_trips_a_template_structure() {
         .unwrap();
     assert_eq!(created.level, StructureLevel::Template);
     assert!(created.nodes.is_empty());
+    assert_eq!(created.rootpath, "/abs/root");
 
     let fetched = svc.get_structure(created.id).await.unwrap();
     assert_eq!(fetched.id, created.id);
     assert_eq!(fetched.name, "Standard");
+}
+
+#[tokio::test]
+async fn the_facade_refuses_a_blank_rootpath() {
+    let h = harness(&[]);
+    let svc = service(&h);
+    for blank in ["", "   "] {
+        let err = svc
+            .create_structure(CreateStructureRequest {
+                name: "Standard".into(),
+                rootpath: blank.into(),
+                level: StructureLevel::Template,
+                project_code: None,
+                template_id: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, StructureApiError::Validation(_)),
+            "rootpath {blank:?} should be refused, got {err:?}"
+        );
+    }
+    // nothing was stored
+    assert_eq!(h.structures.count(), 0);
 }
 
 #[tokio::test]
@@ -56,6 +82,7 @@ async fn the_facade_translates_the_structure_level_both_ways() {
     let created = svc
         .create_structure(CreateStructureRequest {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(1),
@@ -71,6 +98,7 @@ async fn the_facade_translates_the_structure_level_both_ways() {
     let project = svc
         .create_structure(CreateStructureRequest {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -95,6 +123,7 @@ async fn the_facade_maps_a_duplicate_name_to_the_duplicate_name_error() {
     let project = svc
         .create_structure(CreateStructureRequest {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -132,6 +161,7 @@ async fn the_facade_maps_a_missing_node_to_the_node_not_found_error() {
     let project = svc
         .create_structure(CreateStructureRequest {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -165,6 +195,7 @@ async fn the_facade_maps_a_validation_failure_to_the_validation_error() {
     let err = svc
         .create_structure(CreateStructureRequest {
             name: "  ".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Template,
             project_code: None,
             template_id: None,
@@ -185,6 +216,7 @@ async fn the_facade_lists_own_nodes_with_the_hidden_and_override_flags() {
     let project = svc
         .create_structure(CreateStructureRequest {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -212,6 +244,7 @@ async fn the_facade_deletes_a_node_and_lists_structures() {
     let project = svc
         .create_structure(CreateStructureRequest {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),

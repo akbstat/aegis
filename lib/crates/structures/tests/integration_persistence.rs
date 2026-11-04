@@ -123,6 +123,7 @@ async fn a_template_structure_round_trips_through_postgres() {
         let view = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -166,6 +167,7 @@ async fn a_migration_and_a_reference_survive_the_jsonb_round_trip() {
         let view = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -241,6 +243,7 @@ async fn a_project_structure_merges_over_its_template() {
         let template = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -261,6 +264,7 @@ async fn a_project_structure_merges_over_its_template() {
         let project = uc
             .create_structure(CreateStructure {
                 name: unique("project"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Project,
                 project_code: Some(project_code.clone()),
                 template_id: Some(template.id),
@@ -295,6 +299,7 @@ async fn overriding_a_template_node_drops_the_template_children() {
         let template = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -314,6 +319,7 @@ async fn overriding_a_template_node_drops_the_template_children() {
         let project = uc
             .create_structure(CreateStructure {
                 name: unique("project"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Project,
                 project_code: Some(unique("ABC")),
                 template_id: Some(template.id),
@@ -353,6 +359,7 @@ async fn hiding_a_template_node_removes_it_from_the_tree() {
         let template = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -368,6 +375,7 @@ async fn hiding_a_template_node_removes_it_from_the_tree() {
         let project = uc
             .create_structure(CreateStructure {
                 name: unique("project"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Project,
                 project_code: Some(unique("ABC")),
                 template_id: Some(template.id),
@@ -402,6 +410,7 @@ async fn deleting_a_structure_cascades_to_its_nodes() {
         let view = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -428,6 +437,7 @@ async fn the_database_refuses_two_siblings_with_the_same_name() {
         let view = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -485,6 +495,7 @@ async fn a_project_can_only_have_one_structure() {
         let template = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -494,6 +505,7 @@ async fn a_project_can_only_have_one_structure() {
         let project_code = unique("ABC");
         uc.create_structure(CreateStructure {
             name: unique("project"),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some(project_code.clone()),
             template_id: Some(template.id),
@@ -504,6 +516,7 @@ async fn a_project_can_only_have_one_structure() {
         let err = uc
             .create_structure(CreateStructure {
                 name: unique("project"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Project,
                 project_code: Some(project_code.clone()),
                 template_id: Some(template.id),

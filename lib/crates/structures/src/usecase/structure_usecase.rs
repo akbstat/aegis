@@ -65,6 +65,7 @@ where
         // structure must carry both an owner and a template.
         Structure::new(
             cmd.name.clone(),
+            cmd.rootpath.clone(),
             cmd.level,
             cmd.project_code.clone(),
             cmd.template_id,
@@ -101,6 +102,7 @@ where
             .structures
             .create(StructureNew {
                 name: cmd.name,
+                rootpath: cmd.rootpath,
                 level: cmd.level,
                 project_code: cmd.project_code,
                 template_id: cmd.template_id,
@@ -109,6 +111,7 @@ where
         Ok(StructureView {
             id: structure.id,
             name: structure.name,
+            rootpath: structure.rootpath,
             level: structure.level,
             project_code: structure.project_code,
             template_id: structure.template_id,
@@ -122,6 +125,7 @@ where
         Ok(StructureView {
             id: effective.structure.id,
             name: effective.structure.name,
+            rootpath: effective.structure.rootpath,
             level: effective.structure.level,
             project_code: effective.structure.project_code,
             template_id: effective.structure.template_id,
@@ -140,6 +144,7 @@ where
         Ok(StructureMetaView {
             id: structure.id,
             name: structure.name,
+            rootpath: structure.rootpath,
             level: structure.level,
             project_code: structure.project_code,
             template_id: structure.template_id,
@@ -164,6 +169,7 @@ where
             .map(|s| StructureSummaryView {
                 id: s.id,
                 name: s.name,
+                rootpath: s.rootpath,
                 level: s.level,
                 project_code: s.project_code,
                 template_id: s.template_id,

@@ -69,6 +69,7 @@ where
             .usecase
             .create_structure(CreateStructure {
                 name: req.name,
+                rootpath: req.rootpath,
                 level: to_domain_level(req.level),
                 project_code: req.project_code,
                 template_id: req.template_id,
@@ -212,6 +213,7 @@ impl From<InternalStructureView> for StructureView {
         Self {
             id: v.id,
             name: v.name,
+            rootpath: v.rootpath,
             level: to_api_level(v.level),
             project_code: v.project_code,
             template_id: v.template_id,
@@ -225,6 +227,7 @@ impl From<InternalSummaryView> for StructureSummaryView {
         Self {
             id: v.id,
             name: v.name,
+            rootpath: v.rootpath,
             level: to_api_level(v.level),
             project_code: v.project_code,
             template_id: v.template_id,
@@ -237,6 +240,7 @@ impl From<InternalMetaView> for StructureMetaView {
         Self {
             id: v.id,
             name: v.name,
+            rootpath: v.rootpath,
             level: to_api_level(v.level),
             project_code: v.project_code,
             template_id: v.template_id,

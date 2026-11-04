@@ -85,6 +85,7 @@ pub struct NodeView {
 pub struct StructureView {
     pub id: i64,
     pub name: String,
+    pub rootpath: String,
     pub level: StructureLevel,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,
@@ -97,6 +98,7 @@ pub struct StructureView {
 pub struct StructureSummaryView {
     pub id: i64,
     pub name: String,
+    pub rootpath: String,
     pub level: StructureLevel,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,
@@ -107,6 +109,7 @@ pub struct StructureSummaryView {
 pub struct StructureMetaView {
     pub id: i64,
     pub name: String,
+    pub rootpath: String,
     pub level: StructureLevel,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,
@@ -152,6 +155,7 @@ pub struct OwnNodeList {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateStructureRequest {
     pub name: String,
+    pub rootpath: String,
     pub level: StructureLevel,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,

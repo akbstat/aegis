@@ -9,6 +9,8 @@ pub enum DomainError {
     // ---- validation (constructor-time) ----
     #[error("empty name")]
     EmptyName,
+    #[error("empty rootpath")]
+    EmptyRootpath,
     #[error("invalid name: {0}")]
     InvalidName(String),
     #[error("invalid structure level: {0}")]

@@ -65,6 +65,7 @@ impl StructureRepository for FakeStructureRepo {
     async fn create(&self, input: StructureNew) -> Result<Structure, DomainError> {
         let structure = Structure::new(
             input.name,
+            input.rootpath,
             input.level,
             input.project_code,
             input.template_id,
@@ -291,8 +292,14 @@ pub(crate) fn node(node_id: &str, entry_name: &str, directory: bool, parent: Opt
 
 /// A template structure with one node under it.
 pub(crate) fn template_with_child() -> Structure {
-    let mut structure =
-        Structure::new("Standard".into(), StructureLevel::Template, None, None).unwrap();
+    let mut structure = Structure::new(
+        "Standard".into(),
+        "/abs/standard".into(),
+        StructureLevel::Template,
+        None,
+        None,
+    )
+    .unwrap();
     structure.id = 1;
     structure.nodes = vec![node("t_root", "raw", true, None)];
     structure
@@ -307,6 +314,7 @@ async fn creating_a_template_structure_stores_it_with_no_owner() {
         .usecase
         .create_structure(CreateStructure {
             name: "Standard".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Template,
             project_code: None,
             template_id: None,
@@ -316,6 +324,7 @@ async fn creating_a_template_structure_stores_it_with_no_owner() {
     assert_eq!(view.level, StructureLevel::Template);
     assert_eq!(view.project_code, None);
     assert_eq!(view.template_id, None);
+    assert_eq!(view.rootpath, "/abs/root");
     assert_eq!(h.structures.count(), 1);
 }
 
@@ -326,6 +335,7 @@ async fn creating_a_project_structure_without_a_template_is_rejected() {
         .usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: None,
@@ -345,6 +355,7 @@ async fn creating_a_project_structure_without_a_project_code_is_rejected() {
         .usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: None,
             template_id: Some(1),
@@ -364,6 +375,7 @@ async fn creating_a_template_structure_with_an_owner_is_rejected() {
         .usecase
         .create_structure(CreateStructure {
             name: "Standard".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Template,
             project_code: Some("ABC".into()),
             template_id: None,
@@ -383,6 +395,7 @@ async fn creating_a_project_structure_for_an_unknown_project_is_rejected() {
         .usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("NOPE".into()),
             template_id: Some(1),
@@ -402,6 +415,7 @@ async fn creating_a_project_structure_pointing_at_a_missing_template_is_rejected
         .usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(404),
@@ -422,6 +436,7 @@ async fn creating_a_project_structure_pointing_at_a_project_structure_is_rejecte
         .usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -432,6 +447,7 @@ async fn creating_a_project_structure_pointing_at_a_project_structure_is_rejecte
         .usecase
         .create_structure(CreateStructure {
             name: "Other".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("XYZ".into()),
             template_id: Some(project.id),
@@ -451,6 +467,7 @@ async fn creating_a_second_project_structure_for_the_same_project_is_rejected() 
     h.usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -461,6 +478,7 @@ async fn creating_a_second_project_structure_for_the_same_project_is_rejected() 
         .usecase
         .create_structure(CreateStructure {
             name: "Study again".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -481,6 +499,7 @@ async fn renaming_a_structure_changes_only_its_name() {
         .usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -526,6 +545,7 @@ async fn deleting_a_template_that_is_still_referenced_is_rejected() {
     h.usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -570,6 +590,7 @@ async fn building_a_project_structure_returns_the_merged_tree() {
         .usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -597,6 +618,7 @@ async fn getting_a_structure_returns_its_effective_tree() {
         .usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -617,6 +639,7 @@ async fn getting_a_structure_meta_returns_the_level_without_the_tree() {
         .usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -646,6 +669,7 @@ async fn listing_structures_filters_by_level_and_project() {
     h.usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
@@ -682,6 +706,7 @@ async fn template_and_project(h: &Harness) -> (Structure, StructureView) {
         .usecase
         .create_structure(CreateStructure {
             name: "Study".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some("ABC".into()),
             template_id: Some(template.id),
