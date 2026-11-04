@@ -524,8 +524,9 @@ export const api = {
   // payload as a struct parameter named `body`, so the wrapper must
   // nest it under that key — flattening it is rejected at runtime with
   // "command add_structure_node missing required key body".
-  // The key list is pinned by src-tauri/src/structures.contract.json and
-  // checked by src/test/features/templates/api.test.ts.
+  // The key list is pinned by src/test/features/templates/api.test.ts, and
+  // checked against the Rust command signatures by
+  // commands::structures::tests::invoke_keys_match_the_documented_shape.
   listStructures: (level?: StructureLevel): Promise<StructureSummaryView[]> =>
     call<StructureSummaryView[]>("list_structures", { level }),
   getStructure: (id: number): Promise<StructureView> =>

@@ -4,15 +4,27 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { api } from "../../../shared/api";
 import { mockCommands, mockInvoke } from "../../helpers/tauri-mock";
-import CONTRACT_JSON from "../../../../src-tauri/src/structures.contract.json";
 
 /**
- * The invoke payload keys Tauri v2 derives from the Rust commands' Rust
- * parameter names. The Rust half of this contract lives in
- * `src-tauri/src/structures.contract.json` and is checked against the
- * command signatures by `commands::structures::tests::invoke_keys_match_the_contract`.
+ * The invoke payload keys each command expects.
+ *
+ * Tauri v2 derives them from the Rust commands' Rust parameter names:
+ * `tauri-macros` lower-camel-cases each parameter, and `tauri`'s
+ * resolver looks that key up in the payload with no whole-payload
+ * fallback. The Rust side keeps its own copy of this list, checked
+ * against the command signatures by
+ * `commands::structures::tests::invoke_keys_match_the_documented_shape`.
  */
-const CONTRACT = CONTRACT_JSON as Record<string, string[]>;
+const EXPECTED_INVOKE_KEYS: Record<string, string[]> = {
+  list_structures: ["level"],
+  get_structure: ["id"],
+  create_structure: ["body"],
+  update_structure: ["id", "body"],
+  delete_structure: ["id"],
+  add_structure_node: ["structureId", "body"],
+  update_structure_node: ["structureId", "nodeId", "body"],
+  delete_structure_node: ["structureId", "nodeId"],
+};
 
 describe("structures api", () => {
   it("sends exactly the invoke keys the Rust commands expect", async () => {
@@ -72,7 +84,7 @@ describe("structures api", () => {
       await call();
       const payload = mockInvoke.mock.calls[0][1] as Record<string, unknown>;
       expect(Object.keys(payload).sort(), command).toEqual(
-        [...CONTRACT[command]].sort(),
+        [...EXPECTED_INVOKE_KEYS[command]].sort(),
       );
     }
   });

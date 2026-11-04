@@ -380,28 +380,42 @@ mod tests {
     //!   delete_structure_node: { structureId, nodeId }
     //!
     //! These tests pin the deserialization shape so a future rename cannot
-    //! silently desync Rust and TS.
+    //! silently change a command's invoke keys.
 
     use super::*;
     use serde_json::json;
 
-    /// The invoke payload keys Tauri v2 derives from a command's Rust
-    /// parameter names: `tauri-macros` lower-camel-cases each parameter,
-    /// and `tauri`'s resolver looks that key up in the payload with no
-    /// whole-payload fallback.
+    /// The invoke payload keys each command expects.
     ///
-    /// This test extracts the parameter names from the command signatures
-    /// in this very file and checks them against the shared contract, so
-    /// renaming a Rust parameter breaks the TypeScript wrapper's contract
-    /// here instead of failing at runtime with "missing required key".
-    #[test]
-    fn invoke_keys_match_the_contract() {
-        let source = include_str!("structures.rs");
-        let contract: serde_json::Value =
-            serde_json::from_str(include_str!("../structures.contract.json")).unwrap();
-        let contract = contract.as_object().unwrap();
+    /// Tauri v2 derives them from the command's Rust parameter names:
+    /// `tauri-macros` lower-camel-cases each parameter, and `tauri`'s
+    /// resolver looks that key up in the payload with no whole-payload
+    /// fallback. So a wrapper that sends the wrong key is rejected at
+    /// runtime with "missing required key body", not at compile time.
+    ///
+    /// The list lives here rather than in a shared file because the
+    /// TypeScript side keeps its own copy — see
+    /// `src/test/features/templates/api.test.ts`.
+    const EXPECTED_INVOKE_KEYS: &[(&str, &[&str])] = &[
+        ("list_structures", &["level"]),
+        ("get_structure", &["id"]),
+        ("create_structure", &["body"]),
+        ("update_structure", &["id", "body"]),
+        ("delete_structure", &["id"]),
+        ("add_structure_node", &["structureId", "body"]),
+        ("update_structure_node", &["structureId", "nodeId", "body"]),
+        ("delete_structure_node", &["structureId", "nodeId"]),
+    ];
 
-        for (command, expected) in contract {
+    /// This test extracts the parameter names from the command signatures
+    /// in this very file and checks them against
+    /// [`EXPECTED_INVOKE_KEYS`], so renaming a Rust parameter breaks here
+    /// instead of at runtime.
+    #[test]
+    fn invoke_keys_match_the_documented_shape() {
+        let source = include_str!("structures.rs");
+
+        for (command, expected) in EXPECTED_INVOKE_KEYS {
             let marker = format!("pub async fn {command}(");
             let start = source
                 .find(&marker)
@@ -417,12 +431,7 @@ mod tests {
                 .map(to_lower_camel)
                 .collect();
 
-            let expected_keys: Vec<String> = expected
-                .as_array()
-                .expect("contract entry must be an array")
-                .iter()
-                .map(|k| k.as_str().expect("contract key must be a string").to_string())
-                .collect();
+            let expected_keys: Vec<String> = expected.iter().map(|k| k.to_string()).collect();
 
             assert_eq!(keys, expected_keys, "invoke keys for {command}");
         }
