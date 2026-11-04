@@ -118,6 +118,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             commands::crf::domain_annotation::update_crf_domain_annotation,
             commands::crf::domain_annotation::delete_crf_domain_annotation,
             commands::crf::domain_annotation::search_crf_domain_annotations_by_version,
+            // structures
+            commands::structures::list_structures,
+            commands::structures::get_structure,
+            commands::structures::create_structure,
+            commands::structures::rename_structure,
+            commands::structures::delete_structure,
+            commands::structures::add_structure_node,
+            commands::structures::update_structure_node,
+            commands::structures::delete_structure_node,
             // health
             commands::healthz::healthz,
             // webview log forwarder (sink for console.warn / console.error)

@@ -1,0 +1,4244 @@
+# Aegis Desktop Templates Feature Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Ship a `templates` feature in `apps/desktop/aegis-desktop` — a Templates landing page with one fixed card, and a Project Structure Template page whose right-hand sidebar lists the global template structures and whose left pane renders each structure's folder tree in a Complete view and a Flat view, with admin-only add/edit/delete on nodes.
+
+**Architecture:** The server's `/api/structures` endpoints already exist and are unchanged. The desktop gains a new transport layer (`src-tauri/src/http/structures.rs` + `src-tauri/src/commands/structures.rs`), a hand-written TS mirror of the wire DTOs, a `features/templates` module, and two file-based routes. Both tree views render from a single `get_structure` fetch — the Flat view is a pure client-side transform of the same tree.
+
+**Tech Stack:** Rust (Tauri 2, reqwest, serde, wiremock for tests), React 19, TypeScript, TanStack Query + TanStack Router (file-based routing), MUI 9, `@mui/x-tree-view@9.16.0`, Vitest + Testing Library.
+
+**Spec:** `docs/superpowers/specs/2026-11-03-aegis-desktop-templates-feature-design.md` — the plan argues from the spec, so the spec travels with it; executors read both.
+
+## Global Constraints
+
+- **Desktop only.** No changes to `apps/server/` or `lib/crates/`. The server's `/api/structures` endpoints are the contract; nothing here may require a server change.
+- **The Rust side is transport-only.** `src-tauri/src/commands/` is a 1:1 `#[tauri::command]` shim over `src-tauri/src/http/`. TypeScript never calls the server directly.
+- **Wire DTOs are duplicated by hand.** The Rust structs in `src-tauri/src/http/structures.rs` and the TS interfaces in `src/shared/api/types.ts` are mirrored 1:1; TS identifiers camelCase, the wire camelCase for these structures. Both halves change in the same commit.
+- **`@mui/x-tree-view` is pinned to `9.16.0`** and is a **regular dependency of `@aegis/ui`** (not a peer, not a desktop dependency) behind a new `@aegis/ui/tree-view` subpath — the same shape as the existing `@mui/x-charts` → `@aegis/ui/charts` subpath. The desktop takes on no direct `@mui/*` dependency.
+- **i18n:** `lib/packages/ui/src/i18n/locales/en.ts` is the source of truth (`TranslationKey = keyof typeof en`). Every key added to `en.ts` must also be added to `zhCN.ts` or `pnpm --filter @aegis/ui typecheck` fails.
+- **Query keys come from `src/shared/query/keys.ts`** — never an inline array.
+- **`hidden` is never sent.** The server rejects `hidden = true` against a template structure, and hidden nodes are already absent from the tree the page renders. The drawer has no `hidden` field and the client never sends the key.
+- **`parent` is always sent** on add and on edit. `AddNodeRequest` / `UpdateNodeRequest` are full replacements; `parent: null` means "at the root".
+- **A node carries only its own `entryName`** — one folder or file name, never a path.
+  The nesting comes from `parent`, and a name is unique among its siblings. The
+  server stores no path at all, so the desktop derives the full path from the
+  ancestor chain.
+
+## Review Focus
+
+Five input classes the spec implies but does not spell out. Each has a test in the owning task.
+
+1. **The template list comes back empty** (no template structures exist yet). The page must not navigate to a null structure id and must show an empty state. → Task 11.
+2. **A template structure has zero nodes.** The tree pane must render an empty state, not an empty `SimpleTreeView` that looks broken. → Task 11.
+3. **A node's `description` is empty** — the domain explicitly allows it. The row must render without a blank secondary line. → Task 9.
+4. **An entry name that is not a valid name** (blank, carrying a `/` or a `\`, or `.` / `..`). The server returns `400 invalid_name`; the drawer must disable Save before the request is ever made. → Task 10.
+5. **A directory is deleted.** The server removes the whole subtree with it, so the confirmation copy must say so — otherwise the admin believes only one folder disappeared. → Task 10.
+
+---
+
+### Task 1: `@aegis/ui/tree-view` subpath
+
+**Files:**
+- Modify: `lib/packages/ui/package.json` — `dependencies` and `exports`
+- Create: `lib/packages/ui/src/tree-view/index.ts`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: the subpath `@aegis/ui/tree-view`, re-exporting `@mui/x-tree-view` in full. Later tasks import `SimpleTreeView` and `TreeItem` from `"@aegis/ui/tree-view"`.
+
+- [ ] **Step 1: Add the dependency and the export entry**
+
+In `lib/packages/ui/package.json`, add to `dependencies` (alongside `"@mui/x-charts": "9.16.0"`):
+
+```json
+"@mui/x-tree-view": "9.16.0"
+```
+
+Add to the `exports` object (after the `"./charts"` entry):
+
+```json
+"./tree-view": "./src/tree-view/index.ts"
+```
+
+- [ ] **Step 2: Create the re-export module**
+
+Create `lib/packages/ui/src/tree-view/index.ts`:
+
+```ts
+// Thin re-export of `@mui/x-tree-view@9.16.0`. Consumers compose the tree
+// primitives directly; the UI package ships no tree wrapper. The dependency
+// is a regular (not peer) dependency so the tree resolves the same
+// `@mui/material` instance the rest of the app uses — a second instance
+// would put the tree on a different theme context.
+export * from '@mui/x-tree-view';
+```
+
+- [ ] **Step 3: Pin the subpath with a test**
+
+The repo gives every subpath a test — `src/charts/index.test.ts` is the
+model. Add `lib/packages/ui/src/tree-view/index.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+
+import { SimpleTreeView, TreeItem } from './index';
+
+describe('@aegis/ui/tree-view', () => {
+  it('re-exports the tree primitives', () => {
+    expect(SimpleTreeView).toBeDefined();
+    expect(TreeItem).toBeDefined();
+  });
+});
+```
+
+Watch it fail: move `src/tree-view/index.ts` aside, run the test, and
+confirm it fails to resolve the module. Then restore the file and run
+the test again — it passes.
+
+- [ ] **Step 4: Install the new dependency**
+
+Run: `pnpm install`
+Expected: the lockfile gains `@mui/x-tree-view@9.16.0`; `lib/packages/ui/node_modules/@mui/x-tree-view` exists.
+
+- [ ] **Step 5: Verify the UI package still typechecks**
+
+Run: `pnpm --filter @aegis/ui typecheck`
+Expected: PASS with no errors.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add lib/packages/ui/package.json lib/packages/ui/src/tree-view/index.ts lib/packages/ui/src/tree-view/index.test.ts pnpm-lock.yaml
+git commit -m "feat(ui): add the @aegis/ui/tree-view subpath"
+```
+
+---
+
+### Task 2: Rust HTTP adapter for structures
+
+**Files:**
+- Create: `apps/desktop/aegis-desktop/src-tauri/src/http/structures.rs`
+- Modify: `apps/desktop/aegis-desktop/src-tauri/src/http.rs` — add `pub mod structures;`
+
+**Interfaces:**
+- Consumes: `super::client::HttpClient` (`request`, `request_bytes`), `super::dto::ApiError`.
+- Produces (used by Task 3):
+  - `pub enum StructureLevelResponse { Template, Project }` — `#[serde(rename_all = "camelCase")]`, serialises to `"template"` / `"project"`.
+  - `pub struct MigrationViewResponse { pub directory: String, pub filter: Vec<String> }`
+  - `pub struct NodeViewResponse { pub node_id: String, pub description: String, pub entry_name: String, pub directory: bool, pub parent: Option<String>, pub reference: Option<String>, pub migration: Option<MigrationViewResponse>, pub children: Vec<NodeViewResponse> }`
+  - `pub struct StructureViewResponse { pub id: i64, pub name: String, pub level: StructureLevelResponse, pub project_code: Option<String>, pub template_id: Option<i64>, pub nodes: Vec<NodeViewResponse> }`
+  - `pub struct StructureSummaryResponse { pub id: i64, pub name: String, pub level: StructureLevelResponse, pub project_code: Option<String>, pub template_id: Option<i64> }`
+  - `pub struct StructureListResponse { pub structures: Vec<StructureSummaryResponse> }`
+  - `pub struct AddNodeRequest { pub entry_name: String, pub description: String, pub directory: bool, pub parent: Option<String>, pub reference: Option<String>, pub migration: Option<MigrationViewResponse> }`
+  - `pub struct UpdateNodeRequest { pub entry_name: String, pub description: String, pub directory: bool, pub parent: Option<String>, pub reference: Option<String>, pub migration: Option<MigrationViewResponse> }`
+  - `pub async fn list_structures(c: &HttpClient, level: Option<StructureLevelResponse>) -> Result<Vec<StructureSummaryResponse>, ApiError>`
+  - `pub async fn get_structure(c: &HttpClient, id: i64) -> Result<StructureViewResponse, ApiError>`
+  - `pub async fn add_node(c: &HttpClient, structure_id: i64, body: &AddNodeRequest) -> Result<NodeViewResponse, ApiError>`
+  - `pub async fn update_node(c: &HttpClient, structure_id: i64, node_id: &str, body: &UpdateNodeRequest) -> Result<NodeViewResponse, ApiError>`
+  - `pub async fn delete_node(c: &HttpClient, structure_id: i64, node_id: &str) -> Result<(), ApiError>`
+
+- [ ] **Step 1: Write the failing serde tests**
+
+Create `apps/desktop/aegis-desktop/src-tauri/src/http/structures.rs` with the `use` block and the tests below, but with the function bodies stubbed as `todo!()`. The `#[cfg(test)] mod tests` block:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::http::client::{HttpClient, MemoryStore, TokenStore};
+    use std::sync::Arc;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn structure_level_serializes_lowercase() {
+        assert_eq!(
+            serde_json::to_string(&StructureLevelResponse::Template).unwrap(),
+            "\"template\""
+        );
+        assert_eq!(
+            serde_json::to_string(&StructureLevelResponse::Project).unwrap(),
+            "\"project\""
+        );
+    }
+
+    #[test]
+    fn node_view_response_parses_the_full_wire_shape() {
+        let j = r#"{
+            "nodeId": "n1",
+            "description": "raw data",
+            "entryName": "data",
+            "directory": true,
+            "parent": "n0",
+            "reference": null,
+            "migration": { "directory": "/opt/sop/raw", "filter": ["*.sas7bdat"] },
+            "children": [
+                {
+                    "nodeId": "n2",
+                    "description": "",
+                    "entryName": "a.sas7bdat",
+                    "directory": false,
+                    "parent": "n1",
+                    "reference": "/opt/sop/raw/a.sas7bdat",
+                    "migration": null,
+                    "children": []
+                }
+            ]
+        }"#;
+        let node: NodeViewResponse = serde_json::from_str(j).unwrap();
+        assert_eq!(node.node_id, "n1");
+        assert!(node.directory);
+        assert_eq!(node.parent.as_deref(), Some("n0"));
+        assert_eq!(node.migration.unwrap().filter, vec!["*.sas7bdat"]);
+        assert_eq!(node.children.len(), 1);
+        assert_eq!(node.children[0].node_id, "n2");
+        assert!(!node.children[0].directory);
+    }
+
+    #[test]
+    fn add_node_request_serializes_camel_case_with_a_null_parent() {
+        let body = AddNodeRequest {
+            entry_name: "raw".into(),
+            description: "d".into(),
+            directory: true,
+            parent: None,
+            reference: None,
+            migration: None,
+        };
+        let j = serde_json::to_string(&body).unwrap();
+        assert!(j.contains("\"parent\":null"), "got {j}");
+        assert!(j.contains("\"directory\":true"), "got {j}");
+        assert!(j.contains("\"entryName\":\"raw\""), "got {j}");
+    }
+
+    #[tokio::test]
+    async fn delete_node_succeeds_on_204_no_body() {
+        let server = MockServer::start().await;
+        let store = Arc::new(MemoryStore::default());
+        store.set_access_token("AT").await.unwrap();
+        server
+            .register(
+                Mock::given(method("DELETE"))
+                    .and(path("/api/structures/7/nodes/n1"))
+                    .respond_with(ResponseTemplate::new(204)),
+            )
+            .await;
+        let c = HttpClient::new(server.uri(), store);
+
+        let result = delete_node(&c, 7, "n1").await;
+        assert!(
+            result.is_ok(),
+            "delete_node must succeed on 204; got {result:?}"
+        );
+    }
+}
+```
+
+
+> **Added during the final review.** The test module also carries a
+> wiremock test per call: `list_structures` asserts the request URI is
+> `/api/structures?level=template`, and `add_node` / `update_node` assert
+> the method, the path and the **exact** JSON body. (A mutation check —
+> breaking the `add_node` URL — fails three of these tests, so they have
+> teeth.)
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `cargo test -p aegis-desktop --lib http::structures`
+Expected: FAIL — `cannot find type StructureLevelResponse` and friends.
+
+- [ ] **Step 3: Implement the DTOs and the five calls**
+
+Above the `#[cfg(test)] mod tests` block in the same file, write the module doc comment and the DTOs:
+
+```rust
+//! Directory-structure HTTP adapters. Wire DTOs mirror the server's
+//! `apps/server/aegis-server/src/transport/http/dto.rs` §structures.
+
+use serde::{Deserialize, Serialize};
+
+use super::client::HttpClient;
+use super::dto::ApiError;
+```
+
+Then the eight structs/enums listed in this task's **Interfaces** block. Every one of them carries `#[serde(rename_all = "camelCase")]` and derives `Debug, Clone, PartialEq, Serialize, Deserialize` (the enums also derive `Copy, Eq, Hash`).
+
+Then the five functions:
+
+```rust
+/// `GET /api/structures` — list structures, optionally filtered by level.
+pub async fn list_structures(
+    c: &HttpClient,
+    level: Option<StructureLevelResponse>,
+) -> Result<Vec<StructureSummaryResponse>, ApiError> {
+    let mut url = "/api/structures".to_string();
+    if let Some(l) = level {
+        // Serialize the typed enum and strip the quotes, the same way
+        // `http::mission` builds its `?kind=` query parameter.
+        let level_str = serde_json::to_string(&l)
+            .map_err(|e| ApiError::Parse {
+                message: e.to_string(),
+            })?
+            .trim_matches('"')
+            .to_string();
+        url.push_str("?level=");
+        url.push_str(&level_str);
+    }
+    let resp: StructureListResponse = c.request(reqwest::Method::GET, &url, None::<&()>).await?;
+    Ok(resp.structures)
+}
+
+/// `GET /api/structures/{id}` — a structure with its effective tree.
+pub async fn get_structure(c: &HttpClient, id: i64) -> Result<StructureViewResponse, ApiError> {
+    let resp: StructureViewResponse = c
+        .request(reqwest::Method::GET, &format!("/api/structures/{id}"), None::<&()>)
+        .await?;
+    Ok(resp)
+}
+
+/// `POST /api/structures/{id}/nodes` — place a node at a path.
+pub async fn add_node(
+    c: &HttpClient,
+    structure_id: i64,
+    body: &AddNodeRequest,
+) -> Result<NodeViewResponse, ApiError> {
+    c.request(
+        reqwest::Method::POST,
+        &format!("/api/structures/{structure_id}/nodes"),
+        Some(body),
+    )
+    .await
+}
+
+/// `PUT /api/structures/{id}/nodes/{node_id}` — replace a node.
+pub async fn update_node(
+    c: &HttpClient,
+    structure_id: i64,
+    node_id: &str,
+    body: &UpdateNodeRequest,
+) -> Result<NodeViewResponse, ApiError> {
+    c.request(
+        reqwest::Method::PUT,
+        &format!("/api/structures/{structure_id}/nodes/{node_id}"),
+        Some(body),
+    )
+    .await
+}
+
+/// `DELETE /api/structures/{id}/nodes/{node_id}` — remove a node.
+///
+/// The server answers `204` with an empty body, so the adapter must not
+/// try to JSON-decode it — `request::<Value>` would fail with
+/// `decode_failed: EOF while parsing a value`. See `http::mission::remove_assignee`
+/// for the same trap.
+pub async fn delete_node(
+    c: &HttpClient,
+    structure_id: i64,
+    node_id: &str,
+) -> Result<(), ApiError> {
+    let _ = c
+        .request_bytes(
+            reqwest::Method::DELETE,
+            &format!("/api/structures/{structure_id}/nodes/{node_id}"),
+            None::<&()>,
+        )
+        .await?;
+    Ok(())
+}
+```
+
+- [ ] **Step 4: Register the module**
+
+In `apps/desktop/aegis-desktop/src-tauri/src/http.rs`, add `pub mod structures;` to the module list (alphabetically, after `pub mod project;`).
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `cargo test -p aegis-desktop --lib http::structures`
+Expected: PASS — 4 tests.
+
+- [ ] **Step 6: Lint**
+
+Run: `cargo clippy -p aegis-desktop --all-targets --all-features -- -D warnings`
+Expected: no warnings.
+
+**Known pre-existing failure (measured 2026-11-03).** This crate does
+**not** pass that gate on the current toolchain. The baseline *before*
+this feature is **120 clippy errors** in `aegis-desktop` — `needless_borrow`
+×75, `let_underscore_future` ×26, `too_many_arguments` ×6, dead code —
+plus a hard failure in `lib/crates/windows-utils/src/user.rs`
+(`useless_conversion`). The toolchain has moved ahead of what the repo
+was written against.
+
+So the lint gate runs as a **delta**, not as an absolute:
+
+- The error count must not grow beyond the 120 baseline.
+- This task's new module contributes dead-code warnings (its types and
+  functions are unused until Task 3 wires the commands). They are
+  expected here and must be gone by the end of Task 3.
+
+Do not "fix" the pre-existing lints — that is an unrelated sweep across
+the crate, far outside this feature.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/desktop/aegis-desktop/src-tauri/src/http/structures.rs apps/desktop/aegis-desktop/src-tauri/src/http.rs
+git commit -m "feat(desktop): add the structures HTTP adapter"
+```
+
+---
+
+### Task 3: Tauri commands for structures
+
+**Files:**
+- Create: `apps/desktop/aegis-desktop/src-tauri/src/commands/structures.rs`
+- Modify: `apps/desktop/aegis-desktop/src-tauri/src/commands.rs` — add `pub mod structures;`
+- Modify: `apps/desktop/aegis-desktop/src-tauri/src/lib.rs` — add the five handlers to `generate_handler!`
+
+**Interfaces:**
+- Consumes: the five functions and the DTOs from Task 2.
+- Produces: five `#[tauri::command]` functions, invoked from TypeScript as `list_structures`, `get_structure`, `add_structure_node`, `update_structure_node`, `delete_structure_node`. Each takes its arguments as separate parameters so Tauri maps the camelCase JSON keys onto them:
+  - `list_structures(level: Option<String>)` → the level string is parsed into `StructureLevelResponse`.
+  - `get_structure(id: i64)`
+  - `add_structure_node(structure_id: i64, body: AddNodeRequest)`
+  - `update_structure_node(structure_id: i64, node_id: String, body: UpdateNodeRequest)`
+  - `delete_structure_node(structure_id: i64, node_id: String)`
+
+- [ ] **Step 1: Write the failing camelCase deserialization test**
+
+Create `apps/desktop/aegis-desktop/src-tauri/src/commands/structures.rs` with the imports and this test block, with the command bodies stubbed as `todo!()`:
+
+```rust
+#[cfg(test)]
+mod tests {
+    //! Wire-shape tests. Tauri routes JSON keys to function parameters by
+    //! camelCase name, so the frontend wrappers must send exactly:
+    //!
+    //!   list_structures:       { level? }
+    //!   get_structure:         { id }
+    //!   add_structure_node:    { structureId, body }
+    //!   update_structure_node: { structureId, nodeId, body }
+    //!   delete_structure_node: { structureId, nodeId }
+    //!
+    //! These tests pin the deserialization shape so a future rename cannot
+    //! silently desync Rust and TS.
+
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn add_node_request_deserializes_a_camel_case_payload() {
+        let raw = json!({
+            "entryName": "raw",
+            "description": "d",
+            "directory": true,
+            "parent": null,
+            "reference": null,
+            "migration": null
+        });
+        let body: AddNodeRequest = serde_json::from_value(raw).unwrap();
+        assert_eq!(body.entry_name, "raw");
+        assert!(body.directory);
+        assert!(body.parent.is_none());
+    }
+
+    #[test]
+    fn add_node_request_rejects_a_snake_case_payload() {
+        let raw = json!({ "structure_id": 3, "entryName": "raw" });
+        let result: Result<AddNodeRequest, _> = serde_json::from_value(raw);
+        assert!(
+            result.is_err(),
+            "a snake_case payload must not parse against AddNodeRequest"
+        );
+    }
+}
+```
+
+
+> **Added during the final review.** The test module also carries
+> `invoke_keys_match_the_contract`, which extracts each command
+> signature's Rust parameter names from this very file, lower-camel-cases
+> them the way `tauri-macros` does, and checks them against
+> `src-tauri/src/structures.contract.json`. The TypeScript side reads the
+> same file and asserts each wrapper sends exactly those keys — so a
+> renamed Rust parameter, or a wrapper that flattens the `body` struct
+> parameter, fails a test instead of failing at runtime.
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `cargo test -p aegis-desktop --lib commands::structures`
+Expected: FAIL — `cannot find type AddNodeRequest` (the import is not there yet).
+
+- [ ] **Step 3: Implement the five commands**
+
+Above the test block, write the module. Each command follows the shape of `commands/mission.rs`: a `#[tauri::command]` function that builds a `RequestContext` and delegates to an `_impl` twin that takes `&SharedAppState` and `&RequestContext`, wrapped in a `tracing::info_span!` and a `TRACE_ID.scope(...)`.
+
+```rust
+use tracing::Instrument;
+
+use crate::http::client::TRACE_ID;
+use crate::http::dto::ApiError;
+use crate::http::structures::{
+    self, AddNodeRequest, NodeViewResponse, StructureLevelResponse, StructureSummaryResponse,
+    StructureViewResponse, UpdateNodeRequest,
+};
+use crate::state::{Caller, RequestContext, SharedAppState};
+```
+
+`list_structures` parses its `level: Option<String>` through serde so an
+unrecognised level comes back as `ApiError::Parse` rather than an opaque
+Tauri decode error:
+
+```rust
+fn parse_level(s: &str) -> Result<StructureLevelResponse, ApiError> {
+    serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|e| ApiError::Parse {
+        message: e.to_string(),
+    })
+}
+```
+
+The `_impl` twins have these signatures:
+
+```rust
+pub async fn list_structures_impl(
+    app_state: &SharedAppState,
+    req_ctx: &RequestContext,
+    level: Option<String>,
+) -> Result<Vec<StructureSummaryResponse>, ApiError>
+
+pub async fn get_structure_impl(
+    app_state: &SharedAppState,
+    req_ctx: &RequestContext,
+    id: i64,
+) -> Result<StructureViewResponse, ApiError>
+
+pub async fn add_structure_node_impl(
+    app_state: &SharedAppState,
+    req_ctx: &RequestContext,
+    structure_id: i64,
+    body: AddNodeRequest,
+) -> Result<NodeViewResponse, ApiError>
+
+pub async fn update_structure_node_impl(
+    app_state: &SharedAppState,
+    req_ctx: &RequestContext,
+    structure_id: i64,
+    node_id: String,
+    body: UpdateNodeRequest,
+) -> Result<NodeViewResponse, ApiError>
+
+pub async fn delete_structure_node_impl(
+    app_state: &SharedAppState,
+    req_ctx: &RequestContext,
+    structure_id: i64,
+    node_id: String,
+) -> Result<(), ApiError>
+```
+
+Each `_impl` body follows `commands/mission.rs::list_missions_by_project_impl`: open the span, `TRACE_ID.scope(req_ctx.trace_id.clone(), async { ... }).await`, log `success` or `failed`, and `.instrument(span).await` the whole thing. `Caller::User` is the caller for all five.
+
+- [ ] **Step 4: Register the module and the commands**
+
+In `apps/desktop/aegis-desktop/src-tauri/src/commands.rs`, add `pub mod structures;` to the module list (alphabetically, after `pub mod project;`).
+
+In `apps/desktop/aegis-desktop/src-tauri/src/lib.rs`, add a `// structures` block to `generate_handler!`, after the `// crf` block:
+
+```rust
+            // structures
+            commands::structures::list_structures,
+            commands::structures::get_structure,
+            commands::structures::add_structure_node,
+            commands::structures::update_structure_node,
+            commands::structures::delete_structure_node,
+```
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `cargo test -p aegis-desktop --lib commands::structures`
+Expected: PASS — 2 tests.
+
+- [ ] **Step 6: Lint**
+
+Run: `cargo clippy -p aegis-desktop --all-targets --all-features -- -D warnings`
+Expected: no warnings.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/desktop/aegis-desktop/src-tauri/src/commands/structures.rs apps/desktop/aegis-desktop/src-tauri/src/commands.rs apps/desktop/aegis-desktop/src-tauri/src/lib.rs
+git commit -m "feat(desktop): add the structures Tauri commands"
+```
+
+---
+
+### Task 4: TS wire types, API client and query keys
+
+**Files:**
+- Modify: `apps/desktop/aegis-desktop/src/shared/api/types.ts`
+- Modify: `apps/desktop/aegis-desktop/src/shared/api/index.ts`
+- Modify: `apps/desktop/aegis-desktop/src/shared/query/keys.ts`
+- Test: `apps/desktop/aegis-desktop/src/test/features/templates/api.test.ts`
+
+**Interfaces:**
+- Consumes: the Rust command names from Task 3.
+- Produces (used by Tasks 7–11):
+  - `type StructureLevel = "template" | "project"`
+  - `interface MigrationView { directory: string; filter: string[] }`
+  - `interface StructureNodeView { nodeId: string; description: string; path: string; directory: boolean; parent: string | null; reference: string | null; migration: MigrationView | null; children: StructureNodeView[] }`
+  - `interface StructureView { id: number; name: string; level: StructureLevel; projectCode: string | null; templateId: number | null; nodes: StructureNodeView[] }`
+  - `interface StructureSummaryView { id: number; name: string; level: StructureLevel; projectCode: string | null; templateId: number | null }`
+  - `interface StructureNodeInput { entryName: string; description: string; directory: boolean; parent: string | null; reference: string | null; migration: MigrationView | null }`
+  - `interface CreateStructureInput { name: string; level: StructureLevel; projectCode: string | null; templateId: number | null }`
+  - `interface RenameStructureInput { name: string }`
+  - `api.listStructures(level?: StructureLevel): Promise<StructureSummaryView[]>`
+  - `api.getStructure(id: number): Promise<StructureView>`
+  - `api.addStructureNode(structureId: number, input: StructureNodeInput): Promise<StructureNodeView>`
+  - `api.updateStructureNode(structureId: number, nodeId: string, input: StructureNodeInput): Promise<StructureNodeView>`
+  - `api.deleteStructureNode(structureId: number, nodeId: string): Promise<void>`
+  - `api.createStructure(input: CreateStructureInput): Promise<StructureView>`
+  - `api.renameStructure(id: number, input: RenameStructureInput): Promise<StructureView>`
+  - `api.deleteStructure(id: number): Promise<void>`
+  - `queryKeys.structures.list(level: StructureLevel): readonly ["structures", "list", StructureLevel]`
+  - `queryKeys.structures.detail(id: number): readonly ["structures", "detail", number]`
+
+- [ ] **Step 1: Write the failing API-caller test**
+
+Create `apps/desktop/aegis-desktop/src/test/features/templates/api.test.ts`:
+
+```ts
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+import { api } from "../../../shared/api";
+import { mockCommands, mockInvoke } from "../../helpers/tauri-mock";
+import CONTRACT_JSON from "../../../../src-tauri/src/structures.contract.json";
+
+/**
+ * The invoke payload keys Tauri v2 derives from the Rust commands' Rust
+ * parameter names. The Rust half of this contract lives in
+ * `src-tauri/src/structures.contract.json` and is checked against the
+ * command signatures by `commands::structures::tests::invoke_keys_match_the_contract`.
+ */
+const CONTRACT = CONTRACT_JSON as Record<string, string[]>;
+
+describe("structures api", () => {
+  it("sends exactly the invoke keys the Rust commands expect", async () => {
+    // Tauri v2 resolves each command argument by the lower-camel-case of
+    // the Rust parameter name and looks the key up in the payload with
+    // no whole-payload fallback. A wrapper that flattens a struct
+    // parameter instead of nesting it under that parameter's name is
+    // rejected at runtime with "missing required key body".
+    const nodeInput = {
+      entryName: "raw",
+      description: "d",
+      directory: true,
+      parent: null,
+      reference: null,
+      migration: null,
+    };
+    const cases: Array<[string, () => Promise<unknown>]> = [
+      ["list_structures", () => api.listStructures("template")],
+      ["get_structure", () => api.getStructure(3)],
+      ["add_structure_node", () => api.addStructureNode(3, nodeInput)],
+      [
+        "update_structure_node",
+        () => api.updateStructureNode(3, "n1", nodeInput),
+      ],
+      ["delete_structure_node", () => api.deleteStructureNode(3, "n1")],
+    ];
+
+    mockCommands({
+      list_structures: () => [],
+      get_structure: () => ({}),
+      add_structure_node: () => ({}),
+      update_structure_node: () => ({}),
+      delete_structure_node: () => undefined,
+    });
+
+    for (const [command, call] of cases) {
+      mockInvoke.mockClear();
+      await call();
+      const payload = mockInvoke.mock.calls[0][1] as Record<string, unknown>;
+      expect(Object.keys(payload).sort(), command).toEqual(
+        [...CONTRACT[command]].sort(),
+      );
+    }
+  });
+
+  it("invokes list_structures with the level", async () => {
+    mockCommands({ list_structures: () => [] });
+    await api.listStructures("template");
+    expect(mockInvoke).toHaveBeenCalledWith("list_structures", {
+      level: "template",
+    });
+  });
+
+  it("invokes get_structure with the id", async () => {
+    mockCommands({ get_structure: () => ({}) });
+    await api.getStructure(3);
+    expect(mockInvoke).toHaveBeenCalledWith("get_structure", { id: 3 });
+  });
+
+  it("invokes add_structure_node with camelCase arguments", async () => {
+    mockCommands({ add_structure_node: () => ({}) });
+    await api.addStructureNode(3, {
+      entryName: "raw",
+      description: "d",
+      directory: true,
+      parent: null,
+      reference: null,
+      migration: null,
+    });
+    expect(mockInvoke).toHaveBeenCalledWith("add_structure_node", {
+      structureId: 3,
+      body: {
+        entryName: "raw",
+        description: "d",
+        directory: true,
+        parent: null,
+        reference: null,
+        migration: null,
+      },
+    });
+  });
+
+  it("invokes update_structure_node with the node id", async () => {
+    mockCommands({ update_structure_node: () => ({}) });
+    await api.updateStructureNode(3, "n1", {
+      entryName: "raw",
+      description: "d",
+      directory: true,
+      parent: null,
+      reference: null,
+      migration: null,
+    });
+    expect(mockInvoke).toHaveBeenCalledWith(
+      "update_structure_node",
+      expect.objectContaining({
+        structureId: 3,
+        nodeId: "n1",
+        body: expect.objectContaining({ entryName: "raw" }),
+      }),
+    );
+  });
+
+  it("invokes delete_structure_node with the structure and node ids", async () => {
+    mockCommands({ delete_structure_node: () => undefined });
+    await api.deleteStructureNode(3, "n1");
+    expect(mockInvoke).toHaveBeenCalledWith("delete_structure_node", {
+      structureId: 3,
+      nodeId: "n1",
+    });
+  });
+});
+
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `npx vitest run src/test/features/templates/api.test.ts` (from
+`apps/desktop/aegis-desktop`)
+Expected: FAIL — `api.listStructures` is not a function.
+
+- [ ] **Step 3: Add the TS wire types**
+
+In `apps/desktop/aegis-desktop/src/shared/api/types.ts`, append:
+
+```ts
+export type StructureLevel = "template" | "project";
+
+export interface MigrationView {
+  directory: string;
+  filter: string[];
+}
+
+export interface StructureNodeView {
+  nodeId: string;
+  description: string;
+  entryName: string;
+  directory: boolean;
+  parent: string | null;
+  reference: string | null;
+  migration: MigrationView | null;
+  children: StructureNodeView[];
+}
+
+export interface StructureView {
+  id: number;
+  name: string;
+  level: StructureLevel;
+  projectCode: string | null;
+  templateId: number | null;
+  nodes: StructureNodeView[];
+}
+
+export interface StructureSummaryView {
+  id: number;
+  name: string;
+  level: StructureLevel;
+  projectCode: string | null;
+  templateId: number | null;
+}
+
+export interface CreateStructureInput {
+  name: string;
+  level: StructureLevel;
+  projectCode: string | null;
+  templateId: number | null;
+}
+
+export interface RenameStructureInput {
+  name: string;
+}
+
+export interface StructureNodeInput {
+  entryName: string;
+  description: string;
+  directory: boolean;
+  parent: string | null;
+  reference: string | null;
+  migration: MigrationView | null;
+}
+```
+
+- [ ] **Step 4: Add the API client wrappers**
+
+In `apps/desktop/aegis-desktop/src/shared/api/index.ts`, add the five new
+type names the file itself uses (`StructureLevel`, `StructureNodeInput`,
+`StructureNodeView`, `StructureSummaryView`, `StructureView`) to the
+top `import type { ... } from "./types"` block, and add **all six**
+(including `MigrationView`) to the `export type { ... } from "./types"`
+re-export block at the bottom of the file. `MigrationView` must **not**
+go in the top import block — it is only re-exported, and an unused
+import fails `tsc --noEmit` with `TS6196`.
+
+Then add a `// structures` section to the `api` object:
+
+```ts
+  // structures
+  //
+  // Tauri v2 resolves each command argument by the lower-camel-case of
+  // the Rust parameter name and looks that key up in the invoke payload
+  // with no whole-payload fallback. The Rust commands take their node
+  // payload as a struct parameter named `body`, so the wrapper must
+  // nest it under that key — flattening it is rejected at runtime with
+  // "command add_structure_node missing required key body".
+  // The key list is pinned by src-tauri/src/structures.contract.json and
+  // checked by src/test/features/templates/api.test.ts.
+  listStructures: (level?: StructureLevel): Promise<StructureSummaryView[]> =>
+    call<StructureSummaryView[]>("list_structures", { level }),
+  getStructure: (id: number): Promise<StructureView> =>
+    call<StructureView>("get_structure", { id }),
+  addStructureNode: (
+    structureId: number,
+    input: StructureNodeInput,
+  ): Promise<StructureNodeView> =>
+    call<StructureNodeView>("add_structure_node", {
+      structureId,
+      body: { ...input },
+    }),
+  updateStructureNode: (
+    structureId: number,
+    nodeId: string,
+    input: StructureNodeInput,
+  ): Promise<StructureNodeView> =>
+    call<StructureNodeView>("update_structure_node", {
+      structureId,
+      nodeId,
+      body: { ...input },
+    }),
+  deleteStructureNode: (structureId: number, nodeId: string): Promise<void> =>
+    call<void>("delete_structure_node", { structureId, nodeId }),
+  createStructure: (
+    input: CreateStructureInput,
+  ): Promise<StructureView> =>
+    call<StructureView>("create_structure", { body: { ...input } }),
+  renameStructure: (
+    id: number,
+    input: RenameStructureInput,
+  ): Promise<StructureView> =>
+    call<StructureView>("rename_structure", { id, body: { ...input } }),
+  deleteStructure: (id: number): Promise<void> =>
+    call<void>("delete_structure", { id }),
+```
+
+- [ ] **Step 5: Add the query keys**
+
+In `apps/desktop/aegis-desktop/src/shared/query/keys.ts`, add at the top of the file (above `queryKeys`):
+
+```ts
+import type { StructureLevel } from "../api/types";
+```
+
+and add a `structures` group to the `queryKeys` object (after `mission`):
+
+```ts
+  structures: {
+    list: (level: StructureLevel) => ["structures", "list", level] as const,
+    detail: (id: number) => ["structures", "detail", id] as const,
+  },
+```
+
+- [ ] **Step 6: Run the test to verify it passes**
+
+Run: `npx vitest run src/test/features/templates/api.test.ts` (from
+`apps/desktop/aegis-desktop`)
+Expected: PASS — 5 tests.
+
+- [ ] **Step 7: Typecheck**
+
+Run: `pnpm --filter aegis-desktop typecheck`
+Expected: PASS.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add apps/desktop/aegis-desktop/src/shared/api/types.ts apps/desktop/aegis-desktop/src/shared/api/index.ts apps/desktop/aegis-desktop/src/shared/query/keys.ts apps/desktop/aegis-desktop/src/test/features/templates/api.test.ts
+git commit -m "feat(desktop): add the structures API client and query keys"
+```
+
+---
+
+### Task 5: i18n catalog
+
+**Files:**
+- Modify: `lib/packages/ui/src/i18n/locales/en.ts`
+- Modify: `lib/packages/ui/src/i18n/locales/zhCN.ts`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: the `TranslationKey` values listed below. Tasks 8–11 use exactly these keys.
+
+- [ ] **Step 1: Add the English keys**
+
+In `lib/packages/ui/src/i18n/locales/en.ts`, add:
+
+```ts
+  'nav.templates': 'Templates',
+  'templates.heading': 'Templates',
+  'templates.card.standardFolderStructure.title':
+    'Standard Project Folder Structure',
+  'templates.card.standardFolderStructure.description':
+    'Statistical programming standard project folder structure, follow SOP CL-CSP-DOC-004-A01',
+  'templates.structure.heading': 'Project Structure Template',
+  'templates.structure.list': 'Structures',
+  'templates.structure.add': 'Add template',
+  'templates.structure.rename': 'Rename template',
+  'templates.structure.delete': 'Delete template',
+  'templates.structure.createTitle': 'New template',
+  'templates.structure.name': 'Name',
+  'templates.structure.saveFailed': 'Save failed: {message}',
+  'templates.structure.deleteMessage':
+    'Delete "{name}" and all of its folders?',
+  'templates.structure.deleteFailed': 'Delete failed: {message}',
+  'templates.structure.view.complete': 'Complete',
+  'templates.structure.view.flat': 'Flat',
+  'templates.structure.noTemplates': 'No templates yet',
+  'templates.structure.noNodes': 'No folder structure yet',
+  'templates.node.actions': 'Node actions',
+  'templates.node.add': 'Add node',
+  'templates.node.edit': 'Edit node',
+  'templates.node.delete': 'Delete node',
+  'templates.node.addRoot': 'Add root node',
+  'templates.node.drawer.addTitle': 'Add node',
+  'templates.node.drawer.editTitle': 'Edit node',
+  'templates.node.field.entryName': 'Entry name',
+  'templates.node.field.description': 'Description',
+  'templates.node.field.directory': 'Folder',
+  'templates.node.field.reference': 'Reference path',
+  'templates.node.field.migrationDirectory': 'Migration source directory',
+  'templates.node.field.migrationFilter': 'Migration filter',
+  'templates.node.field.migrationFilterAdd': 'Add filter',
+  'templates.node.field.invalidEntryName':
+    'Enter a name — no "/" or "\\", and not "." or "..".',
+  'templates.node.saveFailed': 'Save failed: {message}',
+  'templates.node.delete.title': 'Delete node',
+  'templates.node.delete.message':
+    'Delete "{entryName}" and everything under it?',
+  'templates.node.delete.failed': 'Delete failed: {message}',
+```
+
+- [ ] **Step 2: Add the Chinese keys**
+
+In `lib/packages/ui/src/i18n/locales/zhCN.ts`, add the same keys with these values.
+Note: `zhCN.ts` closes with `} satisfies Record<keyof typeof en, string>;`, not
+`} as const;` — insert before that line, not before an `as const` close:
+
+```ts
+  'nav.templates': '模板',
+  'templates.heading': '模板',
+  'templates.card.standardFolderStructure.title': '标准项目文件夹结构',
+  'templates.card.standardFolderStructure.description':
+    '统计编程工作标准文件夹结构, 遵循SOP CL-CSP-DOC-004-A01',
+  'templates.structure.heading': '项目结构模板',
+  'templates.structure.list': '模板结构',
+  'templates.structure.add': '添加模板',
+  'templates.structure.rename': '重命名模板',
+  'templates.structure.delete': '删除模板',
+  'templates.structure.createTitle': '新建模板',
+  'templates.structure.name': '名称',
+  'templates.structure.saveFailed': '保存失败: {message}',
+  'templates.structure.deleteMessage':
+    '删除 "{name}" 及其所有文件夹?',
+  'templates.structure.deleteFailed': '删除失败: {message}',
+  'templates.structure.view.complete': '完整',
+  'templates.structure.view.flat': '扁平',
+  'templates.structure.noTemplates': '暂无模板',
+  'templates.structure.noNodes': '暂无文件夹结构',
+  'templates.node.actions': '节点操作',
+  'templates.node.add': '添加节点',
+  'templates.node.edit': '编辑节点',
+  'templates.node.delete': '删除节点',
+  'templates.node.addRoot': '添加根节点',
+  'templates.node.drawer.addTitle': '新增节点',
+  'templates.node.drawer.editTitle': '编辑节点',
+  'templates.node.field.entryName': '条目名称',
+  'templates.node.field.description': '描述',
+  'templates.node.field.directory': '文件夹',
+  'templates.node.field.reference': '参考路径',
+  'templates.node.field.migrationDirectory': '迁移源目录',
+  'templates.node.field.migrationFilter': '迁移过滤条件',
+  'templates.node.field.migrationFilterAdd': '添加过滤条件',
+  'templates.node.field.invalidEntryName':
+    '请输入名称 —— 不能包含 "/" 或 "\\", 也不能是 "." 或 ".."。',
+  'templates.node.saveFailed': '保存失败: {message}',
+  'templates.node.delete.title': '删除节点',
+  'templates.node.delete.message': '删除 "{entryName}" 及其所有子节点?',
+  'templates.node.delete.failed': '删除失败: {message}',
+```
+
+- [ ] **Step 3: Verify the catalogs agree**
+
+Run: `pnpm --filter @aegis/ui typecheck`
+Expected: PASS. The `satisfies Record<Locale, TranslationCatalog>` in `registry.ts` fails the build if `zhCN.ts` is missing a key that `en.ts` has, so a PASS means both catalogs carry all 30 keys.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add lib/packages/ui/src/i18n/locales/en.ts lib/packages/ui/src/i18n/locales/zhCN.ts
+git commit -m "feat(i18n): add the templates catalog entries"
+```
+
+---
+
+### Task 6: The flat-tree transform
+
+**Files:**
+- Create: `apps/desktop/aegis-desktop/src/features/templates/data/tree.ts`
+- Test: `apps/desktop/aegis-desktop/src/test/features/templates/tree.test.ts`
+
+**Interfaces:**
+- Consumes: `StructureNodeView` from `src/shared/api`.
+- Produces (used by Tasks 9 and 11):
+  - `interface FlatEntry { node: StructureNodeView; name: string; fullPath: string; files: StructureNodeView[] }`
+  - `function flattenStructure(nodes: StructureNodeView[]): FlatEntry[]`
+  - `function buildFullPaths(nodes: StructureNodeView[]): Map<string, string>` — the path of every node relative to the structure root, derived from the ancestor chain.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `apps/desktop/aegis-desktop/src/test/features/templates/tree.test.ts`:
+
+```ts
+import { describe, expect, it } from "vitest";
+
+import type { StructureNodeView } from "../../../shared/api";
+import {
+  buildFullPaths,
+  flattenStructure,
+} from "../../../features/templates/data/tree";
+
+function dir(
+  nodeId: string,
+  entryName: string,
+  children: StructureNodeView[] = [],
+): StructureNodeView {
+  return {
+    nodeId,
+    description: "",
+    entryName,
+    directory: true,
+    parent: null,
+    reference: null,
+    migration: null,
+    children,
+  };
+}
+
+function file(nodeId: string, entryName: string): StructureNodeView {
+  return {
+    nodeId,
+    description: "",
+    entryName,
+    directory: false,
+    parent: null,
+    reference: "/abs/path",
+    migration: null,
+    children: [],
+  };
+}
+
+describe("buildFullPaths", () => {
+  it("gives a root node its own name", () => {
+    const paths = buildFullPaths([dir("d1", "raw")]);
+    expect(paths.get("d1")).toBe("raw");
+  });
+
+  it("joins the ancestor names with a slash", () => {
+    const paths = buildFullPaths([
+      dir("d1", "raw", [dir("d2", "data", [file("f1", "a.sas7bdat")])]),
+    ]);
+    expect(paths.get("d1")).toBe("raw");
+    expect(paths.get("d2")).toBe("raw/data");
+    expect(paths.get("f1")).toBe("raw/data/a.sas7bdat");
+  });
+
+  it("gives a root-level file its own name", () => {
+    const paths = buildFullPaths([file("f1", "README.md")]);
+    expect(paths.get("f1")).toBe("README.md");
+  });
+
+  it("returns an empty map for an empty tree", () => {
+    expect(buildFullPaths([]).size).toBe(0);
+  });
+});
+
+describe("flattenStructure", () => {
+  it("promotes every directory to a top-level entry", () => {
+    const entries = flattenStructure([
+      dir("d1", "raw", [dir("d2", "data")]),
+    ]);
+    expect(entries.map((e) => e.node.nodeId)).toEqual(["d1", "d2"]);
+  });
+
+  it("does not nest a sub-directory under its parent", () => {
+    const entries = flattenStructure([
+      dir("d1", "raw", [dir("d2", "data")]),
+    ]);
+    const raw = entries.find((e) => e.node.nodeId === "d1")!;
+    expect(raw.files).toEqual([]);
+    expect(raw.node.children.map((c) => c.nodeId)).toEqual(["d2"]);
+  });
+
+  it("collects the files directly inside each directory", () => {
+    const entries = flattenStructure([
+      dir("d1", "raw", [
+        file("f1", "b.txt"),
+        dir("d2", "data", [file("f2", "a.sas7bdat")]),
+      ]),
+    ]);
+    const raw = entries.find((e) => e.node.nodeId === "d1")!;
+    const data = entries.find((e) => e.node.nodeId === "d2")!;
+    expect(raw.files.map((f) => f.nodeId)).toEqual(["f1"]);
+    expect(data.files.map((f) => f.nodeId)).toEqual(["f2"]);
+  });
+
+  it("gives a root-level file its own top-level entry", () => {
+    const entries = flattenStructure([file("f1", "README.md")]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].node.nodeId).toBe("f1");
+    expect(entries[0].files).toEqual([]);
+  });
+
+  it("names an entry by its own name and computes the full path", () => {
+    const entries = flattenStructure([
+      dir("d1", "raw", [dir("d2", "data")]),
+    ]);
+    const data = entries.find((e) => e.node.nodeId === "d2")!;
+    expect(data.name).toBe("data");
+    // The full path is derived from the ancestors — the server no longer
+    // stores one.
+    expect(data.fullPath).toBe("raw/data");
+  });
+
+  it("returns an empty list for an empty tree", () => {
+    expect(flattenStructure([])).toEqual([]);
+  });
+});
+
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `npx vitest run src/test/features/templates/tree.test.ts` (from
+`apps/desktop/aegis-desktop`)
+Expected: FAIL — cannot resolve `features/templates/data/tree`.
+
+- [ ] **Step 3: Implement the transform**
+
+Create `apps/desktop/aegis-desktop/src/features/templates/data/tree.ts`:
+
+```ts
+import type { StructureNodeView } from "../../../shared/api";
+
+/**
+ * One top-level entry of the flat view.
+ *
+ * A directory becomes an entry of its own; the files sitting directly
+ * inside it become that entry's leaves. A sub-directory never nests
+ * under its parent — it gets its own entry.
+ */
+export interface FlatEntry {
+  /** The directory node, or a root-level file. */
+  node: StructureNodeView;
+  /** The node's own name — the folder or file name it carries. */
+  name: string;
+  /** The path from the structure root, computed from the ancestors. */
+  fullPath: string;
+  /** The files directly inside the directory. Empty for a file entry. */
+  files: StructureNodeView[];
+}
+
+/**
+ * The full path of every node in the tree, keyed by node id.
+ *
+ * A node carries only its own name — the nesting comes from `parent`,
+ * and the server stores no path — so the path relative to the
+ * structure root is derived here, by joining the ancestor names.
+ */
+export function buildFullPaths(
+  nodes: StructureNodeView[],
+): Map<string, string> {
+  const paths = new Map<string, string>();
+  const walk = (siblings: StructureNodeView[], prefix: string) => {
+    for (const node of siblings) {
+      const fullPath = prefix
+        ? `${prefix}/${node.entryName}`
+        : node.entryName;
+      paths.set(node.nodeId, fullPath);
+      walk(node.children, fullPath);
+    }
+  };
+  walk(nodes, "");
+  return paths;
+}
+
+/**
+ * Flatten a structure tree into one entry per directory.
+ *
+ * Every directory, at any depth, becomes a top-level entry; a
+ * sub-directory is never nested under its parent. The files directly
+ * inside a directory become that directory's leaves. A file with no
+ * parent directory has nothing to sit under, so it gets its own entry.
+ */
+export function flattenStructure(nodes: StructureNodeView[]): FlatEntry[] {
+  const paths = buildFullPaths(nodes);
+  const entries: FlatEntry[] = [];
+
+  const walk = (siblings: StructureNodeView[], atRoot: boolean) => {
+    for (const node of siblings) {
+      const fullPath = paths.get(node.nodeId) ?? node.entryName;
+      if (node.directory) {
+        entries.push({
+          node,
+          name: node.entryName,
+          fullPath,
+          files: node.children.filter((c) => !c.directory),
+        });
+        walk(
+          node.children.filter((c) => c.directory),
+          false,
+        );
+      } else if (atRoot) {
+        entries.push({
+          node,
+          name: node.entryName,
+          fullPath,
+          files: [],
+        });
+      }
+    }
+  };
+
+  walk(nodes, true);
+  return entries;
+}
+
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `npx vitest run src/test/features/templates/tree.test.ts` (from
+`apps/desktop/aegis-desktop`)
+Expected: PASS — 8 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/desktop/aegis-desktop/src/features/templates/data/tree.ts apps/desktop/aegis-desktop/src/test/features/templates/tree.test.ts
+git commit -m "feat(desktop): add the flat structure tree transform"
+```
+
+---
+
+### Task 7: The feature data hooks
+
+**Files:**
+- Create: `apps/desktop/aegis-desktop/src/features/templates/data/structures.ts`
+- Test: `apps/desktop/aegis-desktop/src/test/features/templates/data.test.tsx`
+
+**Interfaces:**
+- Consumes: `api.*` and `queryKeys.structures.*` from Task 4.
+- Produces (used by Tasks 9–11):
+  - `useListTemplateStructures(): UseQueryResult<StructureSummaryView[], ApiError>` — query key `queryKeys.structures.list("template")`, query fn `api.listStructures("template")`.
+  - `useGetStructure(id: number | null): UseQueryResult<StructureView, ApiError>` — query key `queryKeys.structures.detail(id ?? 0)`, `enabled: id != null && id > 0`.
+  - `useAddStructureNode(): UseMutation<StructureNodeView, ApiError, { structureId: number; input: StructureNodeInput }>`
+  - `useUpdateStructureNode(): UseMutation<StructureNodeView, ApiError, { structureId: number; nodeId: string; input: StructureNodeInput }>`
+  - `useDeleteStructureNode(): UseMutation<void, ApiError, { structureId: number; nodeId: string }>`
+  - Every mutation invalidates `queryKeys.structures.detail(structureId)` and `queryKeys.structures.list("template")` on success.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/desktop/aegis-desktop/src/test/features/templates/data.test.tsx`:
+
+```tsx
+import "@testing-library/jest-dom/vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+import { renderWithQueryClient } from "../../helpers/render-with-query-client";
+import { mockCommands } from "../../helpers/tauri-mock";
+import {
+  useAddStructureNode,
+  useDeleteStructureNode,
+  useGetStructure,
+  useListTemplateStructures,
+  useUpdateStructureNode,
+} from "../../../features/templates/data/structures";
+
+afterEach(() => cleanup());
+
+const STRUCTURE = {
+  id: 3,
+  name: "Standard",
+  level: "template",
+  projectCode: null,
+  templateId: null,
+  nodes: [],
+};
+
+const TEMPLATES = [
+  {
+    id: 3,
+    name: "Standard",
+    level: "template",
+    projectCode: null,
+    templateId: null,
+  },
+];
+
+function Probe() {
+  const list = useListTemplateStructures();
+  const structure = useGetStructure(3);
+  const add = useAddStructureNode();
+  const update = useUpdateStructureNode();
+  const del = useDeleteStructureNode();
+  return (
+    <div>
+      <span data-testid="list-status">{list.status}</span>
+      <span data-testid="list-count">{list.data?.length ?? -1}</span>
+      <span data-testid="structure-status">{structure.status}</span>
+      <span data-testid="structure-name">{structure.data?.name ?? ""}</span>
+      <button
+        data-testid="add"
+        onClick={() =>
+          add.mutate({
+            structureId: 3,
+            input: {
+              entryName: "raw",
+              description: "",
+              directory: true,
+              parent: null,
+              reference: null,
+              migration: null,
+            },
+          })
+        }
+      >
+        add
+      </button>
+      <button
+        data-testid="update"
+        onClick={() =>
+          update.mutate({
+            structureId: 3,
+            nodeId: "n1",
+            input: {
+              entryName: "raw",
+              description: "d",
+              directory: true,
+              parent: null,
+              reference: null,
+              migration: null,
+            },
+          })
+        }
+      >
+        update
+      </button>
+      <button
+        data-testid="delete"
+        onClick={() => del.mutate({ structureId: 3, nodeId: "n1" })}
+      >
+        delete
+      </button>
+    </div>
+  );
+}
+
+describe("templates data hooks", () => {
+  it("lists the template structures", async () => {
+    mockCommands({
+      list_structures: () => TEMPLATES,
+      get_structure: () => STRUCTURE,
+    });
+    renderWithQueryClient(<Probe />);
+    expect(await screen.findByText("1")).toBeInTheDocument();
+  });
+
+  it("loads a structure by id", async () => {
+    mockCommands({
+      list_structures: () => TEMPLATES,
+      get_structure: () => STRUCTURE,
+    });
+    renderWithQueryClient(<Probe />);
+    expect(await screen.findByText("Standard")).toBeInTheDocument();
+  });
+
+  it("refetches the structure after a node is added", async () => {
+    const getStructure = vi.fn(() => STRUCTURE);
+    mockCommands({
+      list_structures: () => TEMPLATES,
+      get_structure: getStructure,
+      add_structure_node: () => ({ nodeId: "n9" }),
+    });
+    renderWithQueryClient(<Probe />);
+    await screen.findByText("Standard");
+    const before = getStructure.mock.calls.length;
+    await userEvent.click(screen.getByTestId("add"));
+    await waitFor(() =>
+      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+
+  it("refetches the structure after a node is updated", async () => {
+    const getStructure = vi.fn(() => STRUCTURE);
+    mockCommands({
+      list_structures: () => TEMPLATES,
+      get_structure: getStructure,
+      update_structure_node: () => ({ nodeId: "n1" }),
+    });
+    renderWithQueryClient(<Probe />);
+    await screen.findByText("Standard");
+    const before = getStructure.mock.calls.length;
+    await userEvent.click(screen.getByTestId("update"));
+    await waitFor(() =>
+      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+
+  it("refetches the structure after a node is deleted", async () => {
+    const getStructure = vi.fn(() => STRUCTURE);
+    mockCommands({
+      list_structures: () => TEMPLATES,
+      get_structure: getStructure,
+      delete_structure_node: () => undefined,
+    });
+    renderWithQueryClient(<Probe />);
+    await screen.findByText("Standard");
+    const before = getStructure.mock.calls.length;
+    await userEvent.click(screen.getByTestId("delete"));
+    await waitFor(() =>
+      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+});
+
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `npx vitest run src/test/features/templates/data.test.tsx` (from
+`apps/desktop/aegis-desktop`)
+Expected: FAIL — cannot resolve `features/templates/data/structures`.
+
+- [ ] **Step 3: Implement the hooks**
+
+Create `apps/desktop/aegis-desktop/src/features/templates/data/structures.ts`:
+
+```ts
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import {
+  api,
+  type ApiError,
+  type CreateStructureInput,
+  type RenameStructureInput,
+  type StructureNodeInput,
+  type StructureNodeView,
+  type StructureSummaryView,
+  type StructureView,
+} from "../../../shared/api";
+import { queryKeys } from "../../../shared/query";
+
+/** The template-level structures, for the sidebar. */
+export function useListTemplateStructures() {
+  return useQuery<StructureSummaryView[], ApiError>({
+    queryKey: queryKeys.structures.list("template"),
+    queryFn: () => api.listStructures("template"),
+  });
+}
+
+/** One structure with its effective tree. */
+export function useGetStructure(id: number | null) {
+  return useQuery<StructureView, ApiError>({
+    queryKey: queryKeys.structures.detail(id ?? 0),
+    queryFn: () => api.getStructure(id!),
+    enabled: id != null && id > 0,
+  });
+}
+
+/** Invalidate the structure and the sidebar after a node write. */
+function useInvalidateStructures() {
+  const qc = useQueryClient();
+  return (structureId?: number) => {
+    if (structureId != null) {
+      qc.invalidateQueries({
+        queryKey: queryKeys.structures.detail(structureId),
+      });
+    }
+    qc.invalidateQueries({ queryKey: queryKeys.structures.list("template") });
+  };
+}
+
+export function useCreateStructure() {
+  const invalidate = useInvalidateStructures();
+  return useMutation<StructureView, ApiError, CreateStructureInput>({
+    mutationFn: (input) => api.createStructure(input),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useRenameStructure() {
+  const invalidate = useInvalidateStructures();
+  return useMutation<
+    StructureView,
+    ApiError,
+    { id: number; input: RenameStructureInput }
+  >({
+    mutationFn: ({ id, input }) => api.renameStructure(id, input),
+    onSuccess: (_view, vars) => invalidate(vars.id),
+  });
+}
+
+export function useDeleteStructure() {
+  const qc = useQueryClient();
+  const invalidate = useInvalidateStructures();
+  return useMutation<void, ApiError, number>({
+    mutationFn: (id) => api.deleteStructure(id),
+    onSuccess: (_void, id) => {
+      // Drop it from the cached list straight away. The invalidation
+      // below refetches it, but until that lands the stale entry would
+      // still be there — and the page's auto-select could pick the
+      // structure that was just deleted.
+      qc.setQueryData<StructureSummaryView[]>(
+        queryKeys.structures.list("template"),
+        (old) => (old ?? []).filter((s) => s.id !== id),
+      );
+      invalidate(id);
+    },
+  });
+}
+
+export function useAddStructureNode() {
+  const invalidate = useInvalidateStructures();
+  return useMutation<
+    StructureNodeView,
+    ApiError,
+    { structureId: number; input: StructureNodeInput }
+  >({
+    mutationFn: ({ structureId, input }) =>
+      api.addStructureNode(structureId, input),
+    onSuccess: (_node, vars) => invalidate(vars.structureId),
+  });
+}
+
+export function useUpdateStructureNode() {
+  const invalidate = useInvalidateStructures();
+  return useMutation<
+    StructureNodeView,
+    ApiError,
+    { structureId: number; nodeId: string; input: StructureNodeInput }
+  >({
+    mutationFn: ({ structureId, nodeId, input }) =>
+      api.updateStructureNode(structureId, nodeId, input),
+    onSuccess: (_node, vars) => invalidate(vars.structureId),
+  });
+}
+
+export function useDeleteStructureNode() {
+  const invalidate = useInvalidateStructures();
+  return useMutation<void, ApiError, { structureId: number; nodeId: string }>({
+    mutationFn: ({ structureId, nodeId }) =>
+      api.deleteStructureNode(structureId, nodeId),
+    onSuccess: (_void, vars) => invalidate(vars.structureId),
+  });
+}
+
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `npx vitest run src/test/features/templates/data.test.tsx` (from
+`apps/desktop/aegis-desktop`)
+Expected: PASS — 4 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/desktop/aegis-desktop/src/features/templates/data/structures.ts apps/desktop/aegis-desktop/src/test/features/templates/data.test.tsx
+git commit -m "feat(desktop): add the templates data hooks"
+```
+
+---
+
+### Task 8: The Templates page, its route and the nav entry
+
+**Files:**
+- Create: `apps/desktop/aegis-desktop/src/features/templates/pages/TemplatesPage.tsx`
+- Create: `apps/desktop/aegis-desktop/src/features/templates/index.ts`
+- Create: `apps/desktop/aegis-desktop/src/routes/_authed/_layout/templates/index.tsx`
+- Modify: `apps/desktop/aegis-desktop/src/features/app/components/AppLayout.tsx`
+- Test: `apps/desktop/aegis-desktop/src/test/features/templates/templates-page.test.tsx`
+- Test: `apps/desktop/aegis-desktop/src/test/features/app/app-layout-templates.test.tsx`
+
+**Interfaces:**
+- Consumes: the i18n keys from Task 5.
+- Produces: `TemplatesPage` (exported from `src/features/templates/index.ts`), the route `/templates`, and a "Templates" entry in the Knowledge Base submenu.
+
+- [ ] **Step 1: Write the failing page test**
+
+Create `apps/desktop/aegis-desktop/src/test/features/templates/templates-page.test.tsx`:
+
+```tsx
+import "@testing-library/jest-dom/vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { AegisI18nProvider } from "@aegis/ui/i18n";
+import { AegisThemeProvider } from "@aegis/ui/theme";
+
+import { renderInRouter } from "../../helpers/file-route-utils";
+import { TemplatesPage } from "../../../features/templates";
+
+function createMemoryStorage(): Storage {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    clear() {
+      data.clear();
+    },
+    getItem(key: string) {
+      return data.has(key) ? data.get(key)! : null;
+    },
+    key(index: number) {
+      return Array.from(data.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      data.delete(key);
+    },
+    setItem(key: string, value: string) {
+      data.set(key, value);
+    },
+  } as unknown as Storage;
+}
+
+beforeEach(() => {
+  vi.unstubAllGlobals();
+  vi.stubGlobal("localStorage", createMemoryStorage());
+});
+afterEach(() => cleanup());
+
+function renderTemplates() {
+  return renderInRouter(
+    <AegisThemeProvider>
+      <AegisI18nProvider>
+        <TemplatesPage />
+      </AegisI18nProvider>
+    </AegisThemeProvider>,
+  );
+}
+
+describe("TemplatesPage", () => {
+  it("renders the heading and the one card", async () => {
+    await renderTemplates();
+    expect(
+      screen.getByRole("heading", { level: 4, name: /templates/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Standard Project Folder Structure"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Statistical programming standard project folder structure/i,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("navigates to /templates/structure when the card is clicked", async () => {
+    const { router } = await renderTemplates();
+    await userEvent.click(
+      screen.getByText("Standard Project Folder Structure"),
+    );
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe("/templates/structure"),
+    );
+  });
+});
+
+```
+
+- [ ] **Step 2: Write the failing nav test**
+
+Create `apps/desktop/aegis-desktop/src/test/features/app/app-layout-templates.test.tsx`:
+
+```tsx
+import "@testing-library/jest-dom/vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { AegisI18nProvider } from "@aegis/ui/i18n";
+import { AegisThemeProvider } from "@aegis/ui/theme";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+import { renderWithFullRouter } from "../../helpers/file-route-utils";
+import { mockCommands } from "../../helpers/tauri-mock";
+import { TestQueryProvider } from "../../helpers/test-query-provider";
+
+function createMemoryStorage(): Storage {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    clear() {
+      data.clear();
+    },
+    getItem(key: string) {
+      return data.has(key) ? data.get(key)! : null;
+    },
+    key(index: number) {
+      return Array.from(data.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      data.delete(key);
+    },
+    setItem(key: string, value: string) {
+      data.set(key, value);
+    },
+  } as unknown as Storage;
+}
+
+beforeEach(() => {
+  vi.unstubAllGlobals();
+  vi.stubGlobal("localStorage", createMemoryStorage());
+});
+afterEach(() => cleanup());
+
+function renderRoot() {
+  return renderWithFullRouter({
+    initialEntries: ["/"],
+    wrapper: ({ children }) => (
+      <AegisThemeProvider>
+        <TestQueryProvider>
+          <AegisI18nProvider>{children}</AegisI18nProvider>
+        </TestQueryProvider>
+      </AegisThemeProvider>
+    ),
+  });
+}
+
+describe("AppLayout — Templates sub-menu entry", () => {
+  it("shows Templates under Knowledge Base", async () => {
+    mockCommands({ is_logged_in: () => true });
+    await renderRoot();
+    await userEvent.click(await screen.findByText("Knowledge Base"));
+    expect(screen.getByText("Templates")).toBeInTheDocument();
+  });
+
+  it("navigates to /templates when the Templates sub-menu is clicked", async () => {
+    mockCommands({ is_logged_in: () => true });
+    const { router } = await renderRoot();
+    await userEvent.click(await screen.findByText("Knowledge Base"));
+    await userEvent.click(screen.getByText("Templates"));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe("/templates"),
+    );
+  });
+});
+```
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run: `npx vitest run src/test/features/templates/templates-page.test.tsx src/test/features/app/app-layout-templates.test.tsx` (from
+`apps/desktop/aegis-desktop`)
+Expected: FAIL — `TemplatesPage` is not exported, and "Templates" is not in the sidebar.
+
+- [ ] **Step 4: Implement the Templates page**
+
+Create `apps/desktop/aegis-desktop/src/features/templates/pages/TemplatesPage.tsx`:
+
+```tsx
+import { useNavigate } from "@tanstack/react-router";
+import { Box, Card, CardContent, CardHeader, Typography } from "@aegis/ui/mui";
+import { useI18n } from "@aegis/ui/i18n";
+
+/**
+ * The template catalogue.
+ *
+ * The entries are fixed text in the frontend — they are not fetched —
+ * so each card is a launcher into one of the template pages rather than
+ * a row of API data.
+ */
+const TEMPLATES = [
+  {
+    titleKey: "templates.card.standardFolderStructure.title",
+    descriptionKey: "templates.card.standardFolderStructure.description",
+    target: "/templates/structure",
+  },
+] as const;
+
+export function TemplatesPage() {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+
+  return (
+    <Box sx={{ p: 4, display: "flex", flexDirection: "column", gap: 3 }}>
+      <Typography variant="h4">{t("templates.heading")}</Typography>
+
+      <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+        {TEMPLATES.map((template) => (
+          <Card
+            key={template.target}
+            sx={{ flex: 1, minWidth: 320, cursor: "pointer" }}
+            onClick={() => navigate({ to: template.target })}
+          >
+            <CardHeader title={t(template.titleKey)} />
+            <CardContent>
+              <Typography variant="body2">
+                {t(template.descriptionKey)}
+              </Typography>
+            </CardContent>
+          </Card>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+```
+
+- [ ] **Step 5: Export the feature module**
+
+Create `apps/desktop/aegis-desktop/src/features/templates/index.ts`:
+
+```ts
+export { TemplatesPage } from "./pages/TemplatesPage";
+```
+
+- [ ] **Step 6: Add the route**
+
+Create `apps/desktop/aegis-desktop/src/routes/_authed/_layout/templates/index.tsx`:
+
+**Note:** it must be an **index** route. A `templates.tsx` file sitting next to a
+`templates/` folder becomes the *layout parent* of `templates/structure/*` in
+TanStack file routing — the card page would render instead of the structure
+page, and the structure page would be unreachable.
+
+```tsx
+import { createFileRoute } from "@tanstack/react-router";
+import { TemplatesPage } from "../../../features/templates";
+
+export const Route = createFileRoute("/_authed/_layout/templates")({
+  component: TemplatesPage,
+});
+```
+
+- [ ] **Step 7: Regenerate the route tree**
+
+The TanStack Router Vite plugin writes `src/routes/routeTree.gen.ts` during a
+Vite build, and `pnpm --filter aegis-desktop build` runs `tsc` *before*
+`vite build` — so the tree must be regenerated before the typecheck passes.
+
+Run: `pnpm --filter aegis-desktop exec vite build`
+Expected: `src/routes/routeTree.gen.ts` now contains a `_authed/_layout/templates` entry.
+
+- [ ] **Step 8: Add the nav entry**
+
+In `apps/desktop/aegis-desktop/src/features/app/components/AppLayout.tsx`:
+
+Add an icon import and a component, next to the existing menu icons:
+
+```tsx
+import {
+  AccountTree as AccountTreeIcon,
+  ...
+} from "@aegis/ui/icons";
+
+const TemplatesMenuIcon = () => <AccountTreeIcon />;
+```
+
+Add the entry to the Knowledge Base submenu in `metadataEntry`:
+
+```tsx
+    subMenu: [
+      {
+        link: "/metadata",
+        title: t("nav.metadata"),
+        icon: MetadataMenuIcon,
+      },
+      {
+        link: "/templates",
+        title: t("nav.templates"),
+        icon: TemplatesMenuIcon,
+      },
+    ],
+```
+
+- [ ] **Step 9: Run the tests to verify they pass**
+
+Run: `npx vitest run src/test/features/templates/templates-page.test.tsx src/test/features/app/app-layout-templates.test.tsx` (from
+`apps/desktop/aegis-desktop`)
+Expected: PASS — 4 tests.
+
+- [ ] **Step 10: Typecheck**
+
+Run: `pnpm --filter aegis-desktop typecheck`
+Expected: PASS.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add apps/desktop/aegis-desktop/src/features/templates apps/desktop/aegis-desktop/src/routes/_authed/_layout/templates.tsx apps/desktop/aegis-desktop/src/routes/routeTree.gen.ts apps/desktop/aegis-desktop/src/features/app/components/AppLayout.tsx apps/desktop/aegis-desktop/src/test/features/templates/templates-page.test.tsx apps/desktop/aegis-desktop/src/test/features/app/app-layout-templates.test.tsx
+git commit -m "feat(desktop): add the templates page and its nav entry"
+```
+
+---
+
+### Task 9: The node row and its action menu
+
+**Files:**
+- Create: `apps/desktop/aegis-desktop/src/features/templates/components/StructureNodeRow.tsx`
+- Create: `apps/desktop/aegis-desktop/src/features/templates/components/NodeActionMenu.tsx`
+- Test: `apps/desktop/aegis-desktop/src/test/features/templates/node-row.test.tsx`
+
+**Interfaces:**
+- Consumes: `StructureNodeView` from `src/shared/api`; the i18n keys from Task 5.
+- Produces:
+  - `NodeActionMenuProps { node: StructureNodeView; onAdd: (node: StructureNodeView) => void; onEdit: (node: StructureNodeView) => void; onDelete: (node: StructureNodeView) => void }` — a `MoreVert` `IconButton` that opens a `Menu` of three entries (add / edit / delete), each an icon plus its label.
+  - `StructureNodeRowProps { node: StructureNodeView; canMutate: boolean; onAdd: (node: StructureNodeView) => void; onEdit: (node: StructureNodeView) => void; onDelete: (node: StructureNodeView) => void; label?: string; secondaryPath?: string }` — the row's primary label is `label` when given, otherwise `node.entryName`; `secondaryPath` (used by the flat view) is shown as an extra line beneath the label.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `apps/desktop/aegis-desktop/src/test/features/templates/node-row.test.tsx`:
+
+```tsx
+import "@testing-library/jest-dom/vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { ComponentProps } from "react";
+import { AegisI18nProvider } from "@aegis/ui/i18n";
+import { AegisThemeProvider } from "@aegis/ui/theme";
+
+import type { StructureNodeView } from "../../../shared/api";
+import { StructureNodeRow } from "../../../features/templates/components/StructureNodeRow";
+
+afterEach(() => cleanup());
+
+const DIRECTORY: StructureNodeView = {
+  nodeId: "n1",
+  description: "Statistical programming raw data",
+  entryName: "data",
+  directory: true,
+  parent: "n0",
+  reference: null,
+  migration: {
+    directory: "/opt/sop/raw",
+    filter: ["*.sas7bdat", "*.xpt"],
+  },
+  children: [],
+};
+
+const FILE: StructureNodeView = {
+  nodeId: "n2",
+  description: "",
+  // The name differs from the reference's file name on purpose, so the
+  // two are not mistaken for each other in the row.
+  entryName: "b.sas7bdat",
+  directory: false,
+  parent: "n1",
+  reference: "/opt/sop/raw/a.sas7bdat",
+  migration: null,
+  children: [],
+};
+
+function renderRow(
+  node: StructureNodeView,
+  props: Partial<ComponentProps<typeof StructureNodeRow>> = {},
+) {
+  return render(
+    <AegisThemeProvider>
+      <AegisI18nProvider>
+        <StructureNodeRow
+          node={node}
+          canMutate={false}
+          onAdd={() => {}}
+          onEdit={() => {}}
+          onDelete={() => {}}
+          {...props}
+        />
+      </AegisI18nProvider>
+    </AegisThemeProvider>,
+  );
+}
+
+describe("StructureNodeRow", () => {
+  it("shows the node's own name", () => {
+    renderRow(DIRECTORY);
+    expect(screen.getByText("data")).toBeInTheDocument();
+  });
+
+  it("does not show the description inline", () => {
+    renderRow(DIRECTORY);
+    expect(
+      screen.queryByText("Statistical programming raw data"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the description as a tooltip when the row is hovered", async () => {
+    renderRow(DIRECTORY);
+    await userEvent.hover(screen.getByText("data"));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Statistical programming raw data");
+  });
+
+  it("marks a directory with a folder icon and a file with a file icon", () => {
+    const { unmount } = renderRow(DIRECTORY);
+    expect(screen.getByTestId("FolderIcon")).toBeInTheDocument();
+    unmount();
+
+    renderRow(FILE);
+    expect(screen.getByTestId("InsertDriveFileIcon")).toBeInTheDocument();
+  });
+
+  it("shows only the file name of the reference path", () => {
+    renderRow(FILE);
+    expect(screen.getByText("a.sas7bdat")).toBeInTheDocument();
+    expect(
+      screen.queryByText("/opt/sop/raw/a.sas7bdat"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the complete reference path in a tooltip", async () => {
+    renderRow(FILE);
+    await userEvent.hover(screen.getByText("a.sas7bdat"));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("/opt/sop/raw/a.sas7bdat");
+  });
+
+  it("shows the migration path by name, with the whole path in a tooltip", async () => {
+    renderRow(DIRECTORY);
+    expect(screen.getByText("raw")).toBeInTheDocument();
+    expect(screen.queryByText("/opt/sop/raw")).not.toBeInTheDocument();
+    await userEvent.hover(screen.getByText("raw"));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("/opt/sop/raw");
+  });
+
+  it("does not label the migration path", () => {
+    renderRow(DIRECTORY);
+    expect(screen.queryByText("Migration")).not.toBeInTheDocument();
+  });
+
+  it("puts the migration filter chips to the right of the path name", () => {
+    renderRow(DIRECTORY);
+    const filters = screen.getByTestId("structure-node-filters");
+    const pathName = screen.getByText("raw");
+    // The chips are beside the migration path, not tucked under it.
+    expect(filters.contains(pathName)).toBe(false);
+    expect(
+      pathName.compareDocumentPosition(filters) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("shows the migration filters as chips", () => {
+    renderRow(DIRECTORY);
+    const chips = document.querySelectorAll(".MuiChip-root");
+    expect(chips).toHaveLength(2);
+    expect(chips[0]).toHaveTextContent("*.sas7bdat");
+    expect(chips[1]).toHaveTextContent("*.xpt");
+  });
+
+  it("shows the given label and the extra full path", () => {
+    renderRow(DIRECTORY, { label: "data", secondaryPath: "raw/data" });
+    expect(screen.getByText("data")).toBeInTheDocument();
+    expect(screen.getByText("raw/data")).toBeInTheDocument();
+  });
+
+  it("hides the action menu from a read-only user", () => {
+    renderRow(DIRECTORY, { canMutate: false });
+    expect(
+      screen.queryByRole("button", { name: /node actions/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers add, edit and delete to an admin", async () => {
+    const onAdd = vi.fn();
+    renderRow(DIRECTORY, { canMutate: true, onAdd });
+    await userEvent.click(screen.getByRole("button", { name: /node actions/i }));
+    expect(screen.getByText("Add node")).toBeInTheDocument();
+    expect(screen.getByText("Edit node")).toBeInTheDocument();
+    expect(screen.getByText("Delete node")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Add node"));
+    expect(onAdd).toHaveBeenCalledWith(DIRECTORY);
+  });
+});
+
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `npx vitest run src/test/features/templates/node-row.test.tsx` (from
+`apps/desktop/aegis-desktop`)
+Expected: FAIL — cannot resolve `features/templates/components/StructureNodeRow`.
+
+- [ ] **Step 3: Implement the action menu**
+
+Create `apps/desktop/aegis-desktop/src/features/templates/components/NodeActionMenu.tsx`:
+
+```tsx
+import { useState } from "react";
+import { IconButton, Menu, MenuItem } from "@aegis/ui/mui";
+import {
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Edit as EditIcon,
+  MoreHoriz as MoreHorizIcon,
+} from "@aegis/ui/icons";
+import { useI18n } from "@aegis/ui/i18n";
+
+import type { StructureNodeView } from "../../../shared/api";
+
+export interface NodeActionMenuProps {
+  node: StructureNodeView;
+  onAdd: (node: StructureNodeView) => void;
+  onEdit: (node: StructureNodeView) => void;
+  onDelete: (node: StructureNodeView) => void;
+}
+
+/**
+ * The per-node admin menu. The spec asks for "a list of icon buttons";
+ * each entry carries an action icon *and* its label, so the three
+ * actions are readable rather than merely recognisable.
+ */
+export function NodeActionMenu({
+  node,
+  onAdd,
+  onEdit,
+  onDelete,
+}: NodeActionMenuProps) {
+  const { t } = useI18n();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+
+  const close = () => setAnchor(null);
+
+  return (
+    <>
+      <IconButton
+        size="small"
+        aria-label={t("templates.node.actions")}
+        onClick={(e) => {
+          // The row lives inside a tree item whose content click toggles
+          // the item. Stop the click here so opening the menu does not
+          // also collapse the node.
+          e.stopPropagation();
+          setAnchor(e.currentTarget);
+        }}
+      >
+        <MoreHorizIcon fontSize="small" />
+      </IconButton>
+      <Menu
+        anchorEl={anchor}
+        open={anchor != null}
+        onClose={close}
+        // The menu renders in a portal, but React portals bubble events
+        // through the *React* tree — so a click on a menu item, or on the
+        // backdrop that dismisses it, would still reach the tree item and
+        // toggle it. The menu's root is an ancestor of both the backdrop
+        // and the items, so stopping the click here covers both.
+        onClick={(e) => e.stopPropagation()}
+      >
+        {node.directory && (
+          <MenuItem
+            onClick={() => {
+              close();
+              onAdd(node);
+            }}
+          >
+            <AddIcon fontSize="small" sx={{ mr: 1 }} />
+            {t("templates.node.add")}
+          </MenuItem>
+        )}
+        <MenuItem
+          onClick={() => {
+            close();
+            onEdit(node);
+          }}
+        >
+          <EditIcon fontSize="small" sx={{ mr: 1 }} />
+          {t("templates.node.edit")}
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            close();
+            onDelete(node);
+          }}
+        >
+          <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
+          {t("templates.node.delete")}
+        </MenuItem>
+      </Menu>
+    </>
+  );
+}
+
+```
+
+- [ ] **Step 4: Implement the node row**
+
+Create `apps/desktop/aegis-desktop/src/features/templates/components/StructureNodeRow.tsx`:
+
+```tsx
+import { Box, Chip, Stack, Tooltip, Typography } from "@aegis/ui/mui";
+import {
+  Folder as FolderIcon,
+  InsertDriveFile as InsertDriveFileIcon,
+} from "@aegis/ui/icons";
+
+import type { StructureNodeView } from "../../../shared/api";
+import { NodeActionMenu } from "./NodeActionMenu";
+
+export interface StructureNodeRowProps {
+  node: StructureNodeView;
+  canMutate: boolean;
+  onAdd: (node: StructureNodeView) => void;
+  onEdit: (node: StructureNodeView) => void;
+  onDelete: (node: StructureNodeView) => void;
+  /** Overrides the label; the flat view shows the node's own name. */
+  label?: string;
+  /** The flat view's extra full-path line. */
+  secondaryPath?: string;
+}
+
+/**
+ * The last segment of a path — the file or folder name.
+ *
+ * The reference and the migration source are absolute paths; only the
+ * name is shown inline, with the whole path in the tooltip.
+ */
+export function basename(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
+/**
+ * One node's row: a folder or file icon, then the node's own name, then
+ * the reference and the migration.
+ *
+ * The description is not shown inline — it is the row's tooltip, so a
+ * long description cannot push the name out of view. The reference and
+ * the migration source are shown by name only, with the whole path in
+ * their tooltip; the migration filters are chips.
+ */
+export function StructureNodeRow({
+  node,
+  canMutate,
+  onAdd,
+  onEdit,
+  onDelete,
+  label,
+  secondaryPath,
+}: StructureNodeRowProps) {
+  return (
+    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+      {node.directory ? (
+        <FolderIcon fontSize="small" color="primary" />
+      ) : (
+        <InsertDriveFileIcon fontSize="small" color="action" />
+      )}
+
+      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+        <Tooltip title={node.description} describeChild placement="top">
+          <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+            {label ?? node.entryName}
+          </Typography>
+        </Tooltip>
+
+        {secondaryPath && (
+          <Typography variant="caption" color="text.secondary" noWrap>
+            {secondaryPath}
+          </Typography>
+        )}
+
+        {node.reference && (
+          <Tooltip title={node.reference} describeChild placement="top">
+            <Typography variant="caption" color="text.secondary" noWrap>
+              {basename(node.reference)}
+            </Typography>
+          </Tooltip>
+        )}
+
+        {node.migration && (
+          <Tooltip
+            title={node.migration.directory}
+            describeChild
+            placement="top"
+          >
+            <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center" }}>
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {basename(node.migration.directory)}
+              </Typography>
+
+              {node.migration && node.migration.filter.length > 0 && (
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  data-testid="structure-node-filters"
+                  sx={{ flexShrink: 0, alignItems: "center", ml: 0.5 }}
+                >
+                  {node.migration.filter.map((filter) => (
+                    <Chip
+                      key={filter}
+                      size="small"
+                      label={filter}
+                      sx={{ height: 18, fontSize: 11 }}
+                    />
+                  ))}
+                </Stack>
+              )}
+            </Box>
+          </Tooltip>
+        )}
+      </Box>
+
+
+
+      {canMutate && (
+        <NodeActionMenu
+          node={node}
+          onAdd={onAdd}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
+      )}
+    </Stack>
+  );
+}
+
+```
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `npx vitest run src/test/features/templates/node-row.test.tsx` (from
+`apps/desktop/aegis-desktop`)
+Expected: PASS — 7 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/desktop/aegis-desktop/src/features/templates/components/StructureNodeRow.tsx apps/desktop/aegis-desktop/src/features/templates/components/NodeActionMenu.tsx apps/desktop/aegis-desktop/src/test/features/templates/node-row.test.tsx
+git commit -m "feat(desktop): add the structure node row and its action menu"
+```
+
+---
+
+### Task 10: The node drawer and the delete dialog
+
+**Files:**
+- Create: `apps/desktop/aegis-desktop/src/features/templates/components/NodeDrawer.tsx`
+- Create: `apps/desktop/aegis-desktop/src/features/templates/components/DeleteNodeDialog.tsx`
+- Test: `apps/desktop/aegis-desktop/src/test/features/templates/node-drawer.test.tsx`
+- Test: `apps/desktop/aegis-desktop/src/test/features/templates/delete-node-dialog.test.tsx`
+
+**Interfaces:**
+- Consumes: `StructureNodeInput` and `StructureNodeView` from `src/shared/api`; the i18n keys from Task 5; `errorMessage` from `src/shared/api/error`.
+- Produces:
+  - `NodeDrawerProps { open: boolean; mode: "create" | "edit"; node: StructureNodeView | null; parent: StructureNodeView | null; onClose: () => void; onSubmit: (input: StructureNodeInput) => void; pending: boolean; error: ApiError | null }`
+  - `DeleteNodeDialogProps { open: boolean; node: StructureNodeView | null; onClose: () => void; onConfirm: (node: StructureNodeView) => void; pending: boolean; error: unknown }`
+  - `isValidEntryName(name: string): boolean` — exported from `NodeDrawer.tsx` so the page can reuse it.
+
+- [ ] **Step 1: Write the failing drawer test**
+
+Create `apps/desktop/aegis-desktop/src/test/features/templates/node-drawer.test.tsx`:
+
+```tsx
+import "@testing-library/jest-dom/vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { ComponentProps } from "react";
+import { AegisI18nProvider } from "@aegis/ui/i18n";
+import { AegisThemeProvider } from "@aegis/ui/theme";
+
+import type { StructureNodeView } from "../../../shared/api";
+import {
+  NodeDrawer,
+  isValidEntryName,
+} from "../../../features/templates/components/NodeDrawer";
+
+afterEach(() => cleanup());
+
+const PARENT: StructureNodeView = {
+  nodeId: "n0",
+  description: "",
+  entryName: "raw",
+  directory: true,
+  parent: null,
+  reference: null,
+  migration: null,
+  children: [],
+};
+
+function renderDrawer(
+  props: Partial<ComponentProps<typeof NodeDrawer>> = {},
+) {
+  return render(
+    <AegisThemeProvider>
+      <AegisI18nProvider>
+        <NodeDrawer
+          open
+          mode="create"
+          node={null}
+          parent={PARENT}
+          onClose={() => {}}
+          onSubmit={() => {}}
+          pending={false}
+          error={null}
+          {...props}
+        />
+      </AegisI18nProvider>
+    </AegisThemeProvider>,
+  );
+}
+
+describe("isValidEntryName", () => {
+  it("accepts a plain name", () => {
+    expect(isValidEntryName("data")).toBe(true);
+  });
+
+  it("accepts a name with a space in it", () => {
+    expect(isValidEntryName("raw data")).toBe(true);
+  });
+
+  it("rejects a blank name", () => {
+    expect(isValidEntryName("   ")).toBe(false);
+  });
+
+  it("rejects a name carrying a path separator", () => {
+    expect(isValidEntryName("raw/data")).toBe(false);
+    expect(isValidEntryName("raw\\data")).toBe(false);
+  });
+
+  it("rejects a dot or dot-dot name", () => {
+    expect(isValidEntryName(".")).toBe(false);
+    expect(isValidEntryName("..")).toBe(false);
+  });
+});
+
+describe("NodeDrawer", () => {
+  it("starts with an empty name when adding", () => {
+    renderDrawer();
+    // A node carries only its own name — the parent supplies the
+    // nesting — so there is nothing to prefill.
+    expect(screen.getByLabelText(/^Entry name/)).toHaveValue("");
+  });
+
+  it("shows the reference field only for a file", async () => {
+    renderDrawer();
+    expect(screen.queryByLabelText("Reference path")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("Folder"));
+    expect(screen.getByLabelText("Reference path")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Migration source directory"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the migration fields only for a directory", async () => {
+    renderDrawer();
+    expect(
+      screen.getByLabelText("Migration source directory"),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("Folder"));
+    expect(
+      screen.queryByLabelText("Migration source directory"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("disables Save while the name is invalid", async () => {
+    renderDrawer();
+    const save = screen.getByRole("button", { name: "Create" });
+    expect(save).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "raw/data");
+    expect(save).toBeDisabled();
+    await userEvent.clear(screen.getByLabelText(/^Entry name/));
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "data");
+    expect(save).toBeEnabled();
+  });
+
+  it("sends the name and the parent id when adding", async () => {
+    const onSubmit = vi.fn();
+    renderDrawer({ onSubmit });
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "data");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ entryName: "data", parent: "n0" }),
+    );
+  });
+
+  it("sends a null parent when adding at the root", async () => {
+    const onSubmit = vi.fn();
+    renderDrawer({ parent: null, onSubmit });
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "raw");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ entryName: "raw", parent: null }),
+    );
+  });
+
+  it("drops a blank migration filter", async () => {
+    const onSubmit = vi.fn();
+    renderDrawer({ onSubmit });
+    await userEvent.type(
+      screen.getByLabelText("Migration source directory"),
+      "/opt/sop",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Add filter" }));
+    await userEvent.type(
+      screen.getAllByLabelText("Migration filter")[0],
+      "*.sas7bdat",
+    );
+    // A second, blank filter row.
+    await userEvent.click(screen.getByRole("button", { name: "Add filter" }));
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "raw");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        migration: { directory: "/opt/sop", filter: ["*.sas7bdat"] },
+      }),
+    );
+  });
+
+  it("shows the node's current values when editing", () => {
+    renderDrawer({
+      mode: "edit",
+      node: {
+        nodeId: "n1",
+        description: "raw data",
+        entryName: "data",
+        directory: true,
+        parent: "n0",
+        reference: null,
+        migration: null,
+        children: [],
+      },
+      parent: null,
+    });
+    expect(screen.getByLabelText(/^Entry name/)).toHaveValue("data");
+    expect(screen.getByLabelText("Description")).toHaveValue("raw data");
+  });
+});
+
+```
+
+- [ ] **Step 2: Write the failing delete-dialog test**
+
+Create `apps/desktop/aegis-desktop/src/test/features/templates/delete-node-dialog.test.tsx`:
+
+```tsx
+import "@testing-library/jest-dom/vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { ComponentProps } from "react";
+import { AegisI18nProvider } from "@aegis/ui/i18n";
+import { AegisThemeProvider } from "@aegis/ui/theme";
+
+import type { StructureNodeView } from "../../../shared/api";
+import { DeleteNodeDialog } from "../../../features/templates/components/DeleteNodeDialog";
+
+afterEach(() => cleanup());
+
+const DIRECTORY: StructureNodeView = {
+  nodeId: "n1",
+  description: "",
+  entryName: "data",
+  directory: true,
+  parent: "n0",
+  reference: null,
+  migration: null,
+  children: [],
+};
+
+function renderDialog(
+  props: Partial<ComponentProps<typeof DeleteNodeDialog>> = {},
+) {
+  return render(
+    <AegisThemeProvider>
+      <AegisI18nProvider>
+        <DeleteNodeDialog
+          open
+          node={DIRECTORY}
+          onClose={() => {}}
+          onConfirm={() => {}}
+          pending={false}
+          error={null}
+          {...props}
+        />
+      </AegisI18nProvider>
+    </AegisThemeProvider>,
+  );
+}
+
+describe("DeleteNodeDialog", () => {
+  it("names the node and warns that its subtree goes too", () => {
+    renderDialog();
+    expect(
+      screen.getByText(/Delete "data" and everything under it\?/),
+    ).toBeInTheDocument();
+  });
+
+  it("confirms with the node", async () => {
+    const onConfirm = vi.fn();
+    renderDialog({ onConfirm });
+    await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    expect(onConfirm).toHaveBeenCalledWith(DIRECTORY);
+  });
+
+  it("shows the error when the delete fails", () => {
+    renderDialog({
+      error: { kind: "http", status: 403, code: "forbidden", message: "nope" },
+    });
+    expect(screen.getByText(/nope/)).toBeInTheDocument();
+  });
+});
+
+```
+
+- [ ] **Step 3: Run the tests to verify they fail**
+
+Run: `npx vitest run src/test/features/templates/node-drawer.test.tsx src/test/features/templates/delete-node-dialog.test.tsx` (from
+`apps/desktop/aegis-desktop`)
+Expected: FAIL — the components do not exist.
+
+- [ ] **Step 4: Implement the drawer**
+
+Create `apps/desktop/aegis-desktop/src/features/templates/components/NodeDrawer.tsx`:
+
+```tsx
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  Box,
+  Button,
+  Drawer,
+  FormControlLabel,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from "@aegis/ui/mui";
+import { useI18n } from "@aegis/ui/i18n";
+
+import { errorMessage } from "../../../shared/api/error";
+import type {
+  ApiError,
+  MigrationView,
+  StructureNodeInput,
+  StructureNodeView,
+} from "../../../shared/api";
+
+export interface NodeDrawerProps {
+  open: boolean;
+  mode: "create" | "edit";
+  /** The node being edited. `null` in create mode. */
+  node: StructureNodeView | null;
+  /** The parent the new node goes under. `null` means the root. */
+  parent: StructureNodeView | null;
+  onClose: () => void;
+  onSubmit: (input: StructureNodeInput) => void;
+  pending: boolean;
+  error: ApiError | null;
+}
+
+/**
+ * A node's name is well formed when it is non-blank, carries no path
+ * separator, and is neither `.` nor `..` — the same rule the server's
+ * `validate_name` enforces. The nesting comes from `parent`, so a name
+ * is unique among its siblings, not across the structure.
+ */
+export function isValidEntryName(name: string): boolean {
+  const trimmed = name.trim();
+  if (trimmed === "") return false;
+  if (trimmed.includes("/") || trimmed.includes("\\")) return false;
+  if (trimmed === "." || trimmed === "..") return false;
+  return true;
+}
+
+export function NodeDrawer({
+  open,
+  mode,
+  node,
+  parent,
+  onClose,
+  onSubmit,
+  pending,
+  error,
+}: NodeDrawerProps) {
+  const { t } = useI18n();
+
+  const [entryName, setEntryName] = useState("");
+  const [description, setDescription] = useState("");
+  const [directory, setDirectory] = useState(true);
+  const [reference, setReference] = useState("");
+  const [migrationDirectory, setMigrationDirectory] = useState("");
+  const [migrationFilters, setMigrationFilters] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (mode === "create") {
+      // A node carries only its own name — the parent supplies the
+      // nesting — so there is nothing to prefill but the name itself.
+      setEntryName("");
+      setDescription("");
+      setDirectory(true);
+      setReference("");
+      setMigrationDirectory("");
+      setMigrationFilters([]);
+      return;
+    }
+    setEntryName(node?.entryName ?? "");
+    setDescription(node?.description ?? "");
+    setDirectory(node?.directory ?? true);
+    setReference(node?.reference ?? "");
+    setMigrationDirectory(node?.migration?.directory ?? "");
+    setMigrationFilters(node?.migration?.filter ?? []);
+  }, [open, mode, node, parent]);
+
+  const nameValid = isValidEntryName(entryName);
+
+  function handleSubmit() {
+    if (!nameValid) return;
+    const migration: MigrationView | null = directory
+      ? migrationDirectory.trim() === ""
+        ? null
+        : {
+            directory: migrationDirectory.trim(),
+            // A filter row the admin left blank is dropped, the same way
+            // the domain-model drawer drops an empty language row.
+            filter: migrationFilters.filter((f) => f.trim() !== ""),
+          }
+      : null;
+    onSubmit({
+      entryName: entryName.trim(),
+      description,
+      directory,
+      parent:
+        mode === "create" ? (parent?.nodeId ?? null) : (node?.parent ?? null),
+      reference: directory ? null : reference.trim() || null,
+      migration,
+    });
+  }
+
+  return (
+    <Drawer
+      anchor="right"
+      open={open}
+      onClose={onClose}
+      slotProps={{ paper: { sx: { width: 480 } } }}
+    >
+      <Box sx={{ p: 3, display: "flex", flexDirection: "column", gap: 2 }}>
+        <Typography variant="h6">
+          {mode === "create"
+            ? t("templates.node.drawer.addTitle")
+            : t("templates.node.drawer.editTitle")}
+        </Typography>
+
+        <Stack spacing={2}>
+          <TextField
+            size="small"
+            label={t("templates.node.field.entryName")}
+            value={entryName}
+            onChange={(e) => setEntryName(e.target.value)}
+            required
+            error={entryName !== "" && !nameValid}
+            helperText={
+              entryName !== "" && !nameValid
+                ? t("templates.node.field.invalidEntryName")
+                : undefined
+            }
+          />
+          <TextField
+            size="small"
+            label={t("templates.node.field.description")}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                checked={directory}
+                onChange={(e) => setDirectory(e.target.checked)}
+              />
+            }
+            label={t("templates.node.field.directory")}
+          />
+          {!directory && (
+            <TextField
+              size="small"
+              label={t("templates.node.field.reference")}
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+            />
+          )}
+          {directory && (
+            <>
+              <TextField
+                size="small"
+                label={t("templates.node.field.migrationDirectory")}
+                value={migrationDirectory}
+                onChange={(e) => setMigrationDirectory(e.target.value)}
+              />
+              {migrationFilters.map((filter, index) => (
+                <TextField
+                  key={index}
+                  size="small"
+                  label={t("templates.node.field.migrationFilter")}
+                  value={filter}
+                  onChange={(e) =>
+                    setMigrationFilters((filters) =>
+                      filters.map((f, i) =>
+                        i === index ? e.target.value : f,
+                      ),
+                    )
+                  }
+                />
+              ))}
+              <Button
+                size="small"
+                sx={{ alignSelf: "flex-start" }}
+                onClick={() => setMigrationFilters((filters) => [...filters, ""])}
+              >
+                {t("templates.node.field.migrationFilterAdd")}
+              </Button>
+            </>
+          )}
+        </Stack>
+
+        {error && (
+          <Alert severity="error">
+            {t("templates.node.saveFailed", { message: errorMessage(error) })}
+          </Alert>
+        )}
+
+        <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
+          <Button onClick={onClose} disabled={pending}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={!nameValid || pending}
+          >
+            {mode === "create" ? t("common.create") : t("common.save")}
+          </Button>
+        </Box>
+      </Box>
+    </Drawer>
+  );
+}
+
+```
+
+- [ ] **Step 5: Implement the delete dialog**
+
+Create `apps/desktop/aegis-desktop/src/features/templates/components/DeleteNodeDialog.tsx`:
+
+```tsx
+import {
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+} from "@aegis/ui/mui";
+import { useI18n } from "@aegis/ui/i18n";
+
+import { errorMessage } from "../../../shared/api/error";
+import type { StructureNodeView } from "../../../shared/api";
+
+export interface DeleteNodeDialogProps {
+  open: boolean;
+  node: StructureNodeView | null;
+  onClose: () => void;
+  onConfirm: (node: StructureNodeView) => void;
+  pending: boolean;
+  error: unknown;
+}
+
+export function DeleteNodeDialog({
+  open,
+  node,
+  onClose,
+  onConfirm,
+  pending,
+  error,
+}: DeleteNodeDialogProps) {
+  const { t } = useI18n();
+  return (
+    <Dialog open={open} onClose={onClose}>
+      <DialogTitle>{t("templates.node.delete.title")}</DialogTitle>
+      <DialogContent>
+        <DialogContentText>
+          {node
+            ? t("templates.node.delete.message", { entryName: node.entryName })
+            : t("templates.node.delete.title")}
+        </DialogContentText>
+        {Boolean(error) && (
+          <DialogContentText sx={{ mt: 2, color: "error.main" }}>
+            {t("templates.node.delete.failed", {
+              message: errorMessage(error),
+            })}
+          </DialogContentText>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={pending}>
+          {t("common.cancel")}
+        </Button>
+        <Button
+          color="error"
+          onClick={() => node && onConfirm(node)}
+          disabled={pending || !node}
+        >
+          {t("common.confirm")}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+```
+
+- [ ] **Step 6: Run the tests to verify they pass**
+
+Run: `npx vitest run src/test/features/templates/node-drawer.test.tsx src/test/features/templates/delete-node-dialog.test.tsx` (from
+`apps/desktop/aegis-desktop`)
+Expected: PASS — 12 tests.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add apps/desktop/aegis-desktop/src/features/templates/components/NodeDrawer.tsx apps/desktop/aegis-desktop/src/features/templates/components/DeleteNodeDialog.tsx apps/desktop/aegis-desktop/src/test/features/templates/node-drawer.test.tsx apps/desktop/aegis-desktop/src/test/features/templates/delete-node-dialog.test.tsx
+git commit -m "feat(desktop): add the structure node drawer and delete dialog"
+```
+
+---
+
+### Task 11: The Project Structure Template page
+
+**Files:**
+- Create: `apps/desktop/aegis-desktop/src/features/templates/components/StructureSidebar.tsx`
+- Create: `apps/desktop/aegis-desktop/src/features/templates/components/StructureTree.tsx`
+- Create: `apps/desktop/aegis-desktop/src/features/templates/pages/StructureTemplatePage.tsx`
+- Modify: `apps/desktop/aegis-desktop/src/features/templates/index.ts`
+- Create: `apps/desktop/aegis-desktop/src/routes/_authed/_layout/templates/structure/index.tsx`
+- Create: `apps/desktop/aegis-desktop/src/routes/_authed/_layout/templates/structure/$structureId.tsx`
+- Test: `apps/desktop/aegis-desktop/src/test/features/templates/structure-template-page.test.tsx`
+
+**Interfaces:**
+- Consumes: the hooks from Task 7, the row from Task 9, the drawer and dialog from Task 10, `flattenStructure` from Task 6, `useCurrentUser` from `src/features/auth`, and the i18n keys from Task 5.
+- Produces: `StructureTemplatePage({ structureId }: { structureId: number | null })`, exported from `src/features/templates/index.ts`. The two route files render it — the index route with `structureId={null}`, the param route with the parsed id.
+
+- [ ] **Step 1: Write the failing page test**
+
+Create `apps/desktop/aegis-desktop/src/test/features/templates/structure-template-page.test.tsx`:
+
+```tsx
+import "@testing-library/jest-dom/vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { AegisI18nProvider } from "@aegis/ui/i18n";
+import { AegisThemeProvider } from "@aegis/ui/theme";
+
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+
+import { renderWithFullRouter } from "../../helpers/file-route-utils";
+import { httpError, mockCommands } from "../../helpers/tauri-mock";
+import { TestQueryProvider } from "../../helpers/test-query-provider";
+
+function createMemoryStorage(): Storage {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    clear() {
+      data.clear();
+    },
+    getItem(key: string) {
+      return data.has(key) ? data.get(key)! : null;
+    },
+    key(index: number) {
+      return Array.from(data.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      data.delete(key);
+    },
+    setItem(key: string, value: string) {
+      data.set(key, value);
+    },
+  } as unknown as Storage;
+}
+
+const STRUCTURE = {
+  id: 3,
+  name: "Standard",
+  level: "template",
+  projectCode: null,
+  templateId: null,
+  nodes: [
+    {
+      nodeId: "d1",
+      description: "raw data",
+      entryName: "raw",
+      directory: true,
+      parent: null,
+      reference: null,
+      migration: null,
+      children: [
+        {
+          nodeId: "d2",
+          description: "",
+          entryName: "data",
+          directory: true,
+          parent: "d1",
+          reference: null,
+          migration: null,
+          children: [
+            {
+              nodeId: "f1",
+              description: "",
+              // The name differs from the reference's file name on
+              // purpose, so the two are not mistaken for each other.
+              entryName: "b.sas7bdat",
+              directory: false,
+              parent: "d2",
+              reference: "/abs/a.sas7bdat",
+              migration: null,
+              children: [],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const TEMPLATES = [
+  {
+    id: 3,
+    name: "Standard",
+    level: "template",
+    projectCode: null,
+    templateId: null,
+  },
+];
+
+const GENERAL_USER = {
+  id: 1,
+  code: "alice",
+  name: "Alice",
+  role: "general",
+  active: true,
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
+
+const ADMIN_USER = { ...GENERAL_USER, role: "admin" };
+
+function baseCommands(extra: Record<string, unknown> = {}) {
+  return {
+    is_logged_in: () => true,
+    current_user: () => GENERAL_USER,
+    list_structures: () => TEMPLATES,
+    get_structure: () => STRUCTURE,
+    ...extra,
+  };
+}
+
+beforeEach(() => {
+  vi.unstubAllGlobals();
+  vi.stubGlobal("localStorage", createMemoryStorage());
+});
+afterEach(() => cleanup());
+
+function renderPage(path = "/templates/structure/3") {
+  return renderWithFullRouter({
+    initialEntries: [path],
+    wrapper: ({ children }) => (
+      <AegisThemeProvider>
+        <TestQueryProvider>
+          <AegisI18nProvider>{children}</AegisI18nProvider>
+        </TestQueryProvider>
+      </AegisThemeProvider>
+    ),
+  });
+}
+
+describe("StructureTemplatePage", () => {
+  it("lists the template structures in the sidebar", async () => {
+    mockCommands(baseCommands());
+    await renderPage();
+    const sidebar = await screen.findByTestId("structure-sidebar");
+    expect(within(sidebar).getByText("Standard")).toBeInTheDocument();
+  });
+
+  it("renders the tree of the selected structure", async () => {
+    mockCommands(baseCommands());
+    await renderPage();
+    expect(await screen.findByText("raw")).toBeInTheDocument();
+    expect(await screen.findByText("data")).toBeInTheDocument();
+  });
+
+  it("switches to the flat view, where a sub-directory is not nested", async () => {
+    mockCommands(baseCommands());
+    await renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Flat" }));
+    // The flat view shows the directory by its own name, plus its full path.
+    await waitFor(() => expect(screen.getByText("data")).toBeInTheDocument());
+    expect(screen.getByText("raw/data")).toBeInTheDocument();
+  });
+
+  it("shows an empty state when the structure has no nodes", async () => {
+    mockCommands(
+      baseCommands({
+        get_structure: () => ({ ...STRUCTURE, nodes: [] }),
+      }),
+    );
+    await renderPage();
+    expect(
+      await screen.findByText("No folder structure yet"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows an empty state and does not select anything when there are no templates", async () => {
+    mockCommands(
+      baseCommands({
+        list_structures: () => [],
+      }),
+    );
+    await renderPage("/templates/structure");
+    expect(await screen.findByText("No templates yet")).toBeInTheDocument();
+  });
+
+  it("hides the node actions from a general user", async () => {
+    mockCommands(baseCommands());
+    await renderPage();
+    expect(await screen.findByText("raw")).toBeInTheDocument();
+    expect(
+      screen.queryAllByRole("button", { name: /node actions/i }),
+    ).toHaveLength(0);
+  });
+
+  it("shows the files under each directory in the flat view", async () => {
+    mockCommands(baseCommands());
+    await renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Flat" }));
+    await waitFor(() => expect(screen.getByText("data")).toBeInTheDocument());
+    // The flat view exists to show a directory's files as its leaves, so
+    // they must be visible without expanding the directory first.
+    expect(screen.getByText("a.sas7bdat")).toBeInTheDocument();
+  });
+
+  it("does not show the empty state while the structure is loading", async () => {
+    let resolveStructure: (value: unknown) => void = () => {};
+    mockCommands(
+      baseCommands({
+        get_structure: () =>
+          new Promise((resolve) => {
+            resolveStructure = resolve;
+          }),
+      }),
+    );
+    await renderPage();
+    expect(screen.queryByText("No folder structure yet")).not.toBeInTheDocument();
+    resolveStructure(STRUCTURE);
+    await waitFor(() => expect(screen.getByText("raw")).toBeInTheDocument());
+  });
+
+  it("does not offer to add a root node when no structure is selected", async () => {
+    mockCommands(
+      baseCommands({
+        list_structures: () => [],
+        current_user: () => ADMIN_USER,
+      }),
+    );
+    await renderPage("/templates/structure");
+    // Wait for the admin role to land — the app shell shows "Management"
+    // for an admin — so the assertion is not made before the user query
+    // has resolved.
+    await screen.findByText("Management");
+    expect(
+      screen.queryByRole("button", { name: /add root node/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show a stale save error in a freshly opened drawer", async () => {
+    mockCommands(
+      baseCommands({
+        add_structure_node: () => {
+          throw httpError(400, "validation_failed", "bad path");
+        },
+        current_user: () => ADMIN_USER,
+      }),
+    );
+    await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /add root node/i }),
+    );
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "raw");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByText(/Save failed/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(
+      await screen.findByRole("button", { name: /add root node/i }),
+    );
+    expect(screen.queryByText(/Save failed/)).not.toBeInTheDocument();
+  });
+
+  it("creates a template structure from the sidebar", async () => {
+    const createStructure = vi.fn(() => ({
+      id: 9,
+      name: "Fresh",
+      level: "template",
+      projectCode: null,
+      templateId: null,
+      nodes: [],
+    }));
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+        create_structure: createStructure,
+      }),
+    );
+    await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /add template/i }),
+    );
+    await userEvent.type(screen.getByLabelText(/^Name/), "Fresh");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(createStructure).toHaveBeenCalled());
+    expect(createStructure).toHaveBeenCalledWith({
+      body: {
+        name: "Fresh",
+        level: "template",
+        projectCode: null,
+        templateId: null,
+      },
+    });
+  });
+
+  it("renames a structure from the sidebar", async () => {
+    const renameStructure = vi.fn(() => ({
+      id: 3,
+      name: "Renamed",
+      level: "template",
+      projectCode: null,
+      templateId: null,
+      nodes: [],
+    }));
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+        rename_structure: renameStructure,
+      }),
+    );
+    await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /rename template/i }),
+    );
+    await userEvent.clear(screen.getByLabelText(/^Name/));
+    await userEvent.type(screen.getByLabelText(/^Name/), "Renamed");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(renameStructure).toHaveBeenCalled());
+    expect(renameStructure).toHaveBeenCalledWith({
+      id: 3,
+      body: { name: "Renamed" },
+    });
+  });
+
+  it("deletes a structure after the confirmation", async () => {
+    const deleteStructure = vi.fn();
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+        delete_structure: deleteStructure,
+      }),
+    );
+    await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /delete template/i }),
+    );
+    expect(
+      await screen.findByText(/Delete "Standard" and all of its folders?/),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(deleteStructure).toHaveBeenCalled());
+    expect(deleteStructure).toHaveBeenCalledWith({ id: 3 });
+  });
+
+  it("moves off a structure that was just deleted", async () => {
+    // The server drops the deleted structure from the list, so the
+    // mock does too — otherwise the refetch would put it straight back.
+    let deleted = false;
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+        list_structures: () => (deleted ? [] : TEMPLATES),
+        delete_structure: () => {
+          deleted = true;
+        },
+      }),
+    );
+    const { router } = await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /delete template/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    // The deleted structure was the one on screen — the page must not
+    // stay pointed at a structure that no longer exists.
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe("/templates/structure"),
+    );
+  });
+
+  it("keeps the view toggle and the add button out of the scrolling tree", async () => {
+    mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
+    await renderPage();
+
+    const scroller = await screen.findByTestId("structure-tree-scroll");
+    // The tree scrolls on its own; the toggle and the add button sit
+    // above it and must not scroll away with it.
+    expect(scroller.contains(screen.getByRole("button", { name: "Complete" }))).toBe(false);
+    expect(
+      scroller.contains(screen.getByRole("button", { name: /add root node/i })),
+    ).toBe(false);
+    // ...while the tree itself is inside it.
+    expect(scroller.contains(screen.getByText("raw"))).toBe(true);
+  });
+
+  it("does not collapse the node when a menu item is clicked", async () => {
+    mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
+    await renderPage();
+    const item = (await screen.findByText("raw")).closest("li");
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /node actions/i }))[0],
+    );
+    await userEvent.click(screen.getByText("Add node"));
+
+    // The menu renders in a portal, but React portals bubble events
+    // through the React tree — so the click must not reach the tree
+    // item, which would collapse it.
+    expect(item).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("does not collapse the node when the menu is dismissed", async () => {
+    mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
+    await renderPage();
+    const item = (await screen.findByText("raw")).closest("li");
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /node actions/i }))[0],
+    );
+    const backdrop = document.querySelector(".MuiBackdrop-root");
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop!);
+
+    expect(item).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("does not collapse the node when the action menu is opened", async () => {
+    mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
+    await renderPage();
+    // The tree renders fully expanded, so the child is on screen.
+    expect(await screen.findByText("data")).toBeInTheDocument();
+    const item = (await screen.findByText("raw")).closest("li");
+    expect(item).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /node actions/i }))[0],
+    );
+
+    // The click must not reach the tree item, which would collapse it.
+    expect(item).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("shows the node actions to an admin", async () => {
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+      }),
+    );
+    await renderPage();
+    expect(
+      (await screen.findAllByRole("button", { name: /node actions/i })).length,
+    ).toBeGreaterThan(0);
+  });
+});
+
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `npx vitest run src/test/features/templates/structure-template-page.test.tsx` (from
+`apps/desktop/aegis-desktop`)
+Expected: FAIL — `StructureTemplatePage` is not exported.
+
+- [ ] **Step 3: Implement the sidebar**
+
+Create `apps/desktop/aegis-desktop/src/features/templates/components/StructureSidebar.tsx`:
+
+```tsx
+import {
+  Box,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemText,
+  Stack,
+  Typography,
+} from "@aegis/ui/mui";
+import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon } from "@aegis/ui/icons";
+import { useI18n } from "@aegis/ui/i18n";
+
+import type { StructureSummaryView } from "../../../shared/api";
+
+export interface StructureSidebarProps {
+  structures: StructureSummaryView[];
+  selectedId: number | null;
+  onSelect: (id: number) => void;
+  /** Open the drawer for a new template structure. */
+  onCreate: () => void;
+  /** Open the drawer to rename this structure. */
+  onRename: (structure: StructureSummaryView) => void;
+  /** Open the confirm dialog to delete this structure. */
+  onDelete: (structure: StructureSummaryView) => void;
+  /** Whether the current user may write. Admin and root only. */
+  canMutate: boolean;
+  loading: boolean;
+}
+
+/** The template-level structures, listed down the right-hand side. */
+export function StructureSidebar({
+  structures,
+  selectedId,
+  onSelect,
+  onCreate,
+  onRename,
+  onDelete,
+  canMutate,
+  loading,
+}: StructureSidebarProps) {
+  const { t } = useI18n();
+
+  return (
+    <Box
+      data-testid="structure-sidebar"
+      sx={{
+        width: 260,
+        height: "100%",
+        flexShrink: 0,
+        borderLeft: 1,
+        borderColor: "divider",
+        overflowY: "auto",
+        p: 2,
+      }}
+    >
+      <Stack
+        direction="row"
+        sx={{ mb: 1, alignItems: "center", justifyContent: "space-between" }}
+      >
+        <Typography variant="subtitle2">{t("templates.structure.list")}</Typography>
+        {canMutate && (
+          <IconButton
+            size="small"
+            aria-label={t("templates.structure.add")}
+            onClick={onCreate}
+          >
+            <AddIcon fontSize="small" />
+          </IconButton>
+        )}
+      </Stack>
+
+      {loading && <Typography variant="body2">…</Typography>}
+
+      {!loading && structures.length === 0 && (
+        <Typography variant="body2" color="text.secondary">
+          {t("templates.structure.noTemplates")}
+        </Typography>
+      )}
+
+      <List disablePadding>
+        {structures.map((structure) => (
+          <ListItemButton
+            key={structure.id}
+            selected={structure.id === selectedId}
+            onClick={() => onSelect(structure.id)}
+          >
+            <ListItemText primary={structure.name} />
+            {canMutate && (
+              <Stack direction="row" spacing={0}>
+                <IconButton
+                  size="small"
+                  aria-label={t("templates.structure.rename")}
+                  onClick={(e) => {
+                    // The row itself selects the structure — an admin
+                    // action must not also trigger that.
+                    e.stopPropagation();
+                    onRename(structure);
+                  }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  aria-label={t("templates.structure.delete")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(structure);
+                  }}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+            )}
+          </ListItemButton>
+        ))}
+      </List>
+    </Box>
+  );
+}
+
+```
+
+- [ ] **Step 4: Implement the tree pane**
+
+Create `apps/desktop/aegis-desktop/src/features/templates/components/StructureTree.tsx`:
+
+```tsx
+import { useState } from "react";
+import {
+  Box,
+  Button,
+  Stack,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from "@aegis/ui/mui";
+import { Add as AddIcon } from "@aegis/ui/icons";
+import { useI18n } from "@aegis/ui/i18n";
+import { SimpleTreeView, TreeItem } from "@aegis/ui/tree-view";
+
+import type { StructureNodeView } from "../../../shared/api";
+import { flattenStructure } from "../data/tree";
+import { StructureNodeRow } from "./StructureNodeRow";
+
+export type StructureTreeViewMode = "complete" | "flat";
+
+export interface StructureTreeProps {
+  nodes: StructureNodeView[];
+  canMutate: boolean;
+  /** A root node can only be added to a selected structure. */
+  canAddRoot: boolean;
+  /** Whether the structure is still being fetched. */
+  loading: boolean;
+  onAdd: (node: StructureNodeView | null) => void;
+  onEdit: (node: StructureNodeView) => void;
+  onDelete: (node: StructureNodeView) => void;
+}
+
+interface TreeProps {
+  nodes: StructureNodeView[];
+  canMutate: boolean;
+  onAdd: (node: StructureNodeView) => void;
+  onEdit: (node: StructureNodeView) => void;
+  onDelete: (node: StructureNodeView) => void;
+}
+
+/**
+ * The ids of every directory in the tree.
+ *
+ * The tree renders fully expanded: a folder-structure page is read to
+ * see the whole layout, so a collapsed root would hide most of it.
+ */
+function directoryIds(nodes: StructureNodeView[]): string[] {
+  const ids: string[] = [];
+  const walk = (list: StructureNodeView[]) => {
+    for (const node of list) {
+      if (node.directory) {
+        ids.push(node.nodeId);
+        walk(node.children);
+      }
+    }
+  };
+  walk(nodes);
+  return ids;
+}
+
+/** The Complete tree — the API's tree, nested by `parent`. */
+function CompleteTree(props: TreeProps) {
+  const renderNodes = (nodes: StructureNodeView[]) =>
+    nodes.map((node) => (
+      <TreeItem
+        key={node.nodeId}
+        itemId={node.nodeId}
+        label={
+          <StructureNodeRow
+            node={node}
+            canMutate={props.canMutate}
+            onAdd={props.onAdd}
+            onEdit={props.onEdit}
+            onDelete={props.onDelete}
+          />
+        }
+      >
+        {node.children.length > 0 ? renderNodes(node.children) : null}
+      </TreeItem>
+    ));
+
+  return (
+    <SimpleTreeView defaultExpandedItems={directoryIds(props.nodes)}>
+      {renderNodes(props.nodes)}
+    </SimpleTreeView>
+  );
+}
+
+/** The Flat tree — one row per directory, with its files beneath it. */
+function FlatTree(props: TreeProps) {
+  const entries = flattenStructure(props.nodes);
+
+  return (
+    // The flat view exists to show a directory's files as its leaves,
+    // so every entry starts expanded.
+    <SimpleTreeView defaultExpandedItems={entries.map((e) => e.node.nodeId)}>
+      {entries.map((entry) => (
+        <TreeItem
+          key={entry.node.nodeId}
+          itemId={entry.node.nodeId}
+          label={
+            <StructureNodeRow
+              node={entry.node}
+              canMutate={props.canMutate}
+              onAdd={props.onAdd}
+              onEdit={props.onEdit}
+              onDelete={props.onDelete}
+              label={entry.name}
+              secondaryPath={entry.fullPath}
+            />
+          }
+        >
+          {entry.files.map((file) => (
+            <TreeItem
+              key={file.nodeId}
+              itemId={file.nodeId}
+              label={
+                <StructureNodeRow
+                  node={file}
+                  canMutate={props.canMutate}
+                  onAdd={props.onAdd}
+                  onEdit={props.onEdit}
+                  onDelete={props.onDelete}
+                />
+              }
+            />
+          ))}
+        </TreeItem>
+      ))}
+    </SimpleTreeView>
+  );
+}
+
+export function StructureTree({
+  nodes,
+  canMutate,
+  canAddRoot,
+  loading,
+  onAdd,
+  onEdit,
+  onDelete,
+}: StructureTreeProps) {
+  const { t } = useI18n();
+  const [mode, setMode] = useState<StructureTreeViewMode>("complete");
+
+  const shared: TreeProps = { nodes, canMutate, onAdd, onEdit, onDelete };
+
+  return (
+    <Box
+      sx={{
+        flexGrow: 1,
+        minWidth: 0,
+        minHeight: 0,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{ px: 3, pt: 3, pb: 2, flexShrink: 0, alignItems: "center" }}
+      >
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={mode}
+          onChange={(_e, next) => {
+            if (next) setMode(next as StructureTreeViewMode);
+          }}
+        >
+          <ToggleButton value="complete">
+            {t("templates.structure.view.complete")}
+          </ToggleButton>
+          <ToggleButton value="flat">
+            {t("templates.structure.view.flat")}
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        {canMutate && canAddRoot && (
+          <Button
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={() => onAdd(null)}
+          >
+            {t("templates.node.addRoot")}
+          </Button>
+        )}
+      </Stack>
+
+      <Box sx={{ flexGrow: 1, minHeight: 0, overflow: "auto", px: 3, pb: 3 }}>
+        {nodes.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {loading ? "…" : t("templates.structure.noNodes")}
+          </Typography>
+        ) : mode === "complete" ? (
+          <CompleteTree {...shared} />
+        ) : (
+          <FlatTree {...shared} />
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+```
+
+- [ ] **Step 5: Implement the page**
+
+Create `apps/desktop/aegis-desktop/src/features/templates/pages/StructureTemplatePage.tsx`:
+
+```tsx
+import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { Box, Typography } from "@aegis/ui/mui";
+import { useI18n } from "@aegis/ui/i18n";
+
+import { useCurrentUser } from "../../auth";
+import type {
+  StructureNodeInput,
+  StructureNodeView,
+  StructureSummaryView,
+} from "../../../shared/api";
+import {
+  useAddStructureNode,
+  useCreateStructure,
+  useDeleteStructure,
+  useDeleteStructureNode,
+  useGetStructure,
+  useListTemplateStructures,
+  useRenameStructure,
+  useUpdateStructureNode,
+} from "../data/structures";
+import { DeleteNodeDialog } from "../components/DeleteNodeDialog";
+import { DeleteStructureDialog } from "../components/DeleteStructureDialog";
+import { NodeDrawer } from "../components/NodeDrawer";
+import { StructureDrawer } from "../components/StructureDrawer";
+import { StructureSidebar } from "../components/StructureSidebar";
+import { StructureTree } from "../components/StructureTree";
+
+export interface StructureTemplatePageProps {
+  /** `null` on the index route — the first template is selected then. */
+  structureId: number | null;
+}
+
+export function StructureTemplatePage({
+  structureId,
+}: StructureTemplatePageProps) {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const currentUser = useCurrentUser();
+
+  const structures = useListTemplateStructures();
+  const structure = useGetStructure(structureId);
+
+  const createStructure = useCreateStructure();
+  const renameStructure = useRenameStructure();
+  const deleteStructure = useDeleteStructure();
+
+  const addNode = useAddStructureNode();
+  const updateNode = useUpdateStructureNode();
+  const deleteNode = useDeleteStructureNode();
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<"create" | "edit">("create");
+  const [drawerNode, setDrawerNode] = useState<StructureNodeView | null>(null);
+  const [drawerParent, setDrawerParent] = useState<StructureNodeView | null>(
+    null,
+  );
+  const [deleteTarget, setDeleteTarget] = useState<StructureNodeView | null>(
+    null,
+  );
+
+  const [structureDrawerOpen, setStructureDrawerOpen] = useState(false);
+  const [structureDrawerMode, setStructureDrawerMode] = useState<
+    "create" | "rename"
+  >("create");
+  const [structureDrawerTarget, setStructureDrawerTarget] =
+    useState<StructureSummaryView | null>(null);
+  const [structureDeleteTarget, setStructureDeleteTarget] =
+    useState<StructureSummaryView | null>(null);
+
+  const canMutate =
+    currentUser.data?.role === "root" || currentUser.data?.role === "admin";
+
+  // With no structure selected, settle on the first template so the URL
+  // becomes a shareable link.
+  useEffect(() => {
+    if (structureId != null) return;
+    const first = structures.data?.[0];
+    if (!first) return;
+    navigate({
+      to: "/templates/structure/$structureId",
+      params: { structureId: String(first.id) },
+      replace: true,
+    });
+  }, [structureId, structures.data, navigate]);
+
+  function openAdd(parent: StructureNodeView | null) {
+    // A mutation error belongs to the write that failed. Clear it so a
+    // freshly opened drawer never shows the previous failure.
+    addNode.reset();
+    updateNode.reset();
+    setDrawerMode("create");
+    setDrawerNode(null);
+    setDrawerParent(parent);
+    setDrawerOpen(true);
+  }
+
+  function openEdit(node: StructureNodeView) {
+    addNode.reset();
+    updateNode.reset();
+    setDrawerMode("edit");
+    setDrawerNode(node);
+    setDrawerParent(null);
+    setDrawerOpen(true);
+  }
+
+  function openCreateStructure() {
+    createStructure.reset();
+    renameStructure.reset();
+    setStructureDrawerMode("create");
+    setStructureDrawerTarget(null);
+    setStructureDrawerOpen(true);
+  }
+
+  function openRenameStructure(structure: StructureSummaryView) {
+    createStructure.reset();
+    renameStructure.reset();
+    setStructureDrawerMode("rename");
+    setStructureDrawerTarget(structure);
+    setStructureDrawerOpen(true);
+  }
+
+  function openDeleteStructure(structure: StructureSummaryView) {
+    deleteStructure.reset();
+    setStructureDeleteTarget(structure);
+  }
+
+  function handleStructureSubmit(name: string) {
+    if (structureDrawerMode === "create") {
+      createStructure.mutate(
+        { name, level: "template", projectCode: null, templateId: null },
+        { onSuccess: () => setStructureDrawerOpen(false) },
+      );
+      return;
+    }
+    if (!structureDrawerTarget) return;
+    renameStructure.mutate(
+      { id: structureDrawerTarget.id, input: { name } },
+      { onSuccess: () => setStructureDrawerOpen(false) },
+    );
+  }
+
+  function handleStructureDelete(structure: StructureSummaryView) {
+    deleteStructure.mutate(structure.id, {
+      onSuccess: () => {
+        setStructureDeleteTarget(null);
+        // The deleted structure may be the one on screen. Go back to
+        // the index route, where the auto-select effect picks another
+        // one — the deleted one is already out of the cached list.
+        if (structure.id !== structureId) return;
+        navigate({ to: "/templates/structure" });
+      },
+    });
+  }
+
+  function handleSubmit(input: StructureNodeInput) {
+    if (structureId == null) return;
+    // The drawer stays open until the write succeeds, so a failure shows
+    // the server's message in the drawer instead of vanishing.
+    const onSuccess = () => setDrawerOpen(false);
+    if (drawerMode === "create") {
+      addNode.mutate({ structureId, input }, { onSuccess });
+    } else if (drawerNode) {
+      updateNode.mutate(
+        { structureId, nodeId: drawerNode.nodeId, input },
+        { onSuccess },
+      );
+    }
+  }
+
+  function openDelete(node: StructureNodeView) {
+    deleteNode.reset();
+    setDeleteTarget(node);
+  }
+
+  function handleDelete(node: StructureNodeView) {
+    if (structureId == null) return;
+    deleteNode.mutate(
+      { structureId, nodeId: node.nodeId },
+      { onSuccess: () => setDeleteTarget(null) },
+    );
+  }
+
+  return (
+    // A bounded height: the page is exactly one viewport tall, so the
+    // tree pane scrolls inside it and the heading, the toggle and the
+    // sidebar stay put.
+    <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+      <Box
+        sx={{
+          flexGrow: 1,
+          minWidth: 0,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <Typography variant="h5" sx={{ p: 3, pb: 0, flexShrink: 0 }}>
+          {structure.data?.name ?? t("templates.structure.heading")}
+        </Typography>
+        <StructureTree
+          nodes={structure.data?.nodes ?? []}
+          canMutate={canMutate}
+          canAddRoot={structureId != null}
+          loading={structure.isLoading}
+          onAdd={openAdd}
+          onEdit={openEdit}
+          onDelete={openDelete}
+        />
+      </Box>
+
+      <StructureSidebar
+        structures={structures.data ?? []}
+        selectedId={structureId}
+        onSelect={(id) =>
+          navigate({
+            to: "/templates/structure/$structureId",
+            params: { structureId: String(id) },
+          })
+        }
+        onCreate={openCreateStructure}
+        onRename={openRenameStructure}
+        onDelete={openDeleteStructure}
+        canMutate={canMutate}
+        loading={structures.isLoading}
+      />
+
+      <StructureDrawer
+        open={structureDrawerOpen}
+        mode={structureDrawerMode}
+        structure={structureDrawerTarget}
+        onClose={() => setStructureDrawerOpen(false)}
+        onSubmit={handleStructureSubmit}
+        pending={createStructure.isPending || renameStructure.isPending}
+        error={createStructure.error ?? renameStructure.error}
+      />
+
+      <DeleteStructureDialog
+        open={structureDeleteTarget != null}
+        structure={structureDeleteTarget}
+        onClose={() => setStructureDeleteTarget(null)}
+        onConfirm={handleStructureDelete}
+        pending={deleteStructure.isPending}
+        error={deleteStructure.error}
+      />
+
+      <NodeDrawer
+        open={drawerOpen}
+        mode={drawerMode}
+        node={drawerNode}
+        parent={drawerParent}
+        onClose={() => setDrawerOpen(false)}
+        onSubmit={handleSubmit}
+        pending={addNode.isPending || updateNode.isPending}
+        error={addNode.error ?? updateNode.error}
+      />
+
+      <DeleteNodeDialog
+        open={deleteTarget != null}
+        node={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        pending={deleteNode.isPending}
+        error={deleteNode.error}
+      />
+    </Box>
+  );
+}
+
+```
+
+- [ ] **Step 6: Export the page**
+
+In `apps/desktop/aegis-desktop/src/features/templates/index.ts`, add:
+
+```ts
+export { StructureTemplatePage } from "./pages/StructureTemplatePage";
+export { TemplatesPage } from "./pages/TemplatesPage";
+```
+
+- [ ] **Step 7: Add the two routes**
+
+Create `apps/desktop/aegis-desktop/src/routes/_authed/_layout/templates/structure/index.tsx`:
+
+```tsx
+import { createFileRoute } from "@tanstack/react-router";
+import { StructureTemplatePage } from "../../../../../features/templates";
+
+export const Route = createFileRoute("/_authed/_layout/templates/structure/")({
+  component: () => <StructureTemplatePage structureId={null} />,
+});
+```
+
+Create `apps/desktop/aegis-desktop/src/routes/_authed/_layout/templates/structure/$structureId.tsx`:
+
+```tsx
+import { createFileRoute } from "@tanstack/react-router";
+import { StructureTemplatePage } from "../../../../../features/templates";
+
+export const Route = createFileRoute(
+  "/_authed/_layout/templates/structure/$structureId",
+)({
+  component: () => (
+    <StructureTemplatePage
+      structureId={Number(Route.useParams().structureId)}
+    />
+  ),
+});
+```
+
+- [ ] **Step 8: Regenerate the route tree**
+
+Run: `pnpm --filter aegis-desktop exec vite build`
+Expected: `src/routes/routeTree.gen.ts` gains the two structure routes.
+
+- [ ] **Step 9: Run the test to verify it passes**
+
+Run: `npx vitest run src/test/features/templates/structure-template-page.test.tsx` (from
+`apps/desktop/aegis-desktop`)
+Expected: PASS — 7 tests.
+
+If the sidebar test cannot find "Standard", check that the page's `useGetStructure` is enabled: the test renders with `structureId = 3` via the route, so `get_structure` must be mocked with the `get_structure` key — it is.
+
+- [ ] **Step 10: Typecheck**
+
+Run: `pnpm --filter aegis-desktop typecheck`
+Expected: PASS.
+
+- [ ] **Step 11: Run the whole frontend suite**
+
+Run: `pnpm --filter aegis-desktop test`
+Expected: PASS — no regression in the existing tests.
+
+- [ ] **Step 12: Commit**
+
+```bash
+git add apps/desktop/aegis-desktop/src/features/templates apps/desktop/aegis-desktop/src/routes/_authed/_layout/templates apps/desktop/aegis-desktop/src/routes/routeTree.gen.ts apps/desktop/aegis-desktop/src/test/features/templates/structure-template-page.test.tsx
+git commit -m "feat(desktop): add the project structure template page"
+```
+
+---
+
+## The action menu and the tree item (added after the first build)
+
+Opening the operation menu, choosing an item in it, and dismissing it by
+clicking elsewhere must all leave the tree node as it was.
+
+The menu renders in a portal, but React portals bubble events through the
+**React** tree, not the DOM tree — so a click inside the menu still
+reached the tree item, whose content click toggles the item. The menu
+stops the click at its root, which is an ancestor of both the menu items
+and the backdrop that dismisses it.
+
+## The migration row (added after the first build)
+
+The migration block of a node row was reworked:
+
+- The migration source is shown by its **name**, with the whole path in its
+  tooltip.
+- The "Migration" label above the path is gone.
+- The filter chips sit to the **right of the migration path name**, not
+  tucked under the path.
+
+## The node row and the tree layout (added after the first build)
+
+The node row was tightened, and the tree pane given a bounded layout:
+
+- The `description` is no longer shown inline. It is the tooltip on the
+  name, so a long description cannot push the name out of view.
+- A folder icon marks a directory and a file icon a file, before the name.
+- The `reference` and the migration source are shown by file name only; the
+  whole path is in their tooltip. The migration filters are chips.
+- The tooltips use the MUI `describeChild` prop, so the description is
+  conveyed as a description of the name rather than replacing the name as
+  the accessible name.
+- The action menu trigger stops the click, so opening it does not also
+  collapse the tree node it sits in. The tree item content click toggles
+  the item, so the trigger has to keep the click to itself.
+- The page is exactly one viewport tall: the Complete / Flat toggle and the
+  Add root node button sit above the tree and never scroll away, only the
+  tree scrolls, and the structure sidebar stays visible.
+
+## Structure management (added after the first build)
+
+The sidebar grew the management of the template structures themselves:
+an **add** button that opens a drawer for a new template structure, and
+a **rename** and a **delete** button on each row. The three write routes
+are admin-gated by the server for a template structure, and the desktop
+hides the affordances from a general user.
+
+- `POST /api/structures` → `create_structure` → `api.createStructure`.
+- `PUT /api/structures/{id}` → `rename_structure` → `api.renameStructure`.
+- `DELETE /api/structures/{id}` → `delete_structure` → `api.deleteStructure`.
+  The server answers `204` with an empty body, so the adapter reads the
+  bytes rather than decoding JSON — the same trap `delete_node` has.
+- The invoke keys were added to `src-tauri/src/structures.contract.json`,
+  so the cross-boundary contract test covers the three new commands.
+
+One consequence worth naming: deleting the structure that is currently on
+screen must not leave the page pointed at a structure that no longer
+exists. The delete hook drops it from the cached list immediately — the
+invalidation refetches it, but until that lands the stale entry would
+still be there, and the page's auto-select could pick the structure that
+was just deleted.
+
+## The server contract change: `path` → `entryName`
+
+The server renamed a structure node's `path` to `entryName`, and the field
+changed meaning with it: it is now the node's **own name** (one folder or
+file name), not a path. The nesting comes from `parent`, and a name is
+unique among its **siblings** rather than across the structure. The server
+stores no path at all.
+
+What that forced in the desktop:
+
+- The Rust DTOs (`NodeViewResponse`, `AddNodeRequest`, `UpdateNodeRequest`)
+  carry `entry_name` → wire `entryName`.
+- The TS types carry `entryName`; the invoke keys are unchanged.
+- **The full path is now derived by the desktop** — `buildFullPaths` in
+  `features/templates/data/tree.ts` walks the ancestor chain and joins the
+  names. The flat view's extra path line is that derived value, and it is
+  the only place a full path appears.
+- The drawer edits the **name**, not a path: adding under a parent leaves
+  the field empty, because the parent already supplies the nesting.
+- The client-side validation mirrors the server's `validate_name` —
+  non-blank, no `/` and no `\`, and neither `.` nor `..`.
+- The node row and the delete confirmation name the node by its entry
+  name.
+
+## Changes made by the final review
+
+The whole-branch review found one Critical defect and four Important ones.
+The plan text below was updated to match the shipped code, so it cannot
+lead a future reader back into them:
+
+- **The invoke payload must nest the node body.** Tauri v2 resolves each
+  command argument by the lower-camel-case of the Rust parameter name and
+  looks that key up in the payload with no whole-payload fallback
+  (`tauri` `src/ipc/command.rs`, `tauri-macros` `src/command/wrapper.rs`).
+  The Rust commands take their node payload as a struct parameter named
+  `body`, so the wrapper must send `{ structureId, body: {...} }` — the
+  flattened form is rejected at runtime with *"missing required key body"*.
+  The key list now lives in `src-tauri/src/structures.contract.json` and is
+  checked from both sides: a Rust test extracts each command signature's
+  parameters and compares them to the contract, and a TypeScript test
+  asserts each wrapper sends exactly the contract's keys.
+- **The tree pane needs a loading state**, otherwise a fetch in flight is
+  indistinguishable from a template with no nodes.
+- **The root-add button needs a selected structure**, otherwise it is a
+  silent no-op on the index route with an empty template list.
+- **The mutations must be reset when the drawer opens**, or a stale error
+  from a previous write is shown against a different node.
+- **The flat view must start expanded** — it exists to show a directory's
+  files as its leaves.
+
+## Final Verification
+
+Run all four gates:
+
+```bash
+cargo test -p aegis-desktop --lib
+cargo clippy -p aegis-desktop --all-targets --all-features -- -D warnings
+pnpm --filter @aegis/ui typecheck
+pnpm --filter aegis-desktop typecheck
+pnpm --filter aegis-desktop test
+```
+
+All five must pass before the branch is ready for review.

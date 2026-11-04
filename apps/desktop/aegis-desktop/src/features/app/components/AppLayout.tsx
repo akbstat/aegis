@@ -3,6 +3,7 @@ import { Outlet, useNavigate } from "@tanstack/react-router";
 import { Box } from "@aegis/ui/mui";
 import { Sidebar, type MenuItem, type SidebarProps } from "@aegis/ui";
 import {
+  AccountTree as AccountTreeIcon,
   AdminPanelSettings as AdminPanelSettingsIcon,
   Description as DescriptionIcon,
   Home as HomeIcon,
@@ -22,6 +23,7 @@ const ManagementMenuIcon = () => <AdminPanelSettingsIcon />;
 const UsersMenuIcon = () => <PeopleIcon />;
 const KnowledgeBaseMenuIcon = () => <LibraryBooksIcon />;
 const MetadataMenuIcon = () => <DescriptionIcon />;
+const TemplatesMenuIcon = () => <AccountTreeIcon />;
 
 /**
  * Authenticated app shell: the `Sidebar` plus the active child route.
@@ -60,6 +62,11 @@ export function AppLayout() {
         link: "/metadata",
         title: t("nav.metadata"),
         icon: MetadataMenuIcon,
+      },
+      {
+        link: "/templates",
+        title: t("nav.templates"),
+        icon: TemplatesMenuIcon,
       },
     ],
   };

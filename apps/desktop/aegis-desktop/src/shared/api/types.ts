@@ -713,3 +713,65 @@ export interface UpdateIssueDescriptionInput {
 export interface AppendCommentInput {
   content: string;
 }
+
+// ---- structures ------------------------------------------------------
+//
+// Wire types for the directory-structure namespace. They mirror the
+// Rust DTOs in `src-tauri/src/http/structures.rs` field for field.
+
+export type StructureLevel = "template" | "project";
+
+export interface MigrationView {
+  directory: string;
+  filter: string[];
+}
+
+export interface StructureNodeView {
+  nodeId: string;
+  description: string;
+  /** The node's own name — one folder or file name, never a path. */
+  entryName: string;
+  directory: boolean;
+  parent: string | null;
+  reference: string | null;
+  migration: MigrationView | null;
+  children: StructureNodeView[];
+}
+
+export interface StructureView {
+  id: number;
+  name: string;
+  level: StructureLevel;
+  projectCode: string | null;
+  templateId: number | null;
+  nodes: StructureNodeView[];
+}
+
+export interface StructureSummaryView {
+  id: number;
+  name: string;
+  level: StructureLevel;
+  projectCode: string | null;
+  templateId: number | null;
+}
+
+export interface CreateStructureInput {
+  name: string;
+  level: StructureLevel;
+  projectCode: string | null;
+  templateId: number | null;
+}
+
+export interface RenameStructureInput {
+  name: string;
+}
+
+export interface StructureNodeInput {
+  /** The node's own name — one folder or file name, never a path. */
+  entryName: string;
+  description: string;
+  directory: boolean;
+  parent: string | null;
+  reference: string | null;
+  migration: MigrationView | null;
+}

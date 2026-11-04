@@ -22,6 +22,7 @@ import type {
   CreateProjectInput,
   CreateSdtmDomainInput,
   CreateSdtmVariableInput,
+  CreateStructureInput,
   CreateTerminologyVersionInput,
   CreateUserInput,
   CrfEdcType,
@@ -48,12 +49,18 @@ import type {
   ProjectView,
   RegisterUserInput,
   RegisterUserResponse,
+  RenameStructureInput,
   SdtmDomainListResponse,
   SdtmDomainView,
   SdtmVariableListResponse,
   SdtmVariableView,
   SdtmVersionListResponse,
   SdtmVersionView,
+  StructureLevel,
+  StructureNodeInput,
+  StructureNodeView,
+  StructureSummaryView,
+  StructureView,
   TerminologyKind,
   TerminologyVersionView,
   UpdateAnnotationInput,
@@ -508,6 +515,52 @@ export const api = {
     body: AppendCommentInput,
   ): Promise<IssueViewResponse> =>
     call<IssueViewResponse>("append_comment", { issueId, body: { ...body } }),
+
+  // structures
+  //
+  // Tauri v2 resolves each command argument by the lower-camel-case of
+  // the Rust parameter name and looks that key up in the invoke payload
+  // with no whole-payload fallback. The Rust commands take their node
+  // payload as a struct parameter named `body`, so the wrapper must
+  // nest it under that key — flattening it is rejected at runtime with
+  // "command add_structure_node missing required key body".
+  // The key list is pinned by src-tauri/src/structures.contract.json and
+  // checked by src/test/features/templates/api.test.ts.
+  listStructures: (level?: StructureLevel): Promise<StructureSummaryView[]> =>
+    call<StructureSummaryView[]>("list_structures", { level }),
+  getStructure: (id: number): Promise<StructureView> =>
+    call<StructureView>("get_structure", { id }),
+  addStructureNode: (
+    structureId: number,
+    input: StructureNodeInput,
+  ): Promise<StructureNodeView> =>
+    call<StructureNodeView>("add_structure_node", {
+      structureId,
+      body: { ...input },
+    }),
+  updateStructureNode: (
+    structureId: number,
+    nodeId: string,
+    input: StructureNodeInput,
+  ): Promise<StructureNodeView> =>
+    call<StructureNodeView>("update_structure_node", {
+      structureId,
+      nodeId,
+      body: { ...input },
+    }),
+  deleteStructureNode: (structureId: number, nodeId: string): Promise<void> =>
+    call<void>("delete_structure_node", { structureId, nodeId }),
+  createStructure: (
+    input: CreateStructureInput,
+  ): Promise<StructureView> =>
+    call<StructureView>("create_structure", { body: { ...input } }),
+  renameStructure: (
+    id: number,
+    input: RenameStructureInput,
+  ): Promise<StructureView> =>
+    call<StructureView>("rename_structure", { id, body: { ...input } }),
+  deleteStructure: (id: number): Promise<void> =>
+    call<void>("delete_structure", { id }),
 } as const;
 
 export type { ApiError } from "./types";
@@ -533,6 +586,7 @@ export type {
   CreateProjectInput,
   CreateSdtmDomainInput,
   CreateSdtmVariableInput,
+  CreateStructureInput,
   CreateTerminologyVersionInput,
   CreateUserInput,
   CrfEdcType,
@@ -557,6 +611,7 @@ export type {
   IssueListResponse,
   IssueState,
   IssueViewResponse,
+  MigrationView,
   MissionKind,
   MissionRole,
   MissionViewResponse,
@@ -572,6 +627,7 @@ export type {
   Role,
   RegisterUserInput,
   RegisterUserResponse,
+  RenameStructureInput,
   SdtmDomainDescription,
   SdtmDomainDescriptionDetail,
   SdtmDomainListResponse,
@@ -586,6 +642,11 @@ export type {
   SdtmVariableView,
   SdtmVersionListResponse,
   SdtmVersionView,
+  StructureLevel,
+  StructureNodeInput,
+  StructureNodeView,
+  StructureSummaryView,
+  StructureView,
   Tag,
   TerminologyKind,
   TerminologyVersionListResponse,
