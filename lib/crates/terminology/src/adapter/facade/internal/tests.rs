@@ -24,7 +24,7 @@ use crate::domain::{
     CodeItem, CodeItemListQuery, CodeItemNew, CodeItemRepository, CodeItemUpdate, CodeList,
     CodeListListQuery, CodeListNew, CodeListRepository, CodeListUpdate, DomainError, Page,
     TerminologyKind, TerminologyVersion, TerminologyVersionNew, TerminologyVersionRepository,
-    TerminologyVersionUpdate,
+    TerminologyVersionUpdate, search_terms,
 };
 use crate::usecase::TerminologyUsecase;
 
@@ -213,13 +213,21 @@ impl CodeListRepository for InMemoryCodeListRepo {
             .collect();
 
         if let Some(frag) = q.fragment.as_deref().filter(|s| !s.trim().is_empty()) {
-            let needle = frag.to_lowercase();
+            let terms = search_terms::split(frag)
+                .iter()
+                .map(|t| t.to_lowercase())
+                .collect::<Vec<_>>();
             all.retain(|cl| {
-                cl.name.to_lowercase().contains(&needle)
-                    || cl.submission_value.to_lowercase().contains(&needle)
-                    || cl.synonym.to_lowercase().contains(&needle)
-                    || cl.definition.to_lowercase().contains(&needle)
-                    || cl.nci_preferred_term.to_lowercase().contains(&needle)
+                let haystack = [
+                    cl.name.as_str(),
+                    cl.submission_value.as_str(),
+                    cl.synonym.as_str(),
+                    cl.definition.as_str(),
+                    cl.nci_preferred_term.as_str(),
+                ]
+                .join(" ")
+                .to_lowercase();
+                terms.iter().all(|term| haystack.contains(term.as_str()))
             });
         }
 
@@ -359,13 +367,21 @@ impl CodeItemRepository for InMemoryCodeItemRepo {
             .collect();
 
         if let Some(frag) = q.fragment.as_deref().filter(|s| !s.trim().is_empty()) {
-            let needle = frag.to_lowercase();
+            let terms = search_terms::split(frag)
+                .iter()
+                .map(|t| t.to_lowercase())
+                .collect::<Vec<_>>();
             all.retain(|item| {
-                item.submission_value.to_lowercase().contains(&needle)
-                    || item.synonym.to_lowercase().contains(&needle)
-                    || item.definition.to_lowercase().contains(&needle)
-                    || item.nci_preferred_term.to_lowercase().contains(&needle)
-                    || item.code.to_lowercase().contains(&needle)
+                let haystack = [
+                    item.submission_value.as_str(),
+                    item.synonym.as_str(),
+                    item.definition.as_str(),
+                    item.nci_preferred_term.as_str(),
+                    item.code.as_str(),
+                ]
+                .join(" ")
+                .to_lowercase();
+                terms.iter().all(|term| haystack.contains(term.as_str()))
             });
         }
 
@@ -903,6 +919,55 @@ async fn list_code_lists_pagination_signals_next_offset() {
         .unwrap();
     assert_eq!(page2.items.len(), 1);
     assert_eq!(page2.next_offset, None);
+}
+
+#[tokio::test]
+async fn list_code_lists_with_multi_word_fragment_requires_every_term() {
+    let svc = service();
+    let v = svc.create_version(create_version_req("v1")).await.unwrap();
+    let vital_signs = svc
+        .create_code_list(CreateCodeListRequest {
+            version_id: v.id,
+            code: "C1".into(),
+            extensible: true,
+            name: "Vital Signs".into(),
+            submission_value: "VITAL SIGNS".into(),
+            synonym: "".into(),
+            definition: "".into(),
+            nci_preferred_term: "".into(),
+        })
+        .await
+        .unwrap();
+    let vital_status = svc
+        .create_code_list(CreateCodeListRequest {
+            version_id: v.id,
+            code: "C2".into(),
+            extensible: true,
+            name: "Vital Status".into(),
+            submission_value: "VITAL STATUS".into(),
+            synonym: "".into(),
+            definition: "".into(),
+            nci_preferred_term: "".into(),
+        })
+        .await
+        .unwrap();
+
+    let page = svc
+        .list_code_lists(apis::terminology::CodeListListQuery {
+            version_id: v.id,
+            fragment: Some("vital sign".into()),
+            offset: 0,
+            limit: 50,
+        })
+        .await
+        .unwrap();
+    let codes: Vec<&str> = page.items.iter().map(|c| c.code.as_str()).collect();
+    assert_eq!(
+        codes,
+        vec![vital_signs.code.as_str()],
+        "a multi-word fragment must match every term"
+    );
+    assert!(!codes.contains(&vital_status.code.as_str()));
 }
 
 #[tokio::test]

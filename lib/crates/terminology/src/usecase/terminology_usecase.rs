@@ -369,16 +369,22 @@ fn normalize_fragment(fragment: Option<&str>) -> Result<Option<String>, UsecaseE
 }
 
 /// Reject any fragment containing characters reserved by Postgres
-/// `to_tsquery` (`& | ! ( ) :`). The usecase passes `fragment = None`
-/// (or `Some("")`) when the caller wants the plain list path, so
-/// empty / whitespace-only fragments never reach this helper.
+/// `to_tsquery` (`& | ! ( ) :`) or the quote characters that would
+/// otherwise open a quoted lexeme (`' "`). The usecase passes
+/// `fragment = None` (or `Some("")`) when the caller wants the plain
+/// list path, so empty / whitespace-only fragments never reach this
+/// helper.
+///
+/// Every other character is not an error: the adapter splits the
+/// fragment into terms on them, so `"vital sign"` is a two-term
+/// search and `"non-small"` is a two-term search as well.
 fn validate_tsquery_fragment(s: &str) -> Result<&str, UsecaseError> {
     if s.chars()
-        .any(|c| matches!(c, '&' | '|' | '!' | '(' | ')' | ':'))
+        .any(|c| matches!(c, '&' | '|' | '!' | '(' | ')' | ':' | '\'' | '"'))
     {
         return Err(UsecaseError::Validation(DomainError::InvalidFragment));
     }
-    Ok(s)
+    Ok(s.trim())
 }
 
 /// Apply the default + hard cap to the `limit` field of a list+search

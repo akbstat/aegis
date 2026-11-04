@@ -29,8 +29,8 @@ pub enum DomainError {
     EmptyCodeAtPosition(usize),
 
     /// Search fragment contained characters reserved by Postgres
-    /// `to_tsquery` (`& | ! ( ) :`).
-    #[error("search fragment contains reserved tsquery characters: & | ! ( ) :")]
+    /// `to_tsquery` (`& | ! ( ) :`) or a quote character (`' "`).
+    #[error("search fragment contains reserved tsquery characters: & | ! ( ) : ' \"")]
     InvalidFragment,
 
     #[error("terminology version already exists for {kind:?} / {name}")]

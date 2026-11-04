@@ -10,6 +10,8 @@ use crate::domain::{
     CodeItem, CodeItemListQuery, CodeItemNew, CodeItemRepository, CodeItemUpdate, DomainError, Page,
 };
 
+use super::tsquery;
+
 const SQLSTATE_UNIQUE_VIOLATION: &str = "23505";
 const SQLSTATE_FK_VIOLATION: &str = "23503";
 
@@ -124,12 +126,12 @@ impl CodeItemRepository for CodeItemRepo {
         }
         let frag_filter = q.fragment.as_deref().filter(|s| !s.trim().is_empty());
 
-        if let Some(frag) = frag_filter {
+        if let Some(expr) = frag_filter.and_then(tsquery::build) {
             qb.push(if has_where { " AND " } else { " WHERE " });
             qb.push("tsv @@ to_tsquery('english', ");
-            qb.push_bind(format!("{frag}:*"));
+            qb.push_bind(expr.clone());
             qb.push(") ORDER BY ts_rank(tsv, to_tsquery('english', ");
-            qb.push_bind(format!("{frag}:*"));
+            qb.push_bind(expr);
             qb.push(")) DESC, id ASC LIMIT ");
         } else {
             qb.push(" ORDER BY id ASC LIMIT ");

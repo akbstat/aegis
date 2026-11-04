@@ -12,7 +12,7 @@ use crate::domain::{
     CodeItem, CodeItemListQuery, CodeItemNew, CodeItemRepository, CodeItemUpdate, CodeList,
     CodeListListQuery, CodeListNew, CodeListRepository, CodeListUpdate, DomainError, Page,
     TerminologyKind, TerminologyVersion, TerminologyVersionNew, TerminologyVersionRepository,
-    TerminologyVersionUpdate,
+    TerminologyVersionUpdate, search_terms,
 };
 use crate::usecase::commands::{
     CreateCodeItem, CreateCodeList, CreateTerminologyVersion, UpdateCodeList,
@@ -192,13 +192,21 @@ impl CodeListRepository for FakeCodeListRepo {
             .collect();
 
         if let Some(frag) = q.fragment.as_deref().filter(|s| !s.trim().is_empty()) {
-            let needle = frag.to_lowercase();
+            let terms = search_terms::split(frag)
+                .iter()
+                .map(|t| t.to_lowercase())
+                .collect::<Vec<_>>();
             all.retain(|cl| {
-                cl.name.to_lowercase().contains(&needle)
-                    || cl.submission_value.to_lowercase().contains(&needle)
-                    || cl.synonym.to_lowercase().contains(&needle)
-                    || cl.definition.to_lowercase().contains(&needle)
-                    || cl.nci_preferred_term.to_lowercase().contains(&needle)
+                let haystack = [
+                    cl.name.as_str(),
+                    cl.submission_value.as_str(),
+                    cl.synonym.as_str(),
+                    cl.definition.as_str(),
+                    cl.nci_preferred_term.as_str(),
+                ]
+                .join(" ")
+                .to_lowercase();
+                terms.iter().all(|term| haystack.contains(term.as_str()))
             });
         }
 
@@ -323,13 +331,21 @@ impl CodeItemRepository for FakeCodeItemRepo {
             .collect();
 
         if let Some(frag) = q.fragment.as_deref().filter(|s| !s.trim().is_empty()) {
-            let needle = frag.to_lowercase();
+            let terms = search_terms::split(frag)
+                .iter()
+                .map(|t| t.to_lowercase())
+                .collect::<Vec<_>>();
             all.retain(|item| {
-                item.submission_value.to_lowercase().contains(&needle)
-                    || item.synonym.to_lowercase().contains(&needle)
-                    || item.definition.to_lowercase().contains(&needle)
-                    || item.nci_preferred_term.to_lowercase().contains(&needle)
-                    || item.code.to_lowercase().contains(&needle)
+                let haystack = [
+                    item.submission_value.as_str(),
+                    item.synonym.as_str(),
+                    item.definition.as_str(),
+                    item.nci_preferred_term.as_str(),
+                    item.code.as_str(),
+                ]
+                .join(" ")
+                .to_lowercase();
+                terms.iter().all(|term| haystack.contains(term.as_str()))
             });
         }
 
@@ -732,7 +748,7 @@ async fn list_code_lists_pagination_signals_next_offset_and_terminates() {
 #[tokio::test]
 async fn list_code_lists_rejects_fragment_with_reserved_tsquery_chars() {
     let (_, _, _, usecase) = make_usecase();
-    for bad in ["a&b", "a|b", "a!b", "a(b", "a)b", "a:b"] {
+    for bad in ["a&b", "a|b", "a!b", "a(b", "a)b", "a:b", "a'b", "a\"b"] {
         let err = usecase
             .list_code_lists(CodeListListQuery {
                 version_id: 1,
@@ -747,6 +763,80 @@ async fn list_code_lists_rejects_fragment_with_reserved_tsquery_chars() {
             "fragment {bad:?} should be rejected with InvalidFragment, got {err:?}"
         );
     }
+}
+
+#[tokio::test]
+async fn list_code_lists_accepts_multi_word_fragment_and_requires_every_term() {
+    let (_, _, _, usecase) = make_usecase();
+
+    let v = usecase
+        .create_version(CreateTerminologyVersion {
+            kind: TerminologyKind::Sdtm,
+            name: "v-multi-word".into(),
+        })
+        .await
+        .expect("v");
+    let vital_signs = usecase
+        .create_code_list(CreateCodeList {
+            version_id: v.id,
+            code: "C1".into(),
+            extensible: true,
+            name: "Vital Signs".into(),
+            submission_value: "VITAL SIGNS".into(),
+            synonym: "".into(),
+            definition: "".into(),
+            nci_preferred_term: "".into(),
+        })
+        .await
+        .expect("vital signs");
+    let vital_status = usecase
+        .create_code_list(CreateCodeList {
+            version_id: v.id,
+            code: "C2".into(),
+            extensible: true,
+            name: "Vital Status".into(),
+            submission_value: "VITAL STATUS".into(),
+            synonym: "".into(),
+            definition: "".into(),
+            nci_preferred_term: "".into(),
+        })
+        .await
+        .expect("vital status");
+
+    // "vital sign" is two terms, both of which must match — so
+    // "Vital Status" is filtered out.
+    let page = usecase
+        .list_code_lists(CodeListListQuery {
+            version_id: v.id,
+            fragment: Some("vital sign".into()),
+            offset: 0,
+            limit: 50,
+        })
+        .await
+        .expect("multi-word search");
+    let ids: Vec<i64> = page.items.iter().map(|c| c.id).collect();
+    assert_eq!(
+        ids,
+        vec![vital_signs.id],
+        "a multi-word fragment must match every term"
+    );
+    assert!(!ids.contains(&vital_status.id));
+
+    // A single term still matches both rows.
+    let page = usecase
+        .list_code_lists(CodeListListQuery {
+            version_id: v.id,
+            fragment: Some("vital".into()),
+            offset: 0,
+            limit: 50,
+        })
+        .await
+        .expect("single-word search");
+    let mut ids: Vec<i64> = page.items.iter().map(|c| c.id).collect();
+    ids.sort();
+    let mut expected = vec![vital_signs.id, vital_status.id];
+    expected.sort();
+    assert_eq!(ids, expected);
 }
 
 #[tokio::test]

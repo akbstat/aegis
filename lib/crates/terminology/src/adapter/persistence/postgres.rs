@@ -6,6 +6,7 @@
 pub mod code_item_repo;
 pub mod code_list_repo;
 pub mod terminology_version_repo;
+mod tsquery;
 
 pub use code_item_repo::CodeItemRepo;
 pub use code_list_repo::CodeListRepo;

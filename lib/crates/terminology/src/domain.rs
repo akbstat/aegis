@@ -3,6 +3,7 @@ mod code_list;
 mod error;
 mod paging;
 mod repository;
+pub(crate) mod search_terms;
 mod terminology_kind;
 mod terminology_version;
 #[cfg(test)]
