@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { StructureNodeView } from "../../../shared/api";
 import {
   buildFullPaths,
+  filterFlatEntries,
   flattenStructure,
 } from "../../../features/templates/data/tree";
 
@@ -10,10 +11,11 @@ function dir(
   nodeId: string,
   entryName: string,
   children: StructureNodeView[] = [],
+  description = "",
 ): StructureNodeView {
   return {
     nodeId,
-    description: "",
+    description,
     entryName,
     directory: true,
     parent: null,
@@ -23,10 +25,14 @@ function dir(
   };
 }
 
-function file(nodeId: string, entryName: string): StructureNodeView {
+function file(
+  nodeId: string,
+  entryName: string,
+  description = "",
+): StructureNodeView {
   return {
     nodeId,
-    description: "",
+    description,
     entryName,
     directory: false,
     parent: null,
@@ -111,5 +117,87 @@ describe("flattenStructure", () => {
 
   it("returns an empty list for an empty tree", () => {
     expect(flattenStructure([])).toEqual([]);
+  });
+});
+
+describe("filterFlatEntries", () => {
+  it("keeps a directory whose name contains the keyword", () => {
+    const entries = flattenStructure([
+      dir("d1", "raw"),
+      dir("d2", "data"),
+    ]);
+
+    const kept = filterFlatEntries(entries, "raw");
+
+    expect(kept.map((e) => e.node.nodeId)).toEqual(["d1"]);
+  });
+
+  it("drops a directory that does not match the keyword", () => {
+    const entries = flattenStructure([dir("d1", "data")]);
+
+    expect(filterFlatEntries(entries, "raw")).toEqual([]);
+  });
+
+  it("keeps a directory whose description contains the keyword", () => {
+    const entries = flattenStructure([dir("d1", "raw", [], "the raw zone")]);
+
+    const kept = filterFlatEntries(entries, "raw zone");
+
+    expect(kept.map((e) => e.node.nodeId)).toEqual(["d1"]);
+  });
+
+  it("keeps a directory when a file inside it matches the keyword", () => {
+    const entries = flattenStructure([
+      dir("d1", "raw", [file("f1", "a.sas7bdat")]),
+      dir("d2", "data"),
+    ]);
+
+    const kept = filterFlatEntries(entries, "sas7bdat");
+
+    expect(kept.map((e) => e.node.nodeId)).toEqual(["d1"]);
+  });
+
+  it("keeps a directory when a file inside it matches on its description", () => {
+    const entries = flattenStructure([
+      dir("d1", "raw", [file("f1", "a.sas7bdat", "the subject data")]),
+    ]);
+
+    const kept = filterFlatEntries(entries, "subject data");
+
+    expect(kept.map((e) => e.node.nodeId)).toEqual(["d1"]);
+  });
+
+  it("keeps every file of a surviving directory", () => {
+    const entries = flattenStructure([
+      dir("d1", "raw", [file("f1", "a.sas7bdat"), file("f2", "b.txt")]),
+    ]);
+
+    const kept = filterFlatEntries(entries, "sas7bdat");
+
+    // The keyword decides which directories survive; a surviving
+    // directory keeps its whole file list.
+    expect(kept[0].files.map((f) => f.nodeId)).toEqual(["f1", "f2"]);
+  });
+
+  it("matches the keyword regardless of case", () => {
+    const entries = flattenStructure([dir("d1", "Raw")]);
+
+    const kept = filterFlatEntries(entries, "raw");
+
+    expect(kept.map((e) => e.node.nodeId)).toEqual(["d1"]);
+  });
+
+  it("treats a blank keyword as no filter at all", () => {
+    const entries = flattenStructure([dir("d1", "raw"), dir("d2", "data")]);
+
+    expect(filterFlatEntries(entries, "   ")).toEqual(entries);
+  });
+
+  it("keeps a root-level file that matches on its own name", () => {
+    const entries = flattenStructure([file("f1", "README.md"), dir("d2", "raw")]);
+
+    const kept = filterFlatEntries(entries, "readme");
+
+    expect(kept.map((e) => e.node.nodeId)).toEqual(["f1"]);
   });
 });
