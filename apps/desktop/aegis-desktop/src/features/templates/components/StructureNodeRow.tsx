@@ -82,30 +82,34 @@ export function StructureNodeRow({
             describeChild
             placement="top"
           >
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {node.migration.directory}
-            </Typography>
+            <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center" }}>
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {basename(node.migration.directory)}
+              </Typography>
+
+              {node.migration && node.migration.filter.length > 0 && (
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  data-testid="structure-node-filters"
+                  sx={{ flexShrink: 0, alignItems: "center", ml: 0.5 }}
+                >
+                  {node.migration.filter.map((filter) => (
+                    <Chip
+                      key={filter}
+                      size="small"
+                      label={filter}
+                      sx={{ height: 18, fontSize: 11 }}
+                    />
+                  ))}
+                </Stack>
+              )}
+            </Box>
           </Tooltip>
         )}
       </Box>
 
-      {node.migration && node.migration.filter.length > 0 && (
-        <Stack
-          direction="row"
-          spacing={0.5}
-          data-testid="structure-node-filters"
-          sx={{ flexShrink: 0, alignItems: "center" }}
-        >
-          {node.migration.filter.map((filter) => (
-            <Chip
-              key={filter}
-              size="small"
-              label={filter}
-              sx={{ height: 18, fontSize: 11 }}
-            />
-          ))}
-        </Stack>
-      )}
+
 
       {canMutate && (
         <NodeActionMenu
