@@ -529,7 +529,7 @@ export const en = {
   'templates.node.addRoot': 'Add root node',
   'templates.node.drawer.addTitle': 'Add node',
   'templates.node.drawer.editTitle': 'Edit node',
-  'templates.node.field.path': 'Path',
+  'templates.node.field.entryName': 'Entry name',
   'templates.node.field.description': 'Description',
   'templates.node.field.directory': 'Folder',
   'templates.node.field.reference': 'Reference path',
@@ -537,10 +537,10 @@ export const en = {
   'templates.node.field.migrationDirectory': 'Migration source directory',
   'templates.node.field.migrationFilter': 'Migration filter',
   'templates.node.field.migrationFilterAdd': 'Add filter',
-  'templates.node.field.invalidPath':
-    'Enter a relative path — no leading or trailing "/", and no "." or ".." segment.',
+  'templates.node.field.invalidEntryName':
+    'Enter a name — no "/" or "\\", and not "." or "..".',
   'templates.node.saveFailed': 'Save failed: {message}',
   'templates.node.delete.title': 'Delete node',
-  'templates.node.delete.message': 'Delete "{path}" and everything under it?',
+  'templates.node.delete.message': 'Delete "{entryName}" and everything under it?',
   'templates.node.delete.failed': 'Delete failed: {message}',
 } as const;

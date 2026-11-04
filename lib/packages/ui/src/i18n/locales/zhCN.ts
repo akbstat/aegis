@@ -505,7 +505,7 @@ export const zhCN = {
   'templates.node.addRoot': '添加根节点',
   'templates.node.drawer.addTitle': '新增节点',
   'templates.node.drawer.editTitle': '编辑节点',
-  'templates.node.field.path': '路径',
+  'templates.node.field.entryName': '条目名称',
   'templates.node.field.description': '描述',
   'templates.node.field.directory': '文件夹',
   'templates.node.field.reference': '参考路径',
@@ -513,10 +513,10 @@ export const zhCN = {
   'templates.node.field.migrationDirectory': '迁移源目录',
   'templates.node.field.migrationFilter': '迁移过滤条件',
   'templates.node.field.migrationFilterAdd': '添加过滤条件',
-  'templates.node.field.invalidPath':
-    '请输入相对路径 —— 不能以 "/" 开头或结尾, 也不能包含 "." 或 ".." 段。',
+  'templates.node.field.invalidEntryName':
+    '请输入名称 —— 不能包含 "/" 或 "\\", 也不能是 "." 或 ".."。',
   'templates.node.saveFailed': '保存失败: {message}',
   'templates.node.delete.title': '删除节点',
-  'templates.node.delete.message': '删除 "{path}" 及其所有子节点?',
+  'templates.node.delete.message': '删除 "{entryName}" 及其所有子节点?',
   'templates.node.delete.failed': '删除失败: {message}',
 } satisfies Record<keyof typeof en, string>;

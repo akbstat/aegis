@@ -14,7 +14,7 @@ afterEach(() => cleanup());
 const DIRECTORY: StructureNodeView = {
   nodeId: "n1",
   description: "",
-  path: "raw/data",
+  entryName: "data",
   directory: true,
   parent: "n0",
   reference: null,
@@ -46,7 +46,7 @@ describe("DeleteNodeDialog", () => {
   it("names the node and warns that its subtree goes too", () => {
     renderDialog();
     expect(
-      screen.getByText(/Delete "raw\/data" and everything under it\?/),
+      screen.getByText(/Delete "data" and everything under it\?/),
     ).toBeInTheDocument();
   });
 

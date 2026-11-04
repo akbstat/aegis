@@ -35,7 +35,7 @@ export function DeleteNodeDialog({
       <DialogContent>
         <DialogContentText>
           {node
-            ? t("templates.node.delete.message", { path: node.path })
+            ? t("templates.node.delete.message", { entryName: node.entryName })
             : t("templates.node.delete.title")}
         </DialogContentText>
         {Boolean(error) && (

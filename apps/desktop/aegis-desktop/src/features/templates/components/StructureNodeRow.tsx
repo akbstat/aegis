@@ -17,7 +17,7 @@ export interface StructureNodeRowProps {
 }
 
 /**
- * One node's row: the path as the label, then the description, the
+ * One node's row: the node's own name as the label, then the description, the
  * reference and the migration as secondary text. An empty description
  * is skipped rather than rendered as a blank line.
  */
@@ -36,7 +36,7 @@ export function StructureNodeRow({
     <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
         <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
-          {label ?? node.path}
+          {label ?? node.entryName}
         </Typography>
         {secondaryPath && (
           <Typography variant="caption" color="text.secondary" noWrap>

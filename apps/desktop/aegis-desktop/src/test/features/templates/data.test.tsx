@@ -54,7 +54,7 @@ function Probe() {
           add.mutate({
             structureId: 3,
             input: {
-              path: "raw",
+              entryName: "raw",
               description: "",
               directory: true,
               parent: null,
@@ -73,7 +73,7 @@ function Probe() {
             structureId: 3,
             nodeId: "n1",
             input: {
-              path: "raw",
+              entryName: "raw",
               description: "d",
               directory: true,
               parent: null,

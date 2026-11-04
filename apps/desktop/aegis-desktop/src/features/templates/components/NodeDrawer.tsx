@@ -34,18 +34,17 @@ export interface NodeDrawerProps {
 }
 
 /**
- * A relative path is well formed when it is non-blank, uses `/` as its
- * only separator, and has no empty, `.` or `..` segment — the same rule
- * the server's `validate_path` enforces.
+ * A node's name is well formed when it is non-blank, carries no path
+ * separator, and is neither `.` nor `..` — the same rule the server's
+ * `validate_name` enforces. The nesting comes from `parent`, so a name
+ * is unique among its siblings, not across the structure.
  */
-export function isValidNodePath(path: string): boolean {
-  const trimmed = path.trim();
+export function isValidEntryName(name: string): boolean {
+  const trimmed = name.trim();
   if (trimmed === "") return false;
-  if (trimmed.startsWith("/") || trimmed.endsWith("/")) return false;
-  if (trimmed.includes("\\")) return false;
-  return trimmed
-    .split("/")
-    .every((seg) => seg !== "" && seg !== "." && seg !== "..");
+  if (trimmed.includes("/") || trimmed.includes("\\")) return false;
+  if (trimmed === "." || trimmed === "..") return false;
+  return true;
 }
 
 export function NodeDrawer({
@@ -60,7 +59,7 @@ export function NodeDrawer({
 }: NodeDrawerProps) {
   const { t } = useI18n();
 
-  const [path, setPath] = useState("");
+  const [entryName, setEntryName] = useState("");
   const [description, setDescription] = useState("");
   const [directory, setDirectory] = useState(true);
   const [reference, setReference] = useState("");
@@ -70,7 +69,9 @@ export function NodeDrawer({
   useEffect(() => {
     if (!open) return;
     if (mode === "create") {
-      setPath(parent ? `${parent.path}/` : "");
+      // A node carries only its own name — the parent supplies the
+      // nesting — so there is nothing to prefill but the name itself.
+      setEntryName("");
       setDescription("");
       setDirectory(true);
       setReference("");
@@ -78,7 +79,7 @@ export function NodeDrawer({
       setMigrationFilters([]);
       return;
     }
-    setPath(node?.path ?? "");
+    setEntryName(node?.entryName ?? "");
     setDescription(node?.description ?? "");
     setDirectory(node?.directory ?? true);
     setReference(node?.reference ?? "");
@@ -86,10 +87,10 @@ export function NodeDrawer({
     setMigrationFilters(node?.migration?.filter ?? []);
   }, [open, mode, node, parent]);
 
-  const pathValid = isValidNodePath(path);
+  const nameValid = isValidEntryName(entryName);
 
   function handleSubmit() {
-    if (!pathValid) return;
+    if (!nameValid) return;
     const migration: MigrationView | null = directory
       ? migrationDirectory.trim() === ""
         ? null
@@ -101,7 +102,7 @@ export function NodeDrawer({
           }
       : null;
     onSubmit({
-      path: path.trim(),
+      entryName: entryName.trim(),
       description,
       directory,
       parent:
@@ -128,14 +129,14 @@ export function NodeDrawer({
         <Stack spacing={2}>
           <TextField
             size="small"
-            label={t("templates.node.field.path")}
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
+            label={t("templates.node.field.entryName")}
+            value={entryName}
+            onChange={(e) => setEntryName(e.target.value)}
             required
-            error={path !== "" && !pathValid}
+            error={entryName !== "" && !nameValid}
             helperText={
-              path !== "" && !pathValid
-                ? t("templates.node.field.invalidPath")
+              entryName !== "" && !nameValid
+                ? t("templates.node.field.invalidEntryName")
                 : undefined
             }
           />
@@ -209,7 +210,7 @@ export function NodeDrawer({
           <Button
             variant="contained"
             onClick={handleSubmit}
-            disabled={!pathValid || pending}
+            disabled={!nameValid || pending}
           >
             {mode === "create" ? t("common.create") : t("common.save")}
           </Button>

@@ -10,17 +10,36 @@ import type { StructureNodeView } from "../../../shared/api";
 export interface FlatEntry {
   /** The directory node, or a root-level file. */
   node: StructureNodeView;
-  /** The node's own name — the last segment of its path. */
+  /** The node's own name — the folder or file name it carries. */
   name: string;
-  /** The node's full path relative to the structure root. */
+  /** The path from the structure root, computed from the ancestors. */
   fullPath: string;
   /** The files directly inside the directory. Empty for a file entry. */
   files: StructureNodeView[];
 }
 
-/** The last `/`-separated segment of a path. */
-export function nodeName(path: string): string {
-  return path.split("/").pop() ?? path;
+/**
+ * The full path of every node in the tree, keyed by node id.
+ *
+ * A node carries only its own name — the nesting comes from `parent`,
+ * and the server stores no path — so the path relative to the
+ * structure root is derived here, by joining the ancestor names.
+ */
+export function buildFullPaths(
+  nodes: StructureNodeView[],
+): Map<string, string> {
+  const paths = new Map<string, string>();
+  const walk = (siblings: StructureNodeView[], prefix: string) => {
+    for (const node of siblings) {
+      const fullPath = prefix
+        ? `${prefix}/${node.entryName}`
+        : node.entryName;
+      paths.set(node.nodeId, fullPath);
+      walk(node.children, fullPath);
+    }
+  };
+  walk(nodes, "");
+  return paths;
 }
 
 /**
@@ -32,15 +51,17 @@ export function nodeName(path: string): string {
  * parent directory has nothing to sit under, so it gets its own entry.
  */
 export function flattenStructure(nodes: StructureNodeView[]): FlatEntry[] {
+  const paths = buildFullPaths(nodes);
   const entries: FlatEntry[] = [];
 
   const walk = (siblings: StructureNodeView[], atRoot: boolean) => {
     for (const node of siblings) {
+      const fullPath = paths.get(node.nodeId) ?? node.entryName;
       if (node.directory) {
         entries.push({
           node,
-          name: nodeName(node.path),
-          fullPath: node.path,
+          name: node.entryName,
+          fullPath,
           files: node.children.filter((c) => !c.directory),
         });
         walk(
@@ -50,8 +71,8 @@ export function flattenStructure(nodes: StructureNodeView[]): FlatEntry[] {
       } else if (atRoot) {
         entries.push({
           node,
-          name: nodeName(node.path),
-          fullPath: node.path,
+          name: node.entryName,
+          fullPath,
           files: [],
         });
       }

@@ -22,7 +22,7 @@ describe("structures api", () => {
     // parameter instead of nesting it under that parameter's name is
     // rejected at runtime with "missing required key body".
     const nodeInput = {
-      path: "raw",
+      entryName: "raw",
       description: "d",
       directory: true,
       parent: null,
@@ -75,7 +75,7 @@ describe("structures api", () => {
   it("invokes add_structure_node with camelCase arguments", async () => {
     mockCommands({ add_structure_node: () => ({}) });
     await api.addStructureNode(3, {
-      path: "raw",
+      entryName: "raw",
       description: "d",
       directory: true,
       parent: null,
@@ -85,7 +85,7 @@ describe("structures api", () => {
     expect(mockInvoke).toHaveBeenCalledWith("add_structure_node", {
       structureId: 3,
       body: {
-        path: "raw",
+        entryName: "raw",
         description: "d",
         directory: true,
         parent: null,
@@ -98,7 +98,7 @@ describe("structures api", () => {
   it("invokes update_structure_node with the node id", async () => {
     mockCommands({ update_structure_node: () => ({}) });
     await api.updateStructureNode(3, "n1", {
-      path: "raw",
+      entryName: "raw",
       description: "d",
       directory: true,
       parent: null,
@@ -110,7 +110,7 @@ describe("structures api", () => {
       expect.objectContaining({
         structureId: 3,
         nodeId: "n1",
-        body: expect.objectContaining({ path: "raw" }),
+        body: expect.objectContaining({ entryName: "raw" }),
       }),
     );
   });

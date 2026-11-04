@@ -249,6 +249,9 @@ mod tests {
     //!   get_structure:         { id }
     //!   add_structure_node:    { structureId, body }
     //!   update_structure_node: { structureId, nodeId, body }
+    //!
+    //! The `body` carries the node's `entryName` — its own name, never a
+    //! path. The nesting comes from `parent`.
     //!   delete_structure_node: { structureId, nodeId }
     //!
     //! These tests pin the deserialization shape so a future rename cannot
@@ -363,7 +366,7 @@ mod tests {
     #[test]
     fn add_node_request_deserializes_a_camel_case_payload() {
         let raw = json!({
-            "path": "raw",
+            "entryName": "raw",
             "description": "d",
             "directory": true,
             "parent": null,
@@ -371,14 +374,14 @@ mod tests {
             "migration": null
         });
         let body: AddNodeRequest = serde_json::from_value(raw).unwrap();
-        assert_eq!(body.path, "raw");
+        assert_eq!(body.entry_name, "raw");
         assert!(body.directory);
         assert!(body.parent.is_none());
     }
 
     #[test]
     fn add_node_request_rejects_a_snake_case_payload() {
-        let raw = json!({ "structure_id": 3, "path": "raw" });
+        let raw = json!({ "structure_id": 3, "entryName": "raw" });
         let result: Result<AddNodeRequest, _> = serde_json::from_value(raw);
         assert!(
             result.is_err(),

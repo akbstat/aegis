@@ -105,27 +105,27 @@ tree DTO to filter client-side.
   leaves.
 - A directory entry shows its **full path** (the path of the directory itself
   relative to the structure root, e.g. `raw/data`) — the extra path display the
-  spec asks for in the flat view.
+  spec asks for in the flat view. The server stores no path, so the desktop
+  **derives** it from the ancestor chain (see below).
 - A **file** at the root (no parent) has no directory to sit under, so it
   becomes its own top-level entry. *(Builder's call — the spec does not cover
   it.)*
 
-`path` on a node is the node's path **relative to the structure root**
-(`raw/a.txt`). The server does not require a node's `path` to lie inside its
-parent's `path` — the tree is defined by the `parent` links — so the full path
-shown in the flat view is the node's own `path`.
+A node carries only its **own name** — one folder or file name, e.g. `data`.
+It is *not* a path: the nesting comes from the `parent` link, and a name is
+unique among its **siblings**, not across the structure.
 
-### The path the desktop owns
+### The full path the desktop derives
 
-The structures spec is explicit: *"the `path` is the relative path the caller
-records, and the desktop app owns computing it."* The server never derives a
-child's path from its parent.
+Because the server stores no path, the desktop derives the path relative to the
+structure root by walking the parent chain and joining the ancestor names —
+`buildFullPaths` in `features/templates/data/tree.ts`. The flat view's extra
+path line is that derived value; it is the only place a full path appears.
 
-So when the admin adds a node under a parent, the drawer **prefills** the path
-field with `<parent.path>/` and the admin completes the last segment. Adding at
-the root leaves the field empty. On edit, the field shows the node's current
-`path` unchanged. The admin may still edit the whole path — it is a free-text
-field, and the server validates it.
+The consequence for editing: a node's own name is what the admin edits. Adding
+under a parent leaves the name field empty — the parent already supplies the
+nesting, so there is no path to prefill. On edit the field shows the node's
+current name unchanged.
 
 ## The pages
 
@@ -168,8 +168,8 @@ structure's `name`. The selected one is highlighted; clicking navigates to
 **Tree pane (left).** The structure name, a *Complete* / *Flat* toggle, and the
 tree.
 
-**Node row.** The node's `path` as the primary label. Below it, in secondary
-text:
+**Node row.** The node's **own name** as the primary label. Below it, in
+secondary text:
 
 - `description` — always, when non-empty.
 - `reference` — files only (the server rejects `reference` on a directory).
@@ -196,7 +196,7 @@ One drawer serves add and edit.
 
 | Field | Applies to | Notes |
 | --- | --- | --- |
-| `path` | all | Required. Prefilled `<parent.path>/` on add-under-parent; empty on add-at-root; the current value on edit. |
+| `entryName` | all | Required. The node's **own name** — one folder or file name, never a path. Empty on add; the current value on edit. |
 | `description` | all | Free text. May be empty. |
 | `directory` | all | Switch. Folder vs file. |
 | `reference` | files only | Absolute file path. The field is hidden when `directory` is true. |
@@ -213,17 +213,17 @@ replacements and `parent` is always explicit (`null` means "at the root"), so
 the drawer sends the parent's `nodeId` on add and the node's existing `parent`
 on edit. Omitting it would silently re-parent the node.
 
-**Client-side validation** mirrors the server's `validate_path`:
+**Client-side validation** mirrors the server's `validate_name`:
 
-- non-blank, no leading or trailing `/`, no `\`, no empty / `.` / `..` segment.
+- non-blank, no `/` and no `\`, and neither `.` nor `..`.
 
-The Save button is disabled while the path is invalid, with the reason shown
+The Save button is disabled while the name is invalid, with the reason shown
 under the field.
 
 ### Delete
 
-A confirm dialog naming the node by `path`: *"Delete `raw/data` and everything
-under it?"* Confirming calls `DELETE /api/structures/{id}/nodes/{node_id}`,
+A confirm dialog naming the node by its **entry name**: *"Delete `data` and
+everything under it?"* Confirming calls `DELETE /api/structures/{id}/nodes/{node_id}`,
 which answers `204` with an empty body — the desktop adapter must not try to
 JSON-decode it (the same trap `http/mission.rs::remove_assignee` documents).
 
@@ -242,7 +242,7 @@ export interface MigrationView {
 export interface StructureNodeView {
   nodeId: string;
   description: string;
-  path: string;
+  entryName: string;
   directory: boolean;
   parent: string | null;
   reference: string | null;
@@ -268,7 +268,7 @@ export interface StructureSummaryView {
 }
 
 export interface StructureNodeInput {
-  path: string;
+  entryName: string;
   description: string;
   directory: boolean;
   parent: string | null;
@@ -378,7 +378,7 @@ command maps its arguments onto the right URL.
   an admin sees them.
 - `node-drawer.test.tsx` — the reference field shows only for files, the
   migration fields only for directories, `parent` is sent on save, an invalid
-  path disables Save.
+  entry name disables Save.
 
 Frontend tests live in `src/test/features/<feature>/`, mirroring the feature
 module name — the existing convention.
@@ -388,10 +388,8 @@ module name — the existing convention.
 None that block the build. Both open items were settled in the implementation
 plan (`docs/superpowers/plans/2026-11-03-aegis-desktop-templates-feature.md`):
 
-1. The flat view's "full path" is the node's own `path`. The server does not
-   enforce that a node's `path` lies inside its parent's `path`, so the two can
-   disagree in principle; the spec says the desktop owns the path, so the
-   node's own `path` is used. The flat view shows the directory by its **name**
-   (the last segment) plus that full path.
+1. The flat view's "full path" is **derived** by the desktop from the
+   ancestor chain — the server stores no path. The flat view shows the
+   directory by its own name plus that derived full path.
 2. The exact wording of the two card strings and of the delete confirmation is
    pinned by the i18n catalog in the plan.

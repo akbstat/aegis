@@ -20,7 +20,10 @@
 - **Query keys come from `src/shared/query/keys.ts`** — never an inline array.
 - **`hidden` is never sent.** The server rejects `hidden = true` against a template structure, and hidden nodes are already absent from the tree the page renders. The drawer has no `hidden` field and the client never sends the key.
 - **`parent` is always sent** on add and on edit. `AddNodeRequest` / `UpdateNodeRequest` are full replacements; `parent: null` means "at the root".
-- **A node's `path` is the path relative to the structure root**, and the desktop owns computing it: adding under a parent prefills `parent.path + "/"`.
+- **A node carries only its own `entryName`** — one folder or file name, never a path.
+  The nesting comes from `parent`, and a name is unique among its siblings. The
+  server stores no path at all, so the desktop derives the full path from the
+  ancestor chain.
 
 ## Review Focus
 
@@ -29,7 +32,7 @@ Five input classes the spec implies but does not spell out. Each has a test in t
 1. **The template list comes back empty** (no template structures exist yet). The page must not navigate to a null structure id and must show an empty state. → Task 11.
 2. **A template structure has zero nodes.** The tree pane must render an empty state, not an empty `SimpleTreeView` that looks broken. → Task 11.
 3. **A node's `description` is empty** — the domain explicitly allows it. The row must render without a blank secondary line. → Task 9.
-4. **A path that is not a valid relative path** (leading `/`, trailing `/`, a `.` or `..` segment, or a `\`). The server returns `400 invalid_path`; the drawer must disable Save before the request is ever made. → Task 10.
+4. **An entry name that is not a valid name** (blank, carrying a `/` or a `\`, or `.` / `..`). The server returns `400 invalid_name`; the drawer must disable Save before the request is ever made. → Task 10.
 5. **A directory is deleted.** The server removes the whole subtree with it, so the confirmation copy must say so — otherwise the admin believes only one folder disappeared. → Task 10.
 
 ---
@@ -123,12 +126,12 @@ git commit -m "feat(ui): add the @aegis/ui/tree-view subpath"
 - Produces (used by Task 3):
   - `pub enum StructureLevelResponse { Template, Project }` — `#[serde(rename_all = "camelCase")]`, serialises to `"template"` / `"project"`.
   - `pub struct MigrationViewResponse { pub directory: String, pub filter: Vec<String> }`
-  - `pub struct NodeViewResponse { pub node_id: String, pub description: String, pub path: String, pub directory: bool, pub parent: Option<String>, pub reference: Option<String>, pub migration: Option<MigrationViewResponse>, pub children: Vec<NodeViewResponse> }`
+  - `pub struct NodeViewResponse { pub node_id: String, pub description: String, pub entry_name: String, pub directory: bool, pub parent: Option<String>, pub reference: Option<String>, pub migration: Option<MigrationViewResponse>, pub children: Vec<NodeViewResponse> }`
   - `pub struct StructureViewResponse { pub id: i64, pub name: String, pub level: StructureLevelResponse, pub project_code: Option<String>, pub template_id: Option<i64>, pub nodes: Vec<NodeViewResponse> }`
   - `pub struct StructureSummaryResponse { pub id: i64, pub name: String, pub level: StructureLevelResponse, pub project_code: Option<String>, pub template_id: Option<i64> }`
   - `pub struct StructureListResponse { pub structures: Vec<StructureSummaryResponse> }`
-  - `pub struct AddNodeRequest { pub path: String, pub description: String, pub directory: bool, pub parent: Option<String>, pub reference: Option<String>, pub migration: Option<MigrationViewResponse> }`
-  - `pub struct UpdateNodeRequest { pub path: String, pub description: String, pub directory: bool, pub parent: Option<String>, pub reference: Option<String>, pub migration: Option<MigrationViewResponse> }`
+  - `pub struct AddNodeRequest { pub entry_name: String, pub description: String, pub directory: bool, pub parent: Option<String>, pub reference: Option<String>, pub migration: Option<MigrationViewResponse> }`
+  - `pub struct UpdateNodeRequest { pub entry_name: String, pub description: String, pub directory: bool, pub parent: Option<String>, pub reference: Option<String>, pub migration: Option<MigrationViewResponse> }`
   - `pub async fn list_structures(c: &HttpClient, level: Option<StructureLevelResponse>) -> Result<Vec<StructureSummaryResponse>, ApiError>`
   - `pub async fn get_structure(c: &HttpClient, id: i64) -> Result<StructureViewResponse, ApiError>`
   - `pub async fn add_node(c: &HttpClient, structure_id: i64, body: &AddNodeRequest) -> Result<NodeViewResponse, ApiError>`
@@ -165,7 +168,7 @@ mod tests {
         let j = r#"{
             "nodeId": "n1",
             "description": "raw data",
-            "path": "raw/data",
+            "entryName": "data",
             "directory": true,
             "parent": "n0",
             "reference": null,
@@ -174,7 +177,7 @@ mod tests {
                 {
                     "nodeId": "n2",
                     "description": "",
-                    "path": "raw/data/a.sas7bdat",
+                    "entryName": "a.sas7bdat",
                     "directory": false,
                     "parent": "n1",
                     "reference": "/opt/sop/raw/a.sas7bdat",
@@ -196,7 +199,7 @@ mod tests {
     #[test]
     fn add_node_request_serializes_camel_case_with_a_null_parent() {
         let body = AddNodeRequest {
-            path: "raw".into(),
+            entry_name: "raw".into(),
             description: "d".into(),
             directory: true,
             parent: None,
@@ -206,7 +209,7 @@ mod tests {
         let j = serde_json::to_string(&body).unwrap();
         assert!(j.contains("\"parent\":null"), "got {j}");
         assert!(j.contains("\"directory\":true"), "got {j}");
-        assert!(j.contains("\"path\":\"raw\""), "got {j}");
+        assert!(j.contains("\"entryName\":\"raw\""), "got {j}");
     }
 
     #[tokio::test]
@@ -426,7 +429,7 @@ mod tests {
     #[test]
     fn add_node_request_deserializes_a_camel_case_payload() {
         let raw = json!({
-            "path": "raw",
+            "entryName": "raw",
             "description": "d",
             "directory": true,
             "parent": null,
@@ -434,14 +437,14 @@ mod tests {
             "migration": null
         });
         let body: AddNodeRequest = serde_json::from_value(raw).unwrap();
-        assert_eq!(body.path, "raw");
+        assert_eq!(body.entry_name, "raw");
         assert!(body.directory);
         assert!(body.parent.is_none());
     }
 
     #[test]
     fn add_node_request_rejects_a_snake_case_payload() {
-        let raw = json!({ "structure_id": 3, "path": "raw" });
+        let raw = json!({ "structure_id": 3, "entryName": "raw" });
         let result: Result<AddNodeRequest, _> = serde_json::from_value(raw);
         assert!(
             result.is_err(),
@@ -603,8 +606,60 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { api } from "../../../shared/api";
 import { mockCommands, mockInvoke } from "../../helpers/tauri-mock";
+import CONTRACT_JSON from "../../../../src-tauri/src/structures.contract.json";
+
+/**
+ * The invoke payload keys Tauri v2 derives from the Rust commands' Rust
+ * parameter names. The Rust half of this contract lives in
+ * `src-tauri/src/structures.contract.json` and is checked against the
+ * command signatures by `commands::structures::tests::invoke_keys_match_the_contract`.
+ */
+const CONTRACT = CONTRACT_JSON as Record<string, string[]>;
 
 describe("structures api", () => {
+  it("sends exactly the invoke keys the Rust commands expect", async () => {
+    // Tauri v2 resolves each command argument by the lower-camel-case of
+    // the Rust parameter name and looks the key up in the payload with
+    // no whole-payload fallback. A wrapper that flattens a struct
+    // parameter instead of nesting it under that parameter's name is
+    // rejected at runtime with "missing required key body".
+    const nodeInput = {
+      entryName: "raw",
+      description: "d",
+      directory: true,
+      parent: null,
+      reference: null,
+      migration: null,
+    };
+    const cases: Array<[string, () => Promise<unknown>]> = [
+      ["list_structures", () => api.listStructures("template")],
+      ["get_structure", () => api.getStructure(3)],
+      ["add_structure_node", () => api.addStructureNode(3, nodeInput)],
+      [
+        "update_structure_node",
+        () => api.updateStructureNode(3, "n1", nodeInput),
+      ],
+      ["delete_structure_node", () => api.deleteStructureNode(3, "n1")],
+    ];
+
+    mockCommands({
+      list_structures: () => [],
+      get_structure: () => ({}),
+      add_structure_node: () => ({}),
+      update_structure_node: () => ({}),
+      delete_structure_node: () => undefined,
+    });
+
+    for (const [command, call] of cases) {
+      mockInvoke.mockClear();
+      await call();
+      const payload = mockInvoke.mock.calls[0][1] as Record<string, unknown>;
+      expect(Object.keys(payload).sort(), command).toEqual(
+        [...CONTRACT[command]].sort(),
+      );
+    }
+  });
+
   it("invokes list_structures with the level", async () => {
     mockCommands({ list_structures: () => [] });
     await api.listStructures("template");
@@ -622,7 +677,7 @@ describe("structures api", () => {
   it("invokes add_structure_node with camelCase arguments", async () => {
     mockCommands({ add_structure_node: () => ({}) });
     await api.addStructureNode(3, {
-      path: "raw",
+      entryName: "raw",
       description: "d",
       directory: true,
       parent: null,
@@ -631,19 +686,21 @@ describe("structures api", () => {
     });
     expect(mockInvoke).toHaveBeenCalledWith("add_structure_node", {
       structureId: 3,
-      path: "raw",
-      description: "d",
-      directory: true,
-      parent: null,
-      reference: null,
-      migration: null,
+      body: {
+        entryName: "raw",
+        description: "d",
+        directory: true,
+        parent: null,
+        reference: null,
+        migration: null,
+      },
     });
   });
 
   it("invokes update_structure_node with the node id", async () => {
     mockCommands({ update_structure_node: () => ({}) });
     await api.updateStructureNode(3, "n1", {
-      path: "raw",
+      entryName: "raw",
       description: "d",
       directory: true,
       parent: null,
@@ -652,7 +709,11 @@ describe("structures api", () => {
     });
     expect(mockInvoke).toHaveBeenCalledWith(
       "update_structure_node",
-      expect.objectContaining({ structureId: 3, nodeId: "n1" }),
+      expect.objectContaining({
+        structureId: 3,
+        nodeId: "n1",
+        body: expect.objectContaining({ entryName: "raw" }),
+      }),
     );
   });
 
@@ -665,6 +726,7 @@ describe("structures api", () => {
     });
   });
 });
+
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -688,7 +750,7 @@ export interface MigrationView {
 export interface StructureNodeView {
   nodeId: string;
   description: string;
-  path: string;
+  entryName: string;
   directory: boolean;
   parent: string | null;
   reference: string | null;
@@ -714,7 +776,7 @@ export interface StructureSummaryView {
 }
 
 export interface StructureNodeInput {
-  path: string;
+  entryName: string;
   description: string;
   directory: boolean;
   parent: string | null;
@@ -844,7 +906,7 @@ In `lib/packages/ui/src/i18n/locales/en.ts`, add:
   'templates.node.addRoot': 'Add root node',
   'templates.node.drawer.addTitle': 'Add node',
   'templates.node.drawer.editTitle': 'Edit node',
-  'templates.node.field.path': 'Path',
+  'templates.node.field.entryName': 'Entry name',
   'templates.node.field.description': 'Description',
   'templates.node.field.directory': 'Folder',
   'templates.node.field.reference': 'Reference path',
@@ -852,12 +914,12 @@ In `lib/packages/ui/src/i18n/locales/en.ts`, add:
   'templates.node.field.migrationDirectory': 'Migration source directory',
   'templates.node.field.migrationFilter': 'Migration filter',
   'templates.node.field.migrationFilterAdd': 'Add filter',
-  'templates.node.field.invalidPath':
-    'Enter a relative path — no leading or trailing "/", and no "." or ".." segment.',
+  'templates.node.field.invalidEntryName':
+    'Enter a name — no "/" or "\\", and not "." or "..".',
   'templates.node.saveFailed': 'Save failed: {message}',
   'templates.node.delete.title': 'Delete node',
   'templates.node.delete.message':
-    'Delete "{path}" and everything under it?',
+    'Delete "{entryName}" and everything under it?',
   'templates.node.delete.failed': 'Delete failed: {message}',
 ```
 
@@ -886,7 +948,7 @@ Note: `zhCN.ts` closes with `} satisfies Record<keyof typeof en, string>;`, not
   'templates.node.addRoot': '添加根节点',
   'templates.node.drawer.addTitle': '新增节点',
   'templates.node.drawer.editTitle': '编辑节点',
-  'templates.node.field.path': '路径',
+  'templates.node.field.entryName': '条目名称',
   'templates.node.field.description': '描述',
   'templates.node.field.directory': '文件夹',
   'templates.node.field.reference': '参考路径',
@@ -894,11 +956,11 @@ Note: `zhCN.ts` closes with `} satisfies Record<keyof typeof en, string>;`, not
   'templates.node.field.migrationDirectory': '迁移源目录',
   'templates.node.field.migrationFilter': '迁移过滤条件',
   'templates.node.field.migrationFilterAdd': '添加过滤条件',
-  'templates.node.field.invalidPath':
-    '请输入相对路径 —— 不能以 "/" 开头或结尾, 也不能包含 "." 或 ".." 段。',
+  'templates.node.field.invalidEntryName':
+    '请输入名称 —— 不能包含 "/" 或 "\\", 也不能是 "." 或 ".."。',
   'templates.node.saveFailed': '保存失败: {message}',
   'templates.node.delete.title': '删除节点',
-  'templates.node.delete.message': '删除 "{path}" 及其所有子节点?',
+  'templates.node.delete.message': '删除 "{entryName}" 及其所有子节点?',
   'templates.node.delete.failed': '删除失败: {message}',
 ```
 
@@ -927,7 +989,7 @@ git commit -m "feat(i18n): add the templates catalog entries"
 - Produces (used by Tasks 9 and 11):
   - `interface FlatEntry { node: StructureNodeView; name: string; fullPath: string; files: StructureNodeView[] }`
   - `function flattenStructure(nodes: StructureNodeView[]): FlatEntry[]`
-  - `function nodeName(path: string): string` — the last `/`-separated segment of a path.
+  - `function buildFullPaths(nodes: StructureNodeView[]): Map<string, string>` — the path of every node relative to the structure root, derived from the ancestor chain.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -937,17 +999,20 @@ Create `apps/desktop/aegis-desktop/src/test/features/templates/tree.test.ts`:
 import { describe, expect, it } from "vitest";
 
 import type { StructureNodeView } from "../../../shared/api";
-import { flattenStructure, nodeName } from "../../../features/templates/data/tree";
+import {
+  buildFullPaths,
+  flattenStructure,
+} from "../../../features/templates/data/tree";
 
 function dir(
   nodeId: string,
-  path: string,
+  entryName: string,
   children: StructureNodeView[] = [],
 ): StructureNodeView {
   return {
     nodeId,
     description: "",
-    path,
+    entryName,
     directory: true,
     parent: null,
     reference: null,
@@ -956,11 +1021,11 @@ function dir(
   };
 }
 
-function file(nodeId: string, path: string): StructureNodeView {
+function file(nodeId: string, entryName: string): StructureNodeView {
   return {
     nodeId,
     description: "",
-    path,
+    entryName,
     directory: false,
     parent: null,
     reference: "/abs/path",
@@ -969,17 +1034,42 @@ function file(nodeId: string, path: string): StructureNodeView {
   };
 }
 
+describe("buildFullPaths", () => {
+  it("gives a root node its own name", () => {
+    const paths = buildFullPaths([dir("d1", "raw")]);
+    expect(paths.get("d1")).toBe("raw");
+  });
+
+  it("joins the ancestor names with a slash", () => {
+    const paths = buildFullPaths([
+      dir("d1", "raw", [dir("d2", "data", [file("f1", "a.sas7bdat")])]),
+    ]);
+    expect(paths.get("d1")).toBe("raw");
+    expect(paths.get("d2")).toBe("raw/data");
+    expect(paths.get("f1")).toBe("raw/data/a.sas7bdat");
+  });
+
+  it("gives a root-level file its own name", () => {
+    const paths = buildFullPaths([file("f1", "README.md")]);
+    expect(paths.get("f1")).toBe("README.md");
+  });
+
+  it("returns an empty map for an empty tree", () => {
+    expect(buildFullPaths([]).size).toBe(0);
+  });
+});
+
 describe("flattenStructure", () => {
   it("promotes every directory to a top-level entry", () => {
     const entries = flattenStructure([
-      dir("d1", "raw", [dir("d2", "raw/data")]),
+      dir("d1", "raw", [dir("d2", "data")]),
     ]);
     expect(entries.map((e) => e.node.nodeId)).toEqual(["d1", "d2"]);
   });
 
   it("does not nest a sub-directory under its parent", () => {
     const entries = flattenStructure([
-      dir("d1", "raw", [dir("d2", "raw/data")]),
+      dir("d1", "raw", [dir("d2", "data")]),
     ]);
     const raw = entries.find((e) => e.node.nodeId === "d1")!;
     expect(raw.files).toEqual([]);
@@ -989,8 +1079,8 @@ describe("flattenStructure", () => {
   it("collects the files directly inside each directory", () => {
     const entries = flattenStructure([
       dir("d1", "raw", [
-        file("f1", "raw/b.txt"),
-        dir("d2", "raw/data", [file("f2", "raw/data/a.sas7bdat")]),
+        file("f1", "b.txt"),
+        dir("d2", "data", [file("f2", "a.sas7bdat")]),
       ]),
     ]);
     const raw = entries.find((e) => e.node.nodeId === "d1")!;
@@ -1006,10 +1096,14 @@ describe("flattenStructure", () => {
     expect(entries[0].files).toEqual([]);
   });
 
-  it("names an entry by the last segment of its path and keeps the full path", () => {
-    const entries = flattenStructure([dir("d1", "raw", [dir("d2", "raw/data")])]);
+  it("names an entry by its own name and computes the full path", () => {
+    const entries = flattenStructure([
+      dir("d1", "raw", [dir("d2", "data")]),
+    ]);
     const data = entries.find((e) => e.node.nodeId === "d2")!;
     expect(data.name).toBe("data");
+    // The full path is derived from the ancestors — the server no longer
+    // stores one.
     expect(data.fullPath).toBe("raw/data");
   });
 
@@ -1018,15 +1112,6 @@ describe("flattenStructure", () => {
   });
 });
 
-describe("nodeName", () => {
-  it("returns the last path segment", () => {
-    expect(nodeName("raw/data")).toBe("data");
-  });
-
-  it("returns the whole path when it has no separator", () => {
-    expect(nodeName("raw")).toBe("raw");
-  });
-});
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1052,17 +1137,36 @@ import type { StructureNodeView } from "../../../shared/api";
 export interface FlatEntry {
   /** The directory node, or a root-level file. */
   node: StructureNodeView;
-  /** The node's own name — the last segment of its path. */
+  /** The node's own name — the folder or file name it carries. */
   name: string;
-  /** The node's full path relative to the structure root. */
+  /** The path from the structure root, computed from the ancestors. */
   fullPath: string;
   /** The files directly inside the directory. Empty for a file entry. */
   files: StructureNodeView[];
 }
 
-/** The last `/`-separated segment of a path. */
-export function nodeName(path: string): string {
-  return path.split("/").pop() ?? path;
+/**
+ * The full path of every node in the tree, keyed by node id.
+ *
+ * A node carries only its own name — the nesting comes from `parent`,
+ * and the server stores no path — so the path relative to the
+ * structure root is derived here, by joining the ancestor names.
+ */
+export function buildFullPaths(
+  nodes: StructureNodeView[],
+): Map<string, string> {
+  const paths = new Map<string, string>();
+  const walk = (siblings: StructureNodeView[], prefix: string) => {
+    for (const node of siblings) {
+      const fullPath = prefix
+        ? `${prefix}/${node.entryName}`
+        : node.entryName;
+      paths.set(node.nodeId, fullPath);
+      walk(node.children, fullPath);
+    }
+  };
+  walk(nodes, "");
+  return paths;
 }
 
 /**
@@ -1074,15 +1178,17 @@ export function nodeName(path: string): string {
  * parent directory has nothing to sit under, so it gets its own entry.
  */
 export function flattenStructure(nodes: StructureNodeView[]): FlatEntry[] {
+  const paths = buildFullPaths(nodes);
   const entries: FlatEntry[] = [];
 
   const walk = (siblings: StructureNodeView[], atRoot: boolean) => {
     for (const node of siblings) {
+      const fullPath = paths.get(node.nodeId) ?? node.entryName;
       if (node.directory) {
         entries.push({
           node,
-          name: nodeName(node.path),
-          fullPath: node.path,
+          name: node.entryName,
+          fullPath,
           files: node.children.filter((c) => !c.directory),
         });
         walk(
@@ -1092,8 +1198,8 @@ export function flattenStructure(nodes: StructureNodeView[]): FlatEntry[] {
       } else if (atRoot) {
         entries.push({
           node,
-          name: nodeName(node.path),
-          fullPath: node.path,
+          name: node.entryName,
+          fullPath,
           files: [],
         });
       }
@@ -1103,6 +1209,7 @@ export function flattenStructure(nodes: StructureNodeView[]): FlatEntry[] {
   walk(nodes, true);
   return entries;
 }
+
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
@@ -1141,132 +1248,171 @@ git commit -m "feat(desktop): add the flat structure tree transform"
 Create `apps/desktop/aegis-desktop/src/test/features/templates/data.test.tsx`:
 
 ```tsx
-import { describe, expect, it, vi } from "vitest";
+import "@testing-library/jest-dom/vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
-import { api } from "../../../shared/api";
-import { mockCommands, mockInvoke } from "../../helpers/tauri-mock";
-import CONTRACT_JSON from "../../../../src-tauri/src/structures.contract.json";
+import { renderWithQueryClient } from "../../helpers/render-with-query-client";
+import { mockCommands } from "../../helpers/tauri-mock";
+import {
+  useAddStructureNode,
+  useDeleteStructureNode,
+  useGetStructure,
+  useListTemplateStructures,
+  useUpdateStructureNode,
+} from "../../../features/templates/data/structures";
 
-/**
- * The invoke payload keys Tauri v2 derives from the Rust commands' Rust
- * parameter names. The Rust half of this contract lives in
- * `src-tauri/src/structures.contract.json` and is checked against the
- * command signatures by `commands::structures::tests::invoke_keys_match_the_contract`.
- */
-const CONTRACT = CONTRACT_JSON as Record<string, string[]>;
+afterEach(() => cleanup());
 
-describe("structures api", () => {
-  it("sends exactly the invoke keys the Rust commands expect", async () => {
-    // Tauri v2 resolves each command argument by the lower-camel-case of
-    // the Rust parameter name and looks the key up in the payload with
-    // no whole-payload fallback. A wrapper that flattens a struct
-    // parameter instead of nesting it under that parameter's name is
-    // rejected at runtime with "missing required key body".
-    const nodeInput = {
-      path: "raw",
-      description: "d",
-      directory: true,
-      parent: null,
-      reference: null,
-      migration: null,
-    };
-    const cases: Array<[string, () => Promise<unknown>]> = [
-      ["list_structures", () => api.listStructures("template")],
-      ["get_structure", () => api.getStructure(3)],
-      ["add_structure_node", () => api.addStructureNode(3, nodeInput)],
-      [
-        "update_structure_node",
-        () => api.updateStructureNode(3, "n1", nodeInput),
-      ],
-      ["delete_structure_node", () => api.deleteStructureNode(3, "n1")],
-    ];
+const STRUCTURE = {
+  id: 3,
+  name: "Standard",
+  level: "template",
+  projectCode: null,
+  templateId: null,
+  nodes: [],
+};
 
+const TEMPLATES = [
+  {
+    id: 3,
+    name: "Standard",
+    level: "template",
+    projectCode: null,
+    templateId: null,
+  },
+];
+
+function Probe() {
+  const list = useListTemplateStructures();
+  const structure = useGetStructure(3);
+  const add = useAddStructureNode();
+  const update = useUpdateStructureNode();
+  const del = useDeleteStructureNode();
+  return (
+    <div>
+      <span data-testid="list-status">{list.status}</span>
+      <span data-testid="list-count">{list.data?.length ?? -1}</span>
+      <span data-testid="structure-status">{structure.status}</span>
+      <span data-testid="structure-name">{structure.data?.name ?? ""}</span>
+      <button
+        data-testid="add"
+        onClick={() =>
+          add.mutate({
+            structureId: 3,
+            input: {
+              entryName: "raw",
+              description: "",
+              directory: true,
+              parent: null,
+              reference: null,
+              migration: null,
+            },
+          })
+        }
+      >
+        add
+      </button>
+      <button
+        data-testid="update"
+        onClick={() =>
+          update.mutate({
+            structureId: 3,
+            nodeId: "n1",
+            input: {
+              entryName: "raw",
+              description: "d",
+              directory: true,
+              parent: null,
+              reference: null,
+              migration: null,
+            },
+          })
+        }
+      >
+        update
+      </button>
+      <button
+        data-testid="delete"
+        onClick={() => del.mutate({ structureId: 3, nodeId: "n1" })}
+      >
+        delete
+      </button>
+    </div>
+  );
+}
+
+describe("templates data hooks", () => {
+  it("lists the template structures", async () => {
     mockCommands({
-      list_structures: () => [],
-      get_structure: () => ({}),
-      add_structure_node: () => ({}),
-      update_structure_node: () => ({}),
-      delete_structure_node: () => undefined,
+      list_structures: () => TEMPLATES,
+      get_structure: () => STRUCTURE,
     });
-
-    for (const [command, call] of cases) {
-      mockInvoke.mockClear();
-      await call();
-      const payload = mockInvoke.mock.calls[0][1] as Record<string, unknown>;
-      expect(Object.keys(payload).sort(), command).toEqual(
-        [...CONTRACT[command]].sort(),
-      );
-    }
+    renderWithQueryClient(<Probe />);
+    expect(await screen.findByText("1")).toBeInTheDocument();
   });
 
-  it("invokes list_structures with the level", async () => {
-    mockCommands({ list_structures: () => [] });
-    await api.listStructures("template");
-    expect(mockInvoke).toHaveBeenCalledWith("list_structures", {
-      level: "template",
+  it("loads a structure by id", async () => {
+    mockCommands({
+      list_structures: () => TEMPLATES,
+      get_structure: () => STRUCTURE,
     });
+    renderWithQueryClient(<Probe />);
+    expect(await screen.findByText("Standard")).toBeInTheDocument();
   });
 
-  it("invokes get_structure with the id", async () => {
-    mockCommands({ get_structure: () => ({}) });
-    await api.getStructure(3);
-    expect(mockInvoke).toHaveBeenCalledWith("get_structure", { id: 3 });
-  });
-
-  it("invokes add_structure_node with camelCase arguments", async () => {
-    mockCommands({ add_structure_node: () => ({}) });
-    await api.addStructureNode(3, {
-      path: "raw",
-      description: "d",
-      directory: true,
-      parent: null,
-      reference: null,
-      migration: null,
+  it("refetches the structure after a node is added", async () => {
+    const getStructure = vi.fn(() => STRUCTURE);
+    mockCommands({
+      list_structures: () => TEMPLATES,
+      get_structure: getStructure,
+      add_structure_node: () => ({ nodeId: "n9" }),
     });
-    expect(mockInvoke).toHaveBeenCalledWith("add_structure_node", {
-      structureId: 3,
-      body: {
-        path: "raw",
-        description: "d",
-        directory: true,
-        parent: null,
-        reference: null,
-        migration: null,
-      },
-    });
-  });
-
-  it("invokes update_structure_node with the node id", async () => {
-    mockCommands({ update_structure_node: () => ({}) });
-    await api.updateStructureNode(3, "n1", {
-      path: "raw",
-      description: "d",
-      directory: true,
-      parent: null,
-      reference: null,
-      migration: null,
-    });
-    expect(mockInvoke).toHaveBeenCalledWith(
-      "update_structure_node",
-      expect.objectContaining({
-        structureId: 3,
-        nodeId: "n1",
-        body: expect.objectContaining({ path: "raw" }),
-      }),
+    renderWithQueryClient(<Probe />);
+    await screen.findByText("Standard");
+    const before = getStructure.mock.calls.length;
+    await userEvent.click(screen.getByTestId("add"));
+    await waitFor(() =>
+      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
     );
   });
 
-  it("invokes delete_structure_node with the structure and node ids", async () => {
-    mockCommands({ delete_structure_node: () => undefined });
-    await api.deleteStructureNode(3, "n1");
-    expect(mockInvoke).toHaveBeenCalledWith("delete_structure_node", {
-      structureId: 3,
-      nodeId: "n1",
+  it("refetches the structure after a node is updated", async () => {
+    const getStructure = vi.fn(() => STRUCTURE);
+    mockCommands({
+      list_structures: () => TEMPLATES,
+      get_structure: getStructure,
+      update_structure_node: () => ({ nodeId: "n1" }),
     });
+    renderWithQueryClient(<Probe />);
+    await screen.findByText("Standard");
+    const before = getStructure.mock.calls.length;
+    await userEvent.click(screen.getByTestId("update"));
+    await waitFor(() =>
+      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+
+  it("refetches the structure after a node is deleted", async () => {
+    const getStructure = vi.fn(() => STRUCTURE);
+    mockCommands({
+      list_structures: () => TEMPLATES,
+      get_structure: getStructure,
+      delete_structure_node: () => undefined,
+    });
+    renderWithQueryClient(<Probe />);
+    await screen.findByText("Standard");
+    const before = getStructure.mock.calls.length;
+    await userEvent.click(screen.getByTestId("delete"));
+    await waitFor(() =>
+      expect(getStructure.mock.calls.length).toBeGreaterThan(before),
+    );
   });
 });
+
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1346,16 +1492,13 @@ export function useUpdateStructureNode() {
 
 export function useDeleteStructureNode() {
   const invalidate = useInvalidateStructures();
-  return useMutation<
-    void,
-    ApiError,
-    { structureId: number; nodeId: string }
-  >({
+  return useMutation<void, ApiError, { structureId: number; nodeId: string }>({
     mutationFn: ({ structureId, nodeId }) =>
       api.deleteStructureNode(structureId, nodeId),
     onSuccess: (_void, vars) => invalidate(vars.structureId),
   });
 }
+
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**
@@ -1392,78 +1535,83 @@ git commit -m "feat(desktop): add the templates data hooks"
 Create `apps/desktop/aegis-desktop/src/test/features/templates/templates-page.test.tsx`:
 
 ```tsx
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import "@testing-library/jest-dom/vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { AegisI18nProvider } from "@aegis/ui/i18n";
+import { AegisThemeProvider } from "@aegis/ui/theme";
 
-import {
-  api,
-  type ApiError,
-  type StructureNodeInput,
-  type StructureNodeView,
-  type StructureSummaryView,
-  type StructureView,
-} from "../../../shared/api";
-import { queryKeys } from "../../../shared/query";
+import { renderInRouter } from "../../helpers/file-route-utils";
+import { TemplatesPage } from "../../../features/templates";
 
-/** The template-level structures, for the sidebar. */
-export function useListTemplateStructures() {
-  return useQuery<StructureSummaryView[], ApiError>({
-    queryKey: queryKeys.structures.list("template"),
-    queryFn: () => api.listStructures("template"),
+function createMemoryStorage(): Storage {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    clear() {
+      data.clear();
+    },
+    getItem(key: string) {
+      return data.has(key) ? data.get(key)! : null;
+    },
+    key(index: number) {
+      return Array.from(data.keys())[index] ?? null;
+    },
+    removeItem(key: string) {
+      data.delete(key);
+    },
+    setItem(key: string, value: string) {
+      data.set(key, value);
+    },
+  } as unknown as Storage;
+}
+
+beforeEach(() => {
+  vi.unstubAllGlobals();
+  vi.stubGlobal("localStorage", createMemoryStorage());
+});
+afterEach(() => cleanup());
+
+function renderTemplates() {
+  return renderInRouter(
+    <AegisThemeProvider>
+      <AegisI18nProvider>
+        <TemplatesPage />
+      </AegisI18nProvider>
+    </AegisThemeProvider>,
+  );
+}
+
+describe("TemplatesPage", () => {
+  it("renders the heading and the one card", async () => {
+    await renderTemplates();
+    expect(
+      screen.getByRole("heading", { level: 4, name: /templates/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Standard Project Folder Structure"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Statistical programming standard project folder structure/i,
+      ),
+    ).toBeInTheDocument();
   });
-}
 
-/** One structure with its effective tree. */
-export function useGetStructure(id: number | null) {
-  return useQuery<StructureView, ApiError>({
-    queryKey: queryKeys.structures.detail(id ?? 0),
-    queryFn: () => api.getStructure(id!),
-    enabled: id != null && id > 0,
+  it("navigates to /templates/structure when the card is clicked", async () => {
+    const { router } = await renderTemplates();
+    await userEvent.click(
+      screen.getByText("Standard Project Folder Structure"),
+    );
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe("/templates/structure"),
+    );
   });
-}
+});
 
-/** Invalidate the structure and the sidebar after a node write. */
-function useInvalidateStructures() {
-  const qc = useQueryClient();
-  return (structureId: number) => {
-    qc.invalidateQueries({ queryKey: queryKeys.structures.detail(structureId) });
-    qc.invalidateQueries({ queryKey: queryKeys.structures.list("template") });
-  };
-}
-
-export function useAddStructureNode() {
-  const invalidate = useInvalidateStructures();
-  return useMutation<
-    StructureNodeView,
-    ApiError,
-    { structureId: number; input: StructureNodeInput }
-  >({
-    mutationFn: ({ structureId, input }) =>
-      api.addStructureNode(structureId, input),
-    onSuccess: (_node, vars) => invalidate(vars.structureId),
-  });
-}
-
-export function useUpdateStructureNode() {
-  const invalidate = useInvalidateStructures();
-  return useMutation<
-    StructureNodeView,
-    ApiError,
-    { structureId: number; nodeId: string; input: StructureNodeInput }
-  >({
-    mutationFn: ({ structureId, nodeId, input }) =>
-      api.updateStructureNode(structureId, nodeId, input),
-    onSuccess: (_node, vars) => invalidate(vars.structureId),
-  });
-}
-
-export function useDeleteStructureNode() {
-  const invalidate = useInvalidateStructures();
-  return useMutation<void, ApiError, { structureId: number; nodeId: string }>({
-    mutationFn: ({ structureId, nodeId }) =>
-      api.deleteStructureNode(structureId, nodeId),
-    onSuccess: (_void, vars) => invalidate(vars.structureId),
-  });
-}
 ```
 
 - [ ] **Step 2: Write the failing nav test**
@@ -1604,6 +1752,7 @@ export function TemplatesPage() {
     </Box>
   );
 }
+
 ```
 
 - [ ] **Step 5: Export the feature module**
@@ -1704,7 +1853,7 @@ git commit -m "feat(desktop): add the templates page and its nav entry"
 - Consumes: `StructureNodeView` from `src/shared/api`; the i18n keys from Task 5.
 - Produces:
   - `NodeActionMenuProps { node: StructureNodeView; onAdd: (node: StructureNodeView) => void; onEdit: (node: StructureNodeView) => void; onDelete: (node: StructureNodeView) => void }` — a `MoreVert` `IconButton` that opens a `Menu` of three entries (add / edit / delete), each an icon plus its label.
-  - `StructureNodeRowProps { node: StructureNodeView; canMutate: boolean; onAdd: (node: StructureNodeView) => void; onEdit: (node: StructureNodeView) => void; onDelete: (node: StructureNodeView) => void; label?: string; secondaryPath?: string }` — the row's primary label is `label` when given, otherwise `node.path`; `secondaryPath` (used by the flat view) is shown as an extra line beneath the label.
+  - `StructureNodeRowProps { node: StructureNodeView; canMutate: boolean; onAdd: (node: StructureNodeView) => void; onEdit: (node: StructureNodeView) => void; onDelete: (node: StructureNodeView) => void; label?: string; secondaryPath?: string }` — the row's primary label is `label` when given, otherwise `node.entryName`; `secondaryPath` (used by the flat view) is shown as an extra line beneath the label.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1727,7 +1876,7 @@ afterEach(() => cleanup());
 const DIRECTORY: StructureNodeView = {
   nodeId: "n1",
   description: "Statistical programming raw data",
-  path: "raw/data",
+  entryName: "data",
   directory: true,
   parent: "n0",
   reference: null,
@@ -1738,7 +1887,7 @@ const DIRECTORY: StructureNodeView = {
 const FILE: StructureNodeView = {
   nodeId: "n2",
   description: "",
-  path: "raw/data/a.sas7bdat",
+  entryName: "a.sas7bdat",
   directory: false,
   parent: "n1",
   reference: "/opt/sop/raw/a.sas7bdat",
@@ -1767,9 +1916,9 @@ function renderRow(
 }
 
 describe("StructureNodeRow", () => {
-  it("shows the node path", () => {
+  it("shows the node's own name", () => {
     renderRow(DIRECTORY);
-    expect(screen.getByText("raw/data")).toBeInTheDocument();
+    expect(screen.getByText("data")).toBeInTheDocument();
   });
 
   it("shows the description, the migration source and the filters", () => {
@@ -1784,7 +1933,7 @@ describe("StructureNodeRow", () => {
 
   it("omits the empty description instead of rendering a blank line", () => {
     renderRow(FILE);
-    expect(screen.getByText("raw/data/a.sas7bdat")).toBeInTheDocument();
+    expect(screen.getByText("a.sas7bdat")).toBeInTheDocument();
     expect(screen.queryByText("Migration")).not.toBeInTheDocument();
   });
 
@@ -1827,6 +1976,7 @@ describe("StructureNodeRow", () => {
     expect(onAdd).toHaveBeenCalledWith(DIRECTORY);
   });
 });
+
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -1918,6 +2068,7 @@ export function NodeActionMenu({
     </>
   );
 }
+
 ```
 
 - [ ] **Step 4: Implement the node row**
@@ -1944,7 +2095,7 @@ export interface StructureNodeRowProps {
 }
 
 /**
- * One node's row: the path as the label, then the description, the
+ * One node's row: the node's own name as the label, then the description, the
  * reference and the migration as secondary text. An empty description
  * is skipped rather than rendered as a blank line.
  */
@@ -1963,7 +2114,7 @@ export function StructureNodeRow({
     <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
         <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
-          {label ?? node.path}
+          {label ?? node.entryName}
         </Typography>
         {secondaryPath && (
           <Typography variant="caption" color="text.secondary" noWrap>
@@ -2012,6 +2163,7 @@ export function StructureNodeRow({
     </Stack>
   );
 }
+
 ```
 
 - [ ] **Step 5: Run the test to verify it passes**
@@ -2042,7 +2194,7 @@ git commit -m "feat(desktop): add the structure node row and its action menu"
 - Produces:
   - `NodeDrawerProps { open: boolean; mode: "create" | "edit"; node: StructureNodeView | null; parent: StructureNodeView | null; onClose: () => void; onSubmit: (input: StructureNodeInput) => void; pending: boolean; error: ApiError | null }`
   - `DeleteNodeDialogProps { open: boolean; node: StructureNodeView | null; onClose: () => void; onConfirm: (node: StructureNodeView) => void; pending: boolean; error: unknown }`
-  - `isValidNodePath(path: string): boolean` — exported from `NodeDrawer.tsx` so the page can reuse it.
+  - `isValidEntryName(name: string): boolean` — exported from `NodeDrawer.tsx` so the page can reuse it.
 
 - [ ] **Step 1: Write the failing drawer test**
 
@@ -2060,7 +2212,7 @@ import { AegisThemeProvider } from "@aegis/ui/theme";
 import type { StructureNodeView } from "../../../shared/api";
 import {
   NodeDrawer,
-  isValidNodePath,
+  isValidEntryName,
 } from "../../../features/templates/components/NodeDrawer";
 
 afterEach(() => cleanup());
@@ -2068,7 +2220,7 @@ afterEach(() => cleanup());
 const PARENT: StructureNodeView = {
   nodeId: "n0",
   description: "",
-  path: "raw",
+  entryName: "raw",
   directory: true,
   parent: null,
   reference: null,
@@ -2098,35 +2250,36 @@ function renderDrawer(
   );
 }
 
-describe("isValidNodePath", () => {
-  it("accepts a plain relative path", () => {
-    expect(isValidNodePath("raw/data")).toBe(true);
+describe("isValidEntryName", () => {
+  it("accepts a plain name", () => {
+    expect(isValidEntryName("data")).toBe(true);
   });
 
-  it("rejects a blank path", () => {
-    expect(isValidNodePath("   ")).toBe(false);
+  it("accepts a name with a space in it", () => {
+    expect(isValidEntryName("raw data")).toBe(true);
   });
 
-  it("rejects a leading or trailing slash", () => {
-    expect(isValidNodePath("/raw")).toBe(false);
-    expect(isValidNodePath("raw/")).toBe(false);
+  it("rejects a blank name", () => {
+    expect(isValidEntryName("   ")).toBe(false);
   });
 
-  it("rejects a dot or dot-dot segment", () => {
-    expect(isValidNodePath("raw/./data")).toBe(false);
-    expect(isValidNodePath("raw/../data")).toBe(false);
+  it("rejects a name carrying a path separator", () => {
+    expect(isValidEntryName("raw/data")).toBe(false);
+    expect(isValidEntryName("raw\\data")).toBe(false);
   });
 
-  it("rejects a backslash and an empty segment", () => {
-    expect(isValidNodePath("raw\\data")).toBe(false);
-    expect(isValidNodePath("raw//data")).toBe(false);
+  it("rejects a dot or dot-dot name", () => {
+    expect(isValidEntryName(".")).toBe(false);
+    expect(isValidEntryName("..")).toBe(false);
   });
 });
 
 describe("NodeDrawer", () => {
-  it("prefills the path with the parent's path when adding", () => {
+  it("starts with an empty name when adding", () => {
     renderDrawer();
-    expect(screen.getByLabelText(/^Path/)).toHaveValue("raw/");
+    // A node carries only its own name — the parent supplies the
+    // nesting — so there is nothing to prefill.
+    expect(screen.getByLabelText(/^Entry name/)).toHaveValue("");
   });
 
   it("shows the reference field only for a file", async () => {
@@ -2150,35 +2303,34 @@ describe("NodeDrawer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("disables Save while the path is invalid", async () => {
+  it("disables Save while the name is invalid", async () => {
     renderDrawer();
     const save = screen.getByRole("button", { name: "Create" });
     expect(save).toBeDisabled();
-    await userEvent.clear(screen.getByLabelText(/^Path/));
-    await userEvent.type(screen.getByLabelText(/^Path/), "raw//data");
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "raw/data");
     expect(save).toBeDisabled();
-    await userEvent.clear(screen.getByLabelText(/^Path/));
-    await userEvent.type(screen.getByLabelText(/^Path/), "raw/data");
+    await userEvent.clear(screen.getByLabelText(/^Entry name/));
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "data");
     expect(save).toBeEnabled();
   });
 
-  it("sends the parent id when adding under a parent", async () => {
+  it("sends the name and the parent id when adding", async () => {
     const onSubmit = vi.fn();
     renderDrawer({ onSubmit });
-    await userEvent.type(screen.getByLabelText(/^Path/), "data");
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "data");
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "raw/data", parent: "n0" }),
+      expect.objectContaining({ entryName: "data", parent: "n0" }),
     );
   });
 
   it("sends a null parent when adding at the root", async () => {
     const onSubmit = vi.fn();
     renderDrawer({ parent: null, onSubmit });
-    await userEvent.type(screen.getByLabelText(/^Path/), "raw");
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "raw");
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "raw", parent: null }),
+      expect.objectContaining({ entryName: "raw", parent: null }),
     );
   });
 
@@ -2196,7 +2348,7 @@ describe("NodeDrawer", () => {
     );
     // A second, blank filter row.
     await userEvent.click(screen.getByRole("button", { name: "Add filter" }));
-    await userEvent.type(screen.getByLabelText(/^Path/), "raw");
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "raw");
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2211,7 +2363,7 @@ describe("NodeDrawer", () => {
       node: {
         nodeId: "n1",
         description: "raw data",
-        path: "raw/data",
+        entryName: "data",
         directory: true,
         parent: "n0",
         reference: null,
@@ -2220,10 +2372,11 @@ describe("NodeDrawer", () => {
       },
       parent: null,
     });
-    expect(screen.getByLabelText(/^Path/)).toHaveValue("raw/data");
+    expect(screen.getByLabelText(/^Entry name/)).toHaveValue("data");
     expect(screen.getByLabelText("Description")).toHaveValue("raw data");
   });
 });
+
 ```
 
 - [ ] **Step 2: Write the failing delete-dialog test**
@@ -2247,7 +2400,7 @@ afterEach(() => cleanup());
 const DIRECTORY: StructureNodeView = {
   nodeId: "n1",
   description: "",
-  path: "raw/data",
+  entryName: "data",
   directory: true,
   parent: "n0",
   reference: null,
@@ -2279,7 +2432,7 @@ describe("DeleteNodeDialog", () => {
   it("names the node and warns that its subtree goes too", () => {
     renderDialog();
     expect(
-      screen.getByText(/Delete "raw\/data" and everything under it\?/),
+      screen.getByText(/Delete "data" and everything under it\?/),
     ).toBeInTheDocument();
   });
 
@@ -2297,6 +2450,7 @@ describe("DeleteNodeDialog", () => {
     expect(screen.getByText(/nope/)).toBeInTheDocument();
   });
 });
+
 ```
 
 - [ ] **Step 3: Run the tests to verify they fail**
@@ -2346,18 +2500,17 @@ export interface NodeDrawerProps {
 }
 
 /**
- * A relative path is well formed when it is non-blank, uses `/` as its
- * only separator, and has no empty, `.` or `..` segment — the same rule
- * the server's `validate_path` enforces.
+ * A node's name is well formed when it is non-blank, carries no path
+ * separator, and is neither `.` nor `..` — the same rule the server's
+ * `validate_name` enforces. The nesting comes from `parent`, so a name
+ * is unique among its siblings, not across the structure.
  */
-export function isValidNodePath(path: string): boolean {
-  const trimmed = path.trim();
+export function isValidEntryName(name: string): boolean {
+  const trimmed = name.trim();
   if (trimmed === "") return false;
-  if (trimmed.startsWith("/") || trimmed.endsWith("/")) return false;
-  if (trimmed.includes("\\")) return false;
-  return trimmed
-    .split("/")
-    .every((seg) => seg !== "" && seg !== "." && seg !== "..");
+  if (trimmed.includes("/") || trimmed.includes("\\")) return false;
+  if (trimmed === "." || trimmed === "..") return false;
+  return true;
 }
 
 export function NodeDrawer({
@@ -2372,7 +2525,7 @@ export function NodeDrawer({
 }: NodeDrawerProps) {
   const { t } = useI18n();
 
-  const [path, setPath] = useState("");
+  const [entryName, setEntryName] = useState("");
   const [description, setDescription] = useState("");
   const [directory, setDirectory] = useState(true);
   const [reference, setReference] = useState("");
@@ -2382,7 +2535,9 @@ export function NodeDrawer({
   useEffect(() => {
     if (!open) return;
     if (mode === "create") {
-      setPath(parent ? `${parent.path}/` : "");
+      // A node carries only its own name — the parent supplies the
+      // nesting — so there is nothing to prefill but the name itself.
+      setEntryName("");
       setDescription("");
       setDirectory(true);
       setReference("");
@@ -2390,7 +2545,7 @@ export function NodeDrawer({
       setMigrationFilters([]);
       return;
     }
-    setPath(node?.path ?? "");
+    setEntryName(node?.entryName ?? "");
     setDescription(node?.description ?? "");
     setDirectory(node?.directory ?? true);
     setReference(node?.reference ?? "");
@@ -2398,10 +2553,10 @@ export function NodeDrawer({
     setMigrationFilters(node?.migration?.filter ?? []);
   }, [open, mode, node, parent]);
 
-  const pathValid = isValidNodePath(path);
+  const nameValid = isValidEntryName(entryName);
 
   function handleSubmit() {
-    if (!pathValid) return;
+    if (!nameValid) return;
     const migration: MigrationView | null = directory
       ? migrationDirectory.trim() === ""
         ? null
@@ -2413,7 +2568,7 @@ export function NodeDrawer({
           }
       : null;
     onSubmit({
-      path: path.trim(),
+      entryName: entryName.trim(),
       description,
       directory,
       parent:
@@ -2440,14 +2595,14 @@ export function NodeDrawer({
         <Stack spacing={2}>
           <TextField
             size="small"
-            label={t("templates.node.field.path")}
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
+            label={t("templates.node.field.entryName")}
+            value={entryName}
+            onChange={(e) => setEntryName(e.target.value)}
             required
-            error={path !== "" && !pathValid}
+            error={entryName !== "" && !nameValid}
             helperText={
-              path !== "" && !pathValid
-                ? t("templates.node.field.invalidPath")
+              entryName !== "" && !nameValid
+                ? t("templates.node.field.invalidEntryName")
                 : undefined
             }
           />
@@ -2521,7 +2676,7 @@ export function NodeDrawer({
           <Button
             variant="contained"
             onClick={handleSubmit}
-            disabled={!pathValid || pending}
+            disabled={!nameValid || pending}
           >
             {mode === "create" ? t("common.create") : t("common.save")}
           </Button>
@@ -2530,6 +2685,7 @@ export function NodeDrawer({
     </Drawer>
   );
 }
+
 ```
 
 - [ ] **Step 5: Implement the delete dialog**
@@ -2574,7 +2730,7 @@ export function DeleteNodeDialog({
       <DialogContent>
         <DialogContentText>
           {node
-            ? t("templates.node.delete.message", { path: node.path })
+            ? t("templates.node.delete.message", { entryName: node.entryName })
             : t("templates.node.delete.title")}
         </DialogContentText>
         {Boolean(error) && (
@@ -2600,6 +2756,7 @@ export function DeleteNodeDialog({
     </Dialog>
   );
 }
+
 ```
 
 - [ ] **Step 6: Run the tests to verify they pass**
@@ -2684,7 +2841,7 @@ const STRUCTURE = {
     {
       nodeId: "d1",
       description: "raw data",
-      path: "raw",
+      entryName: "raw",
       directory: true,
       parent: null,
       reference: null,
@@ -2693,7 +2850,7 @@ const STRUCTURE = {
         {
           nodeId: "d2",
           description: "",
-          path: "raw/data",
+          entryName: "data",
           directory: true,
           parent: "d1",
           reference: null,
@@ -2702,7 +2859,7 @@ const STRUCTURE = {
             {
               nodeId: "f1",
               description: "",
-              path: "raw/data/a.sas7bdat",
+              entryName: "a.sas7bdat",
               directory: false,
               parent: "d2",
               reference: "/abs/a.sas7bdat",
@@ -2779,7 +2936,7 @@ describe("StructureTemplatePage", () => {
     mockCommands(baseCommands());
     await renderPage();
     expect(await screen.findByText("raw")).toBeInTheDocument();
-    expect(await screen.findByText("raw/data")).toBeInTheDocument();
+    expect(await screen.findByText("data")).toBeInTheDocument();
   });
 
   it("switches to the flat view, where a sub-directory is not nested", async () => {
@@ -2829,7 +2986,7 @@ describe("StructureTemplatePage", () => {
     await waitFor(() => expect(screen.getByText("data")).toBeInTheDocument());
     // The flat view exists to show a directory's files as its leaves, so
     // they must be visible without expanding the directory first.
-    expect(screen.getByText("raw/data/a.sas7bdat")).toBeInTheDocument();
+    expect(screen.getByText("a.sas7bdat")).toBeInTheDocument();
   });
 
   it("does not show the empty state while the structure is loading", async () => {
@@ -2878,7 +3035,7 @@ describe("StructureTemplatePage", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /add root node/i }),
     );
-    await userEvent.type(screen.getByLabelText(/^Path/), "raw");
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "raw");
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(await screen.findByText(/Save failed/)).toBeInTheDocument();
 
@@ -2901,6 +3058,7 @@ describe("StructureTemplatePage", () => {
     ).toBeGreaterThan(0);
   });
 });
+
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -2979,6 +3137,7 @@ export function StructureSidebar({
     </Box>
   );
 }
+
 ```
 
 - [ ] **Step 4: Implement the tree pane**
@@ -3174,6 +3333,7 @@ export function StructureTree({
     </Box>
   );
 }
+
 ```
 
 - [ ] **Step 5: Implement the page**
@@ -3351,6 +3511,7 @@ export function StructureTemplatePage({
     </Box>
   );
 }
+
 ```
 
 - [ ] **Step 6: Export the page**
@@ -3423,6 +3584,30 @@ git commit -m "feat(desktop): add the project structure template page"
 ```
 
 ---
+
+## The server contract change: `path` → `entryName`
+
+The server renamed a structure node's `path` to `entryName`, and the field
+changed meaning with it: it is now the node's **own name** (one folder or
+file name), not a path. The nesting comes from `parent`, and a name is
+unique among its **siblings** rather than across the structure. The server
+stores no path at all.
+
+What that forced in the desktop:
+
+- The Rust DTOs (`NodeViewResponse`, `AddNodeRequest`, `UpdateNodeRequest`)
+  carry `entry_name` → wire `entryName`.
+- The TS types carry `entryName`; the invoke keys are unchanged.
+- **The full path is now derived by the desktop** — `buildFullPaths` in
+  `features/templates/data/tree.ts` walks the ancestor chain and joins the
+  names. The flat view's extra path line is that derived value, and it is
+  the only place a full path appears.
+- The drawer edits the **name**, not a path: adding under a parent leaves
+  the field empty, because the parent already supplies the nesting.
+- The client-side validation mirrors the server's `validate_name` —
+  non-blank, no `/` and no `\`, and neither `.` nor `..`.
+- The node row and the delete confirmation name the node by its entry
+  name.
 
 ## Changes made by the final review
 

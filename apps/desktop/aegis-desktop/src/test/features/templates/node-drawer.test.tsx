@@ -9,7 +9,7 @@ import { AegisThemeProvider } from "@aegis/ui/theme";
 import type { StructureNodeView } from "../../../shared/api";
 import {
   NodeDrawer,
-  isValidNodePath,
+  isValidEntryName,
 } from "../../../features/templates/components/NodeDrawer";
 
 afterEach(() => cleanup());
@@ -17,7 +17,7 @@ afterEach(() => cleanup());
 const PARENT: StructureNodeView = {
   nodeId: "n0",
   description: "",
-  path: "raw",
+  entryName: "raw",
   directory: true,
   parent: null,
   reference: null,
@@ -47,35 +47,36 @@ function renderDrawer(
   );
 }
 
-describe("isValidNodePath", () => {
-  it("accepts a plain relative path", () => {
-    expect(isValidNodePath("raw/data")).toBe(true);
+describe("isValidEntryName", () => {
+  it("accepts a plain name", () => {
+    expect(isValidEntryName("data")).toBe(true);
   });
 
-  it("rejects a blank path", () => {
-    expect(isValidNodePath("   ")).toBe(false);
+  it("accepts a name with a space in it", () => {
+    expect(isValidEntryName("raw data")).toBe(true);
   });
 
-  it("rejects a leading or trailing slash", () => {
-    expect(isValidNodePath("/raw")).toBe(false);
-    expect(isValidNodePath("raw/")).toBe(false);
+  it("rejects a blank name", () => {
+    expect(isValidEntryName("   ")).toBe(false);
   });
 
-  it("rejects a dot or dot-dot segment", () => {
-    expect(isValidNodePath("raw/./data")).toBe(false);
-    expect(isValidNodePath("raw/../data")).toBe(false);
+  it("rejects a name carrying a path separator", () => {
+    expect(isValidEntryName("raw/data")).toBe(false);
+    expect(isValidEntryName("raw\\data")).toBe(false);
   });
 
-  it("rejects a backslash and an empty segment", () => {
-    expect(isValidNodePath("raw\\data")).toBe(false);
-    expect(isValidNodePath("raw//data")).toBe(false);
+  it("rejects a dot or dot-dot name", () => {
+    expect(isValidEntryName(".")).toBe(false);
+    expect(isValidEntryName("..")).toBe(false);
   });
 });
 
 describe("NodeDrawer", () => {
-  it("prefills the path with the parent's path when adding", () => {
+  it("starts with an empty name when adding", () => {
     renderDrawer();
-    expect(screen.getByLabelText(/^Path/)).toHaveValue("raw/");
+    // A node carries only its own name — the parent supplies the
+    // nesting — so there is nothing to prefill.
+    expect(screen.getByLabelText(/^Entry name/)).toHaveValue("");
   });
 
   it("shows the reference field only for a file", async () => {
@@ -99,35 +100,34 @@ describe("NodeDrawer", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("disables Save while the path is invalid", async () => {
+  it("disables Save while the name is invalid", async () => {
     renderDrawer();
     const save = screen.getByRole("button", { name: "Create" });
     expect(save).toBeDisabled();
-    await userEvent.clear(screen.getByLabelText(/^Path/));
-    await userEvent.type(screen.getByLabelText(/^Path/), "raw//data");
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "raw/data");
     expect(save).toBeDisabled();
-    await userEvent.clear(screen.getByLabelText(/^Path/));
-    await userEvent.type(screen.getByLabelText(/^Path/), "raw/data");
+    await userEvent.clear(screen.getByLabelText(/^Entry name/));
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "data");
     expect(save).toBeEnabled();
   });
 
-  it("sends the parent id when adding under a parent", async () => {
+  it("sends the name and the parent id when adding", async () => {
     const onSubmit = vi.fn();
     renderDrawer({ onSubmit });
-    await userEvent.type(screen.getByLabelText(/^Path/), "data");
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "data");
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "raw/data", parent: "n0" }),
+      expect.objectContaining({ entryName: "data", parent: "n0" }),
     );
   });
 
   it("sends a null parent when adding at the root", async () => {
     const onSubmit = vi.fn();
     renderDrawer({ parent: null, onSubmit });
-    await userEvent.type(screen.getByLabelText(/^Path/), "raw");
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "raw");
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ path: "raw", parent: null }),
+      expect.objectContaining({ entryName: "raw", parent: null }),
     );
   });
 
@@ -145,7 +145,7 @@ describe("NodeDrawer", () => {
     );
     // A second, blank filter row.
     await userEvent.click(screen.getByRole("button", { name: "Add filter" }));
-    await userEvent.type(screen.getByLabelText(/^Path/), "raw");
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "raw");
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -160,7 +160,7 @@ describe("NodeDrawer", () => {
       node: {
         nodeId: "n1",
         description: "raw data",
-        path: "raw/data",
+        entryName: "data",
         directory: true,
         parent: "n0",
         reference: null,
@@ -169,7 +169,7 @@ describe("NodeDrawer", () => {
       },
       parent: null,
     });
-    expect(screen.getByLabelText(/^Path/)).toHaveValue("raw/data");
+    expect(screen.getByLabelText(/^Entry name/)).toHaveValue("data");
     expect(screen.getByLabelText("Description")).toHaveValue("raw data");
   });
 });

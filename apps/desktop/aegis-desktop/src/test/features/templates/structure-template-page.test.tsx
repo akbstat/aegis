@@ -45,7 +45,7 @@ const STRUCTURE = {
     {
       nodeId: "d1",
       description: "raw data",
-      path: "raw",
+      entryName: "raw",
       directory: true,
       parent: null,
       reference: null,
@@ -54,7 +54,7 @@ const STRUCTURE = {
         {
           nodeId: "d2",
           description: "",
-          path: "raw/data",
+          entryName: "data",
           directory: true,
           parent: "d1",
           reference: null,
@@ -63,7 +63,7 @@ const STRUCTURE = {
             {
               nodeId: "f1",
               description: "",
-              path: "raw/data/a.sas7bdat",
+              entryName: "a.sas7bdat",
               directory: false,
               parent: "d2",
               reference: "/abs/a.sas7bdat",
@@ -140,7 +140,7 @@ describe("StructureTemplatePage", () => {
     mockCommands(baseCommands());
     await renderPage();
     expect(await screen.findByText("raw")).toBeInTheDocument();
-    expect(await screen.findByText("raw/data")).toBeInTheDocument();
+    expect(await screen.findByText("data")).toBeInTheDocument();
   });
 
   it("switches to the flat view, where a sub-directory is not nested", async () => {
@@ -190,7 +190,7 @@ describe("StructureTemplatePage", () => {
     await waitFor(() => expect(screen.getByText("data")).toBeInTheDocument());
     // The flat view exists to show a directory's files as its leaves, so
     // they must be visible without expanding the directory first.
-    expect(screen.getByText("raw/data/a.sas7bdat")).toBeInTheDocument();
+    expect(screen.getByText("a.sas7bdat")).toBeInTheDocument();
   });
 
   it("does not show the empty state while the structure is loading", async () => {
@@ -239,7 +239,7 @@ describe("StructureTemplatePage", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: /add root node/i }),
     );
-    await userEvent.type(screen.getByLabelText(/^Path/), "raw");
+    await userEvent.type(screen.getByLabelText(/^Entry name/), "raw");
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(await screen.findByText(/Save failed/)).toBeInTheDocument();
 

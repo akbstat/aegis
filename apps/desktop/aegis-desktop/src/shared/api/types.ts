@@ -729,7 +729,8 @@ export interface MigrationView {
 export interface StructureNodeView {
   nodeId: string;
   description: string;
-  path: string;
+  /** The node's own name — one folder or file name, never a path. */
+  entryName: string;
   directory: boolean;
   parent: string | null;
   reference: string | null;
@@ -755,7 +756,8 @@ export interface StructureSummaryView {
 }
 
 export interface StructureNodeInput {
-  path: string;
+  /** The node's own name — one folder or file name, never a path. */
+  entryName: string;
   description: string;
   directory: boolean;
   parent: string | null;

@@ -14,7 +14,7 @@ afterEach(() => cleanup());
 const DIRECTORY: StructureNodeView = {
   nodeId: "n1",
   description: "Statistical programming raw data",
-  path: "raw/data",
+  entryName: "data",
   directory: true,
   parent: "n0",
   reference: null,
@@ -25,7 +25,7 @@ const DIRECTORY: StructureNodeView = {
 const FILE: StructureNodeView = {
   nodeId: "n2",
   description: "",
-  path: "raw/data/a.sas7bdat",
+  entryName: "a.sas7bdat",
   directory: false,
   parent: "n1",
   reference: "/opt/sop/raw/a.sas7bdat",
@@ -54,9 +54,9 @@ function renderRow(
 }
 
 describe("StructureNodeRow", () => {
-  it("shows the node path", () => {
+  it("shows the node's own name", () => {
     renderRow(DIRECTORY);
-    expect(screen.getByText("raw/data")).toBeInTheDocument();
+    expect(screen.getByText("data")).toBeInTheDocument();
   });
 
   it("shows the description, the migration source and the filters", () => {
@@ -71,7 +71,7 @@ describe("StructureNodeRow", () => {
 
   it("omits the empty description instead of rendering a blank line", () => {
     renderRow(FILE);
-    expect(screen.getByText("raw/data/a.sas7bdat")).toBeInTheDocument();
+    expect(screen.getByText("a.sas7bdat")).toBeInTheDocument();
     expect(screen.queryByText("Migration")).not.toBeInTheDocument();
   });
 

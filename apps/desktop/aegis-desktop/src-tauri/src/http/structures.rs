@@ -26,12 +26,16 @@ pub struct MigrationViewResponse {
 }
 
 /// One node of the effective tree.
+///
+/// `entry_name` is the node's OWN name — one folder or file name. It is
+/// not a path: the nesting comes from `parent`, and two nodes under the
+/// same parent may not share a name.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeViewResponse {
     pub node_id: String,
     pub description: String,
-    pub path: String,
+    pub entry_name: String,
     pub directory: bool,
     pub parent: Option<String>,
     pub reference: Option<String>,
@@ -69,12 +73,13 @@ pub struct StructureListResponse {
     pub structures: Vec<StructureSummaryResponse>,
 }
 
-/// Place a node at a path. `parent` is always explicit: `None` means
-/// "at the root".
+/// Place a node under a parent. `entry_name` is the node's own name —
+/// one folder or file name, never a path. `parent` is always explicit:
+/// `None` means "at the root".
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddNodeRequest {
-    pub path: String,
+    pub entry_name: String,
     pub description: String,
     pub directory: bool,
     pub parent: Option<String>,
@@ -86,7 +91,7 @@ pub struct AddNodeRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateNodeRequest {
-    pub path: String,
+    pub entry_name: String,
     pub description: String,
     pub directory: bool,
     pub parent: Option<String>,
@@ -128,7 +133,7 @@ pub async fn get_structure(c: &HttpClient, id: i64) -> Result<StructureViewRespo
     Ok(resp)
 }
 
-/// `POST /api/structures/{id}/nodes` — place a node at a path.
+/// `POST /api/structures/{id}/nodes` — place a node under a parent.
 pub async fn add_node(
     c: &HttpClient,
     structure_id: i64,
@@ -231,7 +236,7 @@ mod tests {
                 Mock::given(method("POST"))
                     .and(path("/api/structures/7/nodes"))
                     .and(body_json(json!({
-                        "path": "raw",
+                        "entryName": "raw",
                         "description": "d",
                         "directory": true,
                         "parent": null,
@@ -241,7 +246,7 @@ mod tests {
                     .respond_with(ResponseTemplate::new(201).set_body_json(json!({
                         "nodeId": "n9",
                         "description": "d",
-                        "path": "raw",
+                        "entryName": "raw",
                         "directory": true,
                         "parent": null,
                         "reference": null,
@@ -253,7 +258,7 @@ mod tests {
         let c = mock_client(&server).await;
 
         let body = AddNodeRequest {
-            path: "raw".into(),
+            entry_name: "raw".into(),
             description: "d".into(),
             directory: true,
             parent: None,
@@ -272,7 +277,7 @@ mod tests {
                 Mock::given(method("PUT"))
                     .and(path("/api/structures/7/nodes/n1"))
                     .and(body_json(json!({
-                        "path": "raw/data",
+                        "entryName": "data",
                         "description": "d",
                         "directory": true,
                         "parent": "n0",
@@ -282,7 +287,7 @@ mod tests {
                     .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                         "nodeId": "n1",
                         "description": "d",
-                        "path": "raw/data",
+                        "entryName": "data",
                         "directory": true,
                         "parent": "n0",
                         "reference": null,
@@ -294,7 +299,7 @@ mod tests {
         let c = mock_client(&server).await;
 
         let body = UpdateNodeRequest {
-            path: "raw/data".into(),
+            entry_name: "data".into(),
             description: "d".into(),
             directory: true,
             parent: Some("n0".into()),
@@ -303,6 +308,7 @@ mod tests {
         };
         let node = update_node(&c, 7, "n1", &body).await.unwrap();
         assert_eq!(node.node_id, "n1");
+        assert_eq!(node.entry_name, "data");
     }
 
     #[test]
@@ -322,7 +328,7 @@ mod tests {
         let j = r#"{
             "nodeId": "n1",
             "description": "raw data",
-            "path": "raw/data",
+            "entryName": "data",
             "directory": true,
             "parent": "n0",
             "reference": null,
@@ -331,7 +337,7 @@ mod tests {
                 {
                     "nodeId": "n2",
                     "description": "",
-                    "path": "raw/data/a.sas7bdat",
+                    "entryName": "a.sas7bdat",
                     "directory": false,
                     "parent": "n1",
                     "reference": "/opt/sop/raw/a.sas7bdat",
@@ -342,6 +348,7 @@ mod tests {
         }"#;
         let node: NodeViewResponse = serde_json::from_str(j).unwrap();
         assert_eq!(node.node_id, "n1");
+        assert_eq!(node.entry_name, "data");
         assert!(node.directory);
         assert_eq!(node.parent.as_deref(), Some("n0"));
         assert_eq!(node.migration.unwrap().filter, vec!["*.sas7bdat"]);
@@ -353,7 +360,7 @@ mod tests {
     #[test]
     fn add_node_request_serializes_camel_case_with_a_null_parent() {
         let body = AddNodeRequest {
-            path: "raw".into(),
+            entry_name: "raw".into(),
             description: "d".into(),
             directory: true,
             parent: None,
@@ -363,7 +370,7 @@ mod tests {
         let j = serde_json::to_string(&body).unwrap();
         assert!(j.contains("\"parent\":null"), "got {j}");
         assert!(j.contains("\"directory\":true"), "got {j}");
-        assert!(j.contains("\"path\":\"raw\""), "got {j}");
+        assert!(j.contains("\"entryName\":\"raw\""), "got {j}");
     }
 
     #[tokio::test]
