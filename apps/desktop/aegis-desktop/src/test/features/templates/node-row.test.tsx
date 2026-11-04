@@ -102,13 +102,33 @@ describe("StructureNodeRow", () => {
     expect(tooltip).toHaveTextContent("/opt/sop/raw/a.sas7bdat");
   });
 
-  it("shows the migration source as a file name with the whole path in a tooltip", async () => {
+  it("shows the whole migration path inline", () => {
     renderRow(DIRECTORY);
-    expect(screen.getByText("raw")).toBeInTheDocument();
-    expect(screen.queryByText("/opt/sop/raw")).not.toBeInTheDocument();
-    await userEvent.hover(screen.getByText("raw"));
+    expect(screen.getByText("/opt/sop/raw")).toBeInTheDocument();
+  });
+
+  it("shows the migration path in a tooltip when hovered", async () => {
+    renderRow(DIRECTORY);
+    await userEvent.hover(screen.getByText("/opt/sop/raw"));
     const tooltip = await screen.findByRole("tooltip");
     expect(tooltip).toHaveTextContent("/opt/sop/raw");
+  });
+
+  it("does not label the migration path", () => {
+    renderRow(DIRECTORY);
+    expect(screen.queryByText("Migration")).not.toBeInTheDocument();
+  });
+
+  it("puts the migration filter chips to the right of the name", () => {
+    renderRow(DIRECTORY);
+    const filters = screen.getByTestId("structure-node-filters");
+    const name = screen.getByText("data");
+    // The chips are beside the name, not tucked under it.
+    expect(filters.contains(name)).toBe(false);
+    expect(
+      name.compareDocumentPosition(filters) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("shows the migration filters as chips", () => {

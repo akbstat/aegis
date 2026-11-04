@@ -3,7 +3,6 @@ import {
   Folder as FolderIcon,
   InsertDriveFile as InsertDriveFileIcon,
 } from "@aegis/ui/icons";
-import { useI18n } from "@aegis/ui/i18n";
 
 import type { StructureNodeView } from "../../../shared/api";
 import { NodeActionMenu } from "./NodeActionMenu";
@@ -48,8 +47,6 @@ export function StructureNodeRow({
   label,
   secondaryPath,
 }: StructureNodeRowProps) {
-  const { t } = useI18n();
-
   return (
     <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
       {node.directory ? (
@@ -80,34 +77,35 @@ export function StructureNodeRow({
         )}
 
         {node.migration && (
-          <>
+          <Tooltip
+            title={node.migration.directory}
+            describeChild
+            placement="top"
+          >
             <Typography variant="caption" color="text.secondary" noWrap>
-              {t("templates.node.field.migration")}
+              {node.migration.directory}
             </Typography>
-            <Tooltip
-              title={node.migration.directory}
-              describeChild
-              placement="top"
-            >
-              <Typography variant="caption" color="text.secondary" noWrap>
-                {basename(node.migration.directory)}
-              </Typography>
-            </Tooltip>
-            {node.migration.filter.length > 0 && (
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                {node.migration.filter.map((filter) => (
-                  <Chip
-                    key={filter}
-                    size="small"
-                    label={filter}
-                    sx={{ height: 18, fontSize: 11 }}
-                  />
-                ))}
-              </Box>
-            )}
-          </>
+          </Tooltip>
         )}
       </Box>
+
+      {node.migration && node.migration.filter.length > 0 && (
+        <Stack
+          direction="row"
+          spacing={0.5}
+          data-testid="structure-node-filters"
+          sx={{ flexShrink: 0, alignItems: "center" }}
+        >
+          {node.migration.filter.map((filter) => (
+            <Chip
+              key={filter}
+              size="small"
+              label={filter}
+              sx={{ height: 18, fontSize: 11 }}
+            />
+          ))}
+        </Stack>
+      )}
 
       {canMutate && (
         <NodeActionMenu

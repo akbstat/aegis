@@ -542,7 +542,6 @@ export const en = {
   'templates.node.field.description': 'Description',
   'templates.node.field.directory': 'Folder',
   'templates.node.field.reference': 'Reference path',
-  'templates.node.field.migration': 'Migration',
   'templates.node.field.migrationDirectory': 'Migration source directory',
   'templates.node.field.migrationFilter': 'Migration filter',
   'templates.node.field.migrationFilterAdd': 'Add filter',

@@ -518,7 +518,6 @@ export const zhCN = {
   'templates.node.field.description': '描述',
   'templates.node.field.directory': '文件夹',
   'templates.node.field.reference': '参考路径',
-  'templates.node.field.migration': '迁移',
   'templates.node.field.migrationDirectory': '迁移源目录',
   'templates.node.field.migrationFilter': '迁移过滤条件',
   'templates.node.field.migrationFilterAdd': '添加过滤条件',

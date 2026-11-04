@@ -184,9 +184,10 @@ primary label. Below it, in secondary text:
 
 - `reference` — files only (the server rejects `reference` on a directory).
   Shown by **file name only**; the whole path is the row's tooltip.
-- `migration` — directories only: the migration `directory`, again by file
-  name with the whole path in a tooltip, plus its `filter` list as **chips**.
-  (The server rejects `migration` on a file.)
+- `migration` — directories only: the migration `directory` shown by its
+  **whole path**, with the complete path in a tooltip for when the inline
+  text is truncated, plus its `filter` list as **chips** to the right of the
+  node name. (The server rejects `migration` on a file.)
 
 The `description` is **not** shown inline — it is the name's tooltip, so a
 long description cannot push the name out of view. The tooltips use MUI's

@@ -946,7 +946,6 @@ In `lib/packages/ui/src/i18n/locales/en.ts`, add:
   'templates.node.field.description': 'Description',
   'templates.node.field.directory': 'Folder',
   'templates.node.field.reference': 'Reference path',
-  'templates.node.field.migration': 'Migration',
   'templates.node.field.migrationDirectory': 'Migration source directory',
   'templates.node.field.migrationFilter': 'Migration filter',
   'templates.node.field.migrationFilterAdd': 'Add filter',
@@ -997,7 +996,6 @@ Note: `zhCN.ts` closes with `} satisfies Record<keyof typeof en, string>;`, not
   'templates.node.field.description': '描述',
   'templates.node.field.directory': '文件夹',
   'templates.node.field.reference': '参考路径',
-  'templates.node.field.migration': '迁移',
   'templates.node.field.migrationDirectory': '迁移源目录',
   'templates.node.field.migrationFilter': '迁移过滤条件',
   'templates.node.field.migrationFilterAdd': '添加过滤条件',
@@ -2054,13 +2052,33 @@ describe("StructureNodeRow", () => {
     expect(tooltip).toHaveTextContent("/opt/sop/raw/a.sas7bdat");
   });
 
-  it("shows the migration source as a file name with the whole path in a tooltip", async () => {
+  it("shows the whole migration path inline", () => {
     renderRow(DIRECTORY);
-    expect(screen.getByText("raw")).toBeInTheDocument();
-    expect(screen.queryByText("/opt/sop/raw")).not.toBeInTheDocument();
-    await userEvent.hover(screen.getByText("raw"));
+    expect(screen.getByText("/opt/sop/raw")).toBeInTheDocument();
+  });
+
+  it("shows the migration path in a tooltip when hovered", async () => {
+    renderRow(DIRECTORY);
+    await userEvent.hover(screen.getByText("/opt/sop/raw"));
     const tooltip = await screen.findByRole("tooltip");
     expect(tooltip).toHaveTextContent("/opt/sop/raw");
+  });
+
+  it("does not label the migration path", () => {
+    renderRow(DIRECTORY);
+    expect(screen.queryByText("Migration")).not.toBeInTheDocument();
+  });
+
+  it("puts the migration filter chips to the right of the name", () => {
+    renderRow(DIRECTORY);
+    const filters = screen.getByTestId("structure-node-filters");
+    const name = screen.getByText("data");
+    // The chips are beside the name, not tucked under it.
+    expect(filters.contains(name)).toBe(false);
+    expect(
+      name.compareDocumentPosition(filters) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("shows the migration filters as chips", () => {
@@ -2206,7 +2224,6 @@ import {
   Folder as FolderIcon,
   InsertDriveFile as InsertDriveFileIcon,
 } from "@aegis/ui/icons";
-import { useI18n } from "@aegis/ui/i18n";
 
 import type { StructureNodeView } from "../../../shared/api";
 import { NodeActionMenu } from "./NodeActionMenu";
@@ -2251,8 +2268,6 @@ export function StructureNodeRow({
   label,
   secondaryPath,
 }: StructureNodeRowProps) {
-  const { t } = useI18n();
-
   return (
     <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
       {node.directory ? (
@@ -2283,34 +2298,35 @@ export function StructureNodeRow({
         )}
 
         {node.migration && (
-          <>
+          <Tooltip
+            title={node.migration.directory}
+            describeChild
+            placement="top"
+          >
             <Typography variant="caption" color="text.secondary" noWrap>
-              {t("templates.node.field.migration")}
+              {node.migration.directory}
             </Typography>
-            <Tooltip
-              title={node.migration.directory}
-              describeChild
-              placement="top"
-            >
-              <Typography variant="caption" color="text.secondary" noWrap>
-                {basename(node.migration.directory)}
-              </Typography>
-            </Tooltip>
-            {node.migration.filter.length > 0 && (
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                {node.migration.filter.map((filter) => (
-                  <Chip
-                    key={filter}
-                    size="small"
-                    label={filter}
-                    sx={{ height: 18, fontSize: 11 }}
-                  />
-                ))}
-              </Box>
-            )}
-          </>
+          </Tooltip>
         )}
       </Box>
+
+      {node.migration && node.migration.filter.length > 0 && (
+        <Stack
+          direction="row"
+          spacing={0.5}
+          data-testid="structure-node-filters"
+          sx={{ flexShrink: 0, alignItems: "center" }}
+        >
+          {node.migration.filter.map((filter) => (
+            <Chip
+              key={filter}
+              size="small"
+              label={filter}
+              sx={{ height: 18, fontSize: 11 }}
+            />
+          ))}
+        </Stack>
+      )}
 
       {canMutate && (
         <NodeActionMenu
@@ -4036,6 +4052,16 @@ git commit -m "feat(desktop): add the project structure template page"
 ```
 
 ---
+
+## The migration row (added after the first build)
+
+The migration block of a node row was reworked:
+
+- The migration source is shown by its **whole path** inline, with the
+  complete path in its tooltip for when the inline text is truncated.
+- The "Migration" label above the path is gone.
+- The filter chips sit to the **right** of the node name, beside the action
+  menu, rather than tucked under the path.
 
 ## The node row and the tree layout (added after the first build)
 
