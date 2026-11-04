@@ -118,18 +118,26 @@ fn node_new_accepts_a_directory_with_a_migration() {
 
 #[test]
 fn structure_new_accepts_a_template_with_no_owner() {
-    let structure =
-        Structure::new("Standard".into(), StructureLevel::Template, None, None).unwrap();
+    let structure = Structure::new(
+        "Standard".into(),
+        "/abs/root".into(),
+        StructureLevel::Template,
+        None,
+        None,
+    )
+    .unwrap();
     assert_eq!(structure.level, StructureLevel::Template);
     assert_eq!(structure.project_code, None);
     assert_eq!(structure.template_id, None);
     assert_eq!(structure.id, 0);
+    assert_eq!(structure.rootpath, "/abs/root");
 }
 
 #[test]
 fn structure_new_accepts_a_project_with_an_owner_and_a_template() {
     let structure = Structure::new(
         "Study ABC".into(),
+        "/abs/root".into(),
         StructureLevel::Project,
         Some("ABC".into()),
         Some(7),
@@ -137,11 +145,50 @@ fn structure_new_accepts_a_project_with_an_owner_and_a_template() {
     .unwrap();
     assert_eq!(structure.project_code.as_deref(), Some("ABC"));
     assert_eq!(structure.template_id, Some(7));
+    assert_eq!(structure.rootpath, "/abs/root");
+}
+
+#[test]
+fn structure_new_rejects_a_blank_rootpath() {
+    for blank in ["", "   "] {
+        let err = Structure::new(
+            "Standard".into(),
+            blank.into(),
+            StructureLevel::Template,
+            None,
+            None,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, DomainError::EmptyRootpath),
+            "rootpath {blank:?} should be rejected, got {err:?}"
+        );
+    }
+}
+
+#[test]
+fn structure_new_accepts_a_rootpath() {
+    let structure = Structure::new(
+        "Standard".into(),
+        "/abs/root".into(),
+        StructureLevel::Template,
+        None,
+        None,
+    )
+    .unwrap();
+    assert_eq!(structure.rootpath, "/abs/root");
 }
 
 #[test]
 fn structure_new_rejects_a_blank_name() {
-    let err = Structure::new("   ".into(), StructureLevel::Template, None, None).unwrap_err();
+    let err = Structure::new(
+        "   ".into(),
+        "/abs/root".into(),
+        StructureLevel::Template,
+        None,
+        None,
+    )
+    .unwrap_err();
     assert!(matches!(err, DomainError::EmptyName));
 }
 
@@ -149,6 +196,7 @@ fn structure_new_rejects_a_blank_name() {
 fn structure_new_rejects_a_template_with_an_owner() {
     let err = Structure::new(
         "Standard".into(),
+        "/abs/root".into(),
         StructureLevel::Template,
         Some("ABC".into()),
         None,
@@ -159,7 +207,14 @@ fn structure_new_rejects_a_template_with_an_owner() {
 
 #[test]
 fn structure_new_rejects_a_project_without_a_project_code() {
-    let err = Structure::new("Study".into(), StructureLevel::Project, None, Some(7)).unwrap_err();
+    let err = Structure::new(
+        "Study".into(),
+        "/abs/root".into(),
+        StructureLevel::Project,
+        None,
+        Some(7),
+    )
+    .unwrap_err();
     assert!(matches!(err, DomainError::MissingProjectCode));
 }
 
@@ -167,6 +222,7 @@ fn structure_new_rejects_a_project_without_a_project_code() {
 fn structure_new_rejects_a_project_without_a_template() {
     let err = Structure::new(
         "Study".into(),
+        "/abs/root".into(),
         StructureLevel::Project,
         Some("ABC".into()),
         None,

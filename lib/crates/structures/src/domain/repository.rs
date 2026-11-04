@@ -14,7 +14,15 @@ pub trait StructureRepository: Send + Sync {
     async fn find_by_id(&self, id: i64) -> Result<Structure, DomainError>;
     /// Every structure matching the filter, ordered by `id ASC`.
     async fn list(&self, filter: StructureFilter) -> Result<Vec<Structure>, DomainError>;
-    async fn rename(&self, id: i64, name: &str) -> Result<Structure, DomainError>;
+    /// Update a structure's name, and optionally its root path.
+    ///
+    /// A `rootpath` of `None` leaves the stored root path unchanged.
+    async fn update(
+        &self,
+        id: i64,
+        name: &str,
+        rootpath: Option<&str>,
+    ) -> Result<Structure, DomainError>;
     async fn delete(&self, id: i64) -> Result<(), DomainError>;
     /// How many project-level structures the given project already has.
     async fn count_project_structures(&self, project_code: &str) -> Result<i64, DomainError>;

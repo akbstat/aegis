@@ -17,6 +17,7 @@ use crate::domain::{
 struct StructureRow {
     id: i64,
     name: String,
+    rootpath: String,
     level: String,
     project_code: Option<String>,
     template_id: Option<i64>,
@@ -31,6 +32,7 @@ impl TryFrom<StructureRow> for Structure {
         Ok(Structure::for_repository(
             row.id,
             row.name,
+            row.rootpath,
             level,
             row.project_code,
             row.template_id,
@@ -54,11 +56,12 @@ impl StructureRepoPg {
 impl StructureRepository for StructureRepoPg {
     async fn create(&self, input: StructureNew) -> Result<Structure, DomainError> {
         let row = sqlx::query_as::<_, StructureRow>(
-            "INSERT INTO structures (name, level, project_code, template_id)
-             VALUES ($1, $2, $3, $4)
-             RETURNING id, name, level, project_code, template_id",
+            "INSERT INTO structures (name, rootpath, level, project_code, template_id)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING id, name, rootpath, level, project_code, template_id",
         )
         .bind(&input.name)
+        .bind(&input.rootpath)
         .bind(input.level.as_str())
         .bind(&input.project_code)
         .bind(input.template_id)
@@ -79,7 +82,7 @@ impl StructureRepository for StructureRepoPg {
 
     async fn find_by_id(&self, id: i64) -> Result<Structure, DomainError> {
         let row = sqlx::query_as::<_, StructureRow>(
-            "SELECT id, name, level, project_code, template_id
+            "SELECT id, name, rootpath, level, project_code, template_id
              FROM structures WHERE id = $1",
         )
         .bind(id)
@@ -92,7 +95,7 @@ impl StructureRepository for StructureRepoPg {
 
     async fn list(&self, filter: StructureFilter) -> Result<Vec<Structure>, DomainError> {
         let mut builder = QueryBuilder::<Postgres>::new(
-            "SELECT id, name, level, project_code, template_id FROM structures WHERE 1 = 1",
+            "SELECT id, name, rootpath, level, project_code, template_id FROM structures WHERE 1 = 1",
         );
         if let Some(level) = filter.level {
             builder.push(" AND level = ").push_bind(level.as_str());
@@ -109,13 +112,19 @@ impl StructureRepository for StructureRepoPg {
         rows.into_iter().map(Structure::try_from).collect()
     }
 
-    async fn rename(&self, id: i64, name: &str) -> Result<Structure, DomainError> {
+    async fn update(
+        &self,
+        id: i64,
+        name: &str,
+        rootpath: Option<&str>,
+    ) -> Result<Structure, DomainError> {
         let row = sqlx::query_as::<_, StructureRow>(
-            "UPDATE structures SET name = $2 WHERE id = $1
-             RETURNING id, name, level, project_code, template_id",
+            "UPDATE structures SET name = $2, rootpath = COALESCE($3, rootpath) WHERE id = $1
+             RETURNING id, name, rootpath, level, project_code, template_id",
         )
         .bind(id)
         .bind(name)
+        .bind(rootpath)
         .fetch_optional(&self.pool)
         .await
         .map_err(map_error)?
@@ -190,5 +199,12 @@ mod tests {
         assert!(sql.contains("ON structures (project_code) WHERE level = 'project'"));
         assert!(sql.contains("REFERENCES structures(id) ON DELETE RESTRICT"));
         assert!(sql.contains("BEFORE UPDATE ON structures"));
+    }
+
+    #[test]
+    fn the_structures_table_gained_a_rootpath_column() {
+        let sql = include_str!("../../../../migrations/20261104065624_add_structures_rootpath.sql");
+        assert!(sql.contains("ADD COLUMN rootpath TEXT NOT NULL DEFAULT ''"));
+        assert!(sql.contains("ALTER COLUMN rootpath DROP DEFAULT"));
     }
 }

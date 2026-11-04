@@ -20,10 +20,10 @@ use crate::domain::{
     StructureRepository,
 };
 use crate::usecase::{
-    AddNode, CreateStructure, DeleteNode, NodeView as InternalNodeView, RenameStructure,
+    AddNode, CreateStructure, DeleteNode, NodeView as InternalNodeView,
     StructureMetaView as InternalMetaView, StructureSummaryView as InternalSummaryView,
     StructureTreeView as InternalTreeView, StructureUsecase,
-    StructureView as InternalStructureView, UpdateNode, UsecaseError,
+    StructureView as InternalStructureView, UpdateNode, UpdateStructure, UsecaseError,
 };
 
 /// Adapter that implements [`StructureService`] on top of a
@@ -69,6 +69,7 @@ where
             .usecase
             .create_structure(CreateStructure {
                 name: req.name,
+                rootpath: req.rootpath,
                 level: to_domain_level(req.level),
                 project_code: req.project_code,
                 template_id: req.template_id,
@@ -106,9 +107,10 @@ where
     ) -> Result<StructureView, StructureApiError> {
         let view = self
             .usecase
-            .rename_structure(RenameStructure {
+            .update_structure(UpdateStructure {
                 id: req.id,
                 name: req.name,
+                rootpath: req.rootpath,
             })
             .await?;
         Ok(view.into())
@@ -212,6 +214,7 @@ impl From<InternalStructureView> for StructureView {
         Self {
             id: v.id,
             name: v.name,
+            rootpath: v.rootpath,
             level: to_api_level(v.level),
             project_code: v.project_code,
             template_id: v.template_id,
@@ -225,6 +228,7 @@ impl From<InternalSummaryView> for StructureSummaryView {
         Self {
             id: v.id,
             name: v.name,
+            rootpath: v.rootpath,
             level: to_api_level(v.level),
             project_code: v.project_code,
             template_id: v.template_id,
@@ -237,6 +241,7 @@ impl From<InternalMetaView> for StructureMetaView {
         Self {
             id: v.id,
             name: v.name,
+            rootpath: v.rootpath,
             level: to_api_level(v.level),
             project_code: v.project_code,
             template_id: v.template_id,

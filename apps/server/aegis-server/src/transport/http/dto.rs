@@ -1686,6 +1686,7 @@ impl utoipa::ToSchema for NodeViewResponse {
 pub struct StructureViewResponse {
     pub id: i64,
     pub name: String,
+    pub rootpath: String,
     pub level: StructureLevelResponse,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,
@@ -1698,6 +1699,7 @@ pub struct StructureViewResponse {
 pub struct StructureSummaryResponse {
     pub id: i64,
     pub name: String,
+    pub rootpath: String,
     pub level: StructureLevelResponse,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,
@@ -1709,6 +1711,7 @@ pub struct StructureSummaryResponse {
 pub struct StructureMetaResponse {
     pub id: i64,
     pub name: String,
+    pub rootpath: String,
     pub level: StructureLevelResponse,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,
@@ -1756,16 +1759,23 @@ pub struct OwnNodeListResponse {
 #[serde(rename_all = "camelCase")]
 pub struct CreateStructureRequest {
     pub name: String,
+    pub rootpath: String,
     pub level: StructureLevelResponse,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,
 }
 
-/// Rename a structure.
+/// Update a structure.
+///
+/// The name is replaced. The root path is optional: omit it (or send `null`)
+/// to keep the stored one.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RenameStructureRequest {
     pub name: String,
+    /// The new root path. Absent (or `null`) leaves the stored one
+    /// unchanged.
+    pub rootpath: Option<String>,
 }
 
 /// Place a node under a parent. `parent` is always present; `null`
@@ -1854,6 +1864,7 @@ impl From<apis::structures::StructureView> for StructureViewResponse {
         Self {
             id: v.id,
             name: v.name,
+            rootpath: v.rootpath,
             level: v.level.into(),
             project_code: v.project_code,
             template_id: v.template_id,
@@ -1867,6 +1878,7 @@ impl From<apis::structures::StructureSummaryView> for StructureSummaryResponse {
         Self {
             id: v.id,
             name: v.name,
+            rootpath: v.rootpath,
             level: v.level.into(),
             project_code: v.project_code,
             template_id: v.template_id,
@@ -1879,6 +1891,7 @@ impl From<apis::structures::StructureMetaView> for StructureMetaResponse {
         Self {
             id: v.id,
             name: v.name,
+            rootpath: v.rootpath,
             level: v.level.into(),
             project_code: v.project_code,
             template_id: v.template_id,

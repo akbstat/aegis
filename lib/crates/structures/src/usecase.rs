@@ -3,7 +3,7 @@ mod error;
 mod structure_usecase;
 mod views;
 
-pub use commands::{AddNode, CreateStructure, DeleteNode, RenameStructure, UpdateNode};
+pub use commands::{AddNode, CreateStructure, DeleteNode, UpdateNode, UpdateStructure};
 pub use error::UsecaseError;
 pub use structure_usecase::{StructureUsecase, StructureUsecaseConfig};
 #[cfg(test)]

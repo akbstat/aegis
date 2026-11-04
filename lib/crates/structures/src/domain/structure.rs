@@ -12,6 +12,13 @@ use super::structure_level::StructureLevel;
 pub struct Structure {
     pub id: i64,
     pub name: String,
+    /// The absolute base directory this structure's tree is rooted at.
+    ///
+    /// A node's full path is this path followed by the chain of
+    /// ancestor names. The crate performs no filesystem I/O — the
+    /// root path is recorded, exactly like a node's `reference` and a
+    /// migration's `directory`.
+    pub rootpath: String,
     pub level: StructureLevel,
     /// The owning project. Set at project level, absent at template level.
     pub project_code: Option<String>,
@@ -32,12 +39,16 @@ impl Structure {
     /// assigns one.
     pub fn new(
         name: String,
+        rootpath: String,
         level: StructureLevel,
         project_code: Option<String>,
         template_id: Option<i64>,
     ) -> Result<Self, DomainError> {
         if name.trim().is_empty() {
             return Err(DomainError::EmptyName);
+        }
+        if rootpath.trim().is_empty() {
+            return Err(DomainError::EmptyRootpath);
         }
         match level {
             StructureLevel::Template => {
@@ -62,6 +73,7 @@ impl Structure {
         Ok(Self {
             id: 0,
             name,
+            rootpath,
             level,
             project_code,
             template_id,
@@ -74,6 +86,7 @@ impl Structure {
     pub(crate) fn for_repository(
         id: i64,
         name: String,
+        rootpath: String,
         level: StructureLevel,
         project_code: Option<String>,
         template_id: Option<i64>,
@@ -82,6 +95,7 @@ impl Structure {
         Self {
             id,
             name,
+            rootpath,
             level,
             project_code,
             template_id,
@@ -94,6 +108,7 @@ impl Structure {
 #[derive(Debug, Clone)]
 pub struct StructureNew {
     pub name: String,
+    pub rootpath: String,
     pub level: StructureLevel,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,

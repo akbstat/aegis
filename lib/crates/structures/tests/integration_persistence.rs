@@ -26,7 +26,7 @@ use std::sync::Arc;
 use structures::{
     CreateStructure, DeleteNode, DomainError, Migration, Node, NodeAttributes, NodeRepoPg,
     NodeRepository, ProjectLookup, StructureLevel, StructureRepoPg, StructureUsecase,
-    StructureUsecaseConfig, UpdateNode,
+    StructureUsecaseConfig, UpdateNode, UpdateStructure,
 };
 
 async fn with_pool<F, Fut, T>(f: F) -> T
@@ -123,6 +123,7 @@ async fn a_template_structure_round_trips_through_postgres() {
         let view = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -154,6 +155,7 @@ async fn a_template_structure_round_trips_through_postgres() {
         assert_eq!(fetched.nodes[0].node_id, "t_root");
         assert_eq!(fetched.nodes[0].entry_name, "raw");
         assert_eq!(fetched.nodes[0].description, "the raw folder");
+        assert_eq!(fetched.rootpath, "/abs/root");
     })
     .await;
 }
@@ -166,6 +168,7 @@ async fn a_migration_and_a_reference_survive_the_jsonb_round_trip() {
         let view = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -241,6 +244,7 @@ async fn a_project_structure_merges_over_its_template() {
         let template = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -261,6 +265,7 @@ async fn a_project_structure_merges_over_its_template() {
         let project = uc
             .create_structure(CreateStructure {
                 name: unique("project"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Project,
                 project_code: Some(project_code.clone()),
                 template_id: Some(template.id),
@@ -295,6 +300,7 @@ async fn overriding_a_template_node_drops_the_template_children() {
         let template = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -314,6 +320,7 @@ async fn overriding_a_template_node_drops_the_template_children() {
         let project = uc
             .create_structure(CreateStructure {
                 name: unique("project"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Project,
                 project_code: Some(unique("ABC")),
                 template_id: Some(template.id),
@@ -353,6 +360,7 @@ async fn hiding_a_template_node_removes_it_from_the_tree() {
         let template = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -368,6 +376,7 @@ async fn hiding_a_template_node_removes_it_from_the_tree() {
         let project = uc
             .create_structure(CreateStructure {
                 name: unique("project"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Project,
                 project_code: Some(unique("ABC")),
                 template_id: Some(template.id),
@@ -402,6 +411,7 @@ async fn deleting_a_structure_cascades_to_its_nodes() {
         let view = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -428,6 +438,7 @@ async fn the_database_refuses_two_siblings_with_the_same_name() {
         let view = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -485,6 +496,7 @@ async fn a_project_can_only_have_one_structure() {
         let template = uc
             .create_structure(CreateStructure {
                 name: unique("template"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Template,
                 project_code: None,
                 template_id: None,
@@ -494,6 +506,7 @@ async fn a_project_can_only_have_one_structure() {
         let project_code = unique("ABC");
         uc.create_structure(CreateStructure {
             name: unique("project"),
+            rootpath: "/abs/root".into(),
             level: StructureLevel::Project,
             project_code: Some(project_code.clone()),
             template_id: Some(template.id),
@@ -504,6 +517,7 @@ async fn a_project_can_only_have_one_structure() {
         let err = uc
             .create_structure(CreateStructure {
                 name: unique("project"),
+                rootpath: "/abs/root".into(),
                 level: StructureLevel::Project,
                 project_code: Some(project_code.clone()),
                 template_id: Some(template.id),
@@ -515,6 +529,93 @@ async fn a_project_can_only_have_one_structure() {
             structures::UsecaseError::Repository(DomainError::DuplicateProjectStructure(code))
                 if code == project_code
         ));
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+async fn a_structure_written_before_the_rootpath_reads_back_empty() {
+    with_pool(|pool| async move {
+        // A row that predates the rootpath column: the column is NOT
+        // NULL with a default, so a direct insert without it lands an
+        // empty root path.
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO structures (name, rootpath, level) VALUES ($1, '', 'template') RETURNING id",
+        )
+        .bind(unique("template"))
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let uc = usecase(pool.clone());
+        let view = uc.get_structure(id).await.unwrap();
+        assert_eq!(view.rootpath, "");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+async fn updating_a_structure_stores_a_new_rootpath_and_keeps_the_old_one() {
+    with_pool(|pool| async move {
+        let uc = usecase(pool.clone());
+        let view = uc
+            .create_structure(CreateStructure {
+                name: unique("template"),
+                rootpath: "/abs/root".into(),
+                level: StructureLevel::Template,
+                project_code: None,
+                template_id: None,
+            })
+            .await
+            .unwrap();
+
+        // A supplied root path replaces the stored one.
+        let moved = uc
+            .update_structure(UpdateStructure {
+                id: view.id,
+                name: "Moved".into(),
+                rootpath: Some("/abs/other".into()),
+            })
+            .await
+            .unwrap();
+        assert_eq!(moved.rootpath, "/abs/other");
+        assert_eq!(moved.name, "Moved");
+
+        // An absent root path leaves the stored one alone -- this is
+        // the `COALESCE` in the UPDATE statement, and only a live
+        // database can show it.
+        let kept = uc
+            .update_structure(UpdateStructure {
+                id: view.id,
+                name: "Kept".into(),
+                rootpath: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(kept.rootpath, "/abs/other");
+        assert_eq!(kept.name, "Kept");
+
+        // A blank root path is rejected, and the name is not changed
+        // either -- the whole update is rejected.
+        let err = uc
+            .update_structure(UpdateStructure {
+                id: view.id,
+                name: "Rejected".into(),
+                rootpath: Some("   ".into()),
+            })
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(
+                err,
+                structures::UsecaseError::Validation(DomainError::EmptyRootpath)
+            ),
+            "got {err:?}"
+        );
+        let unchanged = uc.get_structure(view.id).await.unwrap();
+        assert_eq!(unchanged.name, "Kept");
+        assert_eq!(unchanged.rootpath, "/abs/other");
     })
     .await;
 }

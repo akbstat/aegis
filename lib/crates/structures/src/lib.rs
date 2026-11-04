@@ -5,6 +5,10 @@
 //! disk, and the rule that lets a project *extend* a shared template of
 //! that layout.
 //!
+//! Each structure carries a **`rootpath`** — the absolute base directory
+//! its tree is rooted at. A node's full path is that root path followed
+//! by the chain of ancestor names.
+//!
 //! The crate performs no filesystem I/O. It records what a structure
 //! should look like; materialising it is the desktop app's job.
 
@@ -22,7 +26,7 @@ pub use domain::{
     ProjectLookup, Structure, StructureFilter, StructureLevel, StructureNew, StructureRepository,
 };
 pub use usecase::{
-    AddNode, CreateStructure, DeleteNode, MigrationView, NodeView, OwnNodeView, RenameStructure,
-    StructureMetaView, StructureSummaryView, StructureTreeView, StructureUsecase,
-    StructureUsecaseConfig, StructureView, UpdateNode, UsecaseError,
+    AddNode, CreateStructure, DeleteNode, MigrationView, NodeView, OwnNodeView, StructureMetaView,
+    StructureSummaryView, StructureTreeView, StructureUsecase, StructureUsecaseConfig,
+    StructureView, UpdateNode, UpdateStructure, UsecaseError,
 };
