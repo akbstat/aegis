@@ -22,7 +22,7 @@ pub use domain::{
     ProjectLookup, Structure, StructureFilter, StructureLevel, StructureNew, StructureRepository,
 };
 pub use usecase::{
-    AddNode, CreateStructure, DeleteNode, MigrationView, NodeView, OwnNodeView, RenameStructure,
-    StructureMetaView, StructureSummaryView, StructureTreeView, StructureUsecase,
-    StructureUsecaseConfig, StructureView, UpdateNode, UsecaseError,
+    AddNode, CreateStructure, DeleteNode, MigrationView, NodeView, OwnNodeView, StructureMetaView,
+    StructureSummaryView, StructureTreeView, StructureUsecase, StructureUsecaseConfig,
+    StructureView, UpdateNode, UpdateStructure, UsecaseError,
 };

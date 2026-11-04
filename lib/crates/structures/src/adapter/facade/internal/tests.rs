@@ -269,11 +269,13 @@ async fn the_facade_deletes_a_node_and_lists_structures() {
     svc.rename_structure(RenameStructureRequest {
         id: project.id,
         name: "Renamed".into(),
+        rootpath: Some("/abs/other".into()),
     })
     .await
     .unwrap();
     let renamed = svc.get_structure(project.id).await.unwrap();
     assert_eq!(renamed.name, "Renamed");
+    assert_eq!(renamed.rootpath, "/abs/other");
     assert_eq!(renamed.level, StructureLevel::Project);
     let _ = DomainLevel::Template;
 }

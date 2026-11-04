@@ -12,9 +12,9 @@ use sqlx::PgPool;
 use structures::{
     AddNode, CreateStructure, DeleteNode, DomainError, MergedNode, MergedTree, Migration, Node,
     NodeAttributes, NodeRepository, NodeView, OwnNodeView, ProjectLookup, ProjectLookupImpl,
-    RenameStructure, Structure, StructureFilter, StructureLevel, StructureMetaView, StructureNew,
+    Structure, StructureFilter, StructureLevel, StructureMetaView, StructureNew,
     StructureRepository, StructureServiceImpl, StructureSummaryView, StructureTreeView,
-    StructureView, UpdateNode, UsecaseError,
+    StructureView, UpdateNode, UpdateStructure, UsecaseError,
 };
 
 #[test]
@@ -40,7 +40,7 @@ fn the_documented_imports_resolve() {
     let _: Option<AddNode> = None;
     let _: Option<UpdateNode> = None;
     let _: Option<DeleteNode> = None;
-    let _: Option<RenameStructure> = None;
+    let _: Option<UpdateStructure> = None;
     let _: Option<UsecaseError> = None;
     let _: Option<DomainError> = None;
 }
@@ -78,7 +78,12 @@ impl StructureRepository for FakeStructures {
     async fn list(&self, _filter: StructureFilter) -> Result<Vec<Structure>, DomainError> {
         unimplemented!()
     }
-    async fn rename(&self, _id: i64, _name: &str) -> Result<Structure, DomainError> {
+    async fn update(
+        &self,
+        _id: i64,
+        _name: &str,
+        _rootpath: Option<&str>,
+    ) -> Result<Structure, DomainError> {
         unimplemented!()
     }
     async fn delete(&self, _id: i64) -> Result<(), DomainError> {

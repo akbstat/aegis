@@ -112,13 +112,19 @@ impl StructureRepository for StructureRepoPg {
         rows.into_iter().map(Structure::try_from).collect()
     }
 
-    async fn rename(&self, id: i64, name: &str) -> Result<Structure, DomainError> {
+    async fn update(
+        &self,
+        id: i64,
+        name: &str,
+        rootpath: Option<&str>,
+    ) -> Result<Structure, DomainError> {
         let row = sqlx::query_as::<_, StructureRow>(
-            "UPDATE structures SET name = $2 WHERE id = $1
+            "UPDATE structures SET name = $2, rootpath = COALESCE($3, rootpath) WHERE id = $1
              RETURNING id, name, rootpath, level, project_code, template_id",
         )
         .bind(id)
         .bind(name)
+        .bind(rootpath)
         .fetch_optional(&self.pool)
         .await
         .map_err(map_error)?

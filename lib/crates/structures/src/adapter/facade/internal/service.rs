@@ -20,10 +20,10 @@ use crate::domain::{
     StructureRepository,
 };
 use crate::usecase::{
-    AddNode, CreateStructure, DeleteNode, NodeView as InternalNodeView, RenameStructure,
+    AddNode, CreateStructure, DeleteNode, NodeView as InternalNodeView,
     StructureMetaView as InternalMetaView, StructureSummaryView as InternalSummaryView,
     StructureTreeView as InternalTreeView, StructureUsecase,
-    StructureView as InternalStructureView, UpdateNode, UsecaseError,
+    StructureView as InternalStructureView, UpdateNode, UpdateStructure, UsecaseError,
 };
 
 /// Adapter that implements [`StructureService`] on top of a
@@ -107,9 +107,10 @@ where
     ) -> Result<StructureView, StructureApiError> {
         let view = self
             .usecase
-            .rename_structure(RenameStructure {
+            .update_structure(UpdateStructure {
                 id: req.id,
                 name: req.name,
+                rootpath: req.rootpath,
             })
             .await?;
         Ok(view.into())

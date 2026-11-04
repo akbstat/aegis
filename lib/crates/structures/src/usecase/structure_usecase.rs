@@ -7,8 +7,8 @@ use crate::domain::{
     effective_records, merge,
 };
 use crate::usecase::{
-    AddNode, CreateStructure, DeleteNode, NodeView, OwnNodeView, RenameStructure,
-    StructureMetaView, StructureSummaryView, StructureTreeView, StructureView, UpdateNode,
+    AddNode, CreateStructure, DeleteNode, NodeView, OwnNodeView, StructureMetaView,
+    StructureSummaryView, StructureTreeView, StructureView, UpdateNode, UpdateStructure,
     UsecaseError,
 };
 
@@ -177,15 +177,26 @@ where
             .collect())
     }
 
-    /// Rename a structure. Only the name is mutable.
-    pub async fn rename_structure(
+    /// Update a structure's name, and optionally its root path.
+    ///
+    /// Only the name and the root path are mutable. The level, the
+    /// owning project and the template pointer are immutable after
+    /// creation.
+    pub async fn update_structure(
         &self,
-        cmd: RenameStructure,
+        cmd: UpdateStructure,
     ) -> Result<StructureView, UsecaseError> {
         if cmd.name.trim().is_empty() {
             return Err(UsecaseError::Validation(DomainError::EmptyName));
         }
-        self.structures.rename(cmd.id, &cmd.name).await?;
+        if let Some(rootpath) = cmd.rootpath.as_deref()
+            && rootpath.trim().is_empty()
+        {
+            return Err(UsecaseError::Validation(DomainError::EmptyRootpath));
+        }
+        self.structures
+            .update(cmd.id, &cmd.name, cmd.rootpath.as_deref())
+            .await?;
         self.get_structure(cmd.id).await
     }
 

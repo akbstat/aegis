@@ -165,6 +165,9 @@ pub struct CreateStructureRequest {
 pub struct RenameStructureRequest {
     pub id: i64,
     pub name: String,
+    /// The new root path. Absent (or `null`) leaves the stored one
+    /// unchanged.
+    pub rootpath: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -202,7 +202,11 @@ pub async fn rename_structure(
     require_template_write_permission(&state, &claims, id).await?;
     let view = state
         .structures
-        .rename_structure(apis::structures::RenameStructureRequest { id, name: req.name })
+        .rename_structure(apis::structures::RenameStructureRequest {
+            id,
+            name: req.name,
+            rootpath: req.rootpath,
+        })
         .await?;
     Ok(Json(view.into()))
 }
@@ -535,6 +539,9 @@ mod tests {
     pub struct MockStructureService {
         /// The level `get_structure_meta` reports.
         pub level: Option<StructureLevel>,
+        /// The root path the last `rename_structure` request carried.
+        /// `None` means the request did not carry one.
+        pub updated_rootpath: Arc<std::sync::Mutex<Option<Option<String>>>>,
     }
 
     fn structure_view() -> apis::structures::StructureView {
@@ -606,8 +613,9 @@ mod tests {
         }
         async fn rename_structure(
             &self,
-            _req: RenameStructureRequest,
+            req: RenameStructureRequest,
         ) -> Result<apis::structures::StructureView, StructureApiError> {
+            *self.updated_rootpath.lock().unwrap() = Some(req.rootpath);
             Ok(structure_view())
         }
         async fn delete_structure(&self, _id: i64) -> Result<(), StructureApiError> {
@@ -778,6 +786,7 @@ mod tests {
         let state = test_state(
             MockStructureService {
                 level: Some(StructureLevel::Template),
+                ..Default::default()
             },
             apis::user::Role::General,
         );
@@ -791,6 +800,7 @@ mod tests {
         let state = test_state(
             MockStructureService {
                 level: Some(StructureLevel::Project),
+                ..Default::default()
             },
             apis::user::Role::General,
         );
@@ -854,5 +864,35 @@ mod tests {
         // the body does not deserialize -- axum rejects it before the
         // handler runs
         assert_eq!(response.status(), AxStatus::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn an_update_without_a_root_path_leaves_the_stored_one_alone() {
+        let service = MockStructureService::default();
+        let state = test_state(service.clone(), apis::user::Role::Admin);
+        let app = app(state);
+        let response = app
+            .oneshot(put("/api/structures/1", r#"{"name":"Renamed"}"#))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), AxStatus::OK);
+        // the handler forwarded "no root path", not an empty one
+        assert_eq!(*service.updated_rootpath.lock().unwrap(), Some(None));
+    }
+
+    #[tokio::test]
+    async fn an_update_with_a_null_root_path_leaves_the_stored_one_alone() {
+        let service = MockStructureService::default();
+        let state = test_state(service.clone(), apis::user::Role::Admin);
+        let app = app(state);
+        let response = app
+            .oneshot(put(
+                "/api/structures/1",
+                r#"{"name":"Renamed","rootpath":null}"#,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), AxStatus::OK);
+        assert_eq!(*service.updated_rootpath.lock().unwrap(), Some(None));
     }
 }

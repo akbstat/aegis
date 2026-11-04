@@ -14,8 +14,8 @@ use crate::domain::{
     StructureNew, StructureRepository,
 };
 use crate::usecase::{
-    AddNode, CreateStructure, DeleteNode, RenameStructure, StructureUsecase,
-    StructureUsecaseConfig, StructureView, UpdateNode, UsecaseError,
+    AddNode, CreateStructure, DeleteNode, StructureUsecase, StructureUsecaseConfig, StructureView,
+    UpdateNode, UpdateStructure, UsecaseError,
 };
 
 // ---- fake structure repository ----
@@ -95,13 +95,21 @@ impl StructureRepository for FakeStructureRepo {
         Ok(out)
     }
 
-    async fn rename(&self, id: i64, name: &str) -> Result<Structure, DomainError> {
+    async fn update(
+        &self,
+        id: i64,
+        name: &str,
+        rootpath: Option<&str>,
+    ) -> Result<Structure, DomainError> {
         let mut state = self.inner.lock().unwrap();
         let structure = state
             .structures
             .get_mut(&id)
             .ok_or(DomainError::StructureNotFound(id))?;
         structure.name = name.to_string();
+        if let Some(rootpath) = rootpath {
+            structure.rootpath = rootpath.to_string();
+        }
         Ok(structure.clone())
     }
 
@@ -508,9 +516,10 @@ async fn renaming_a_structure_changes_only_its_name() {
         .unwrap();
     let renamed = h
         .usecase
-        .rename_structure(RenameStructure {
+        .update_structure(UpdateStructure {
             id: project.id,
             name: "Study renamed".into(),
+            rootpath: None,
         })
         .await
         .unwrap();
@@ -521,14 +530,108 @@ async fn renaming_a_structure_changes_only_its_name() {
 }
 
 #[tokio::test]
+async fn updating_a_structure_changes_its_name_and_rootpath() {
+    let h = harness(&["ABC"]);
+    let template = h.structures.put(template_with_child());
+    let project = h
+        .usecase
+        .create_structure(CreateStructure {
+            name: "Study".into(),
+            rootpath: "/abs/root".into(),
+            level: StructureLevel::Project,
+            project_code: Some("ABC".into()),
+            template_id: Some(template.id),
+        })
+        .await
+        .unwrap();
+    let updated = h
+        .usecase
+        .update_structure(UpdateStructure {
+            id: project.id,
+            name: "Study renamed".into(),
+            rootpath: Some("/abs/other".into()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(updated.name, "Study renamed");
+    assert_eq!(updated.rootpath, "/abs/other");
+    assert_eq!(updated.level, StructureLevel::Project);
+    assert_eq!(updated.project_code.as_deref(), Some("ABC"));
+    assert_eq!(updated.template_id, Some(template.id));
+}
+
+#[tokio::test]
+async fn updating_a_structure_without_a_rootpath_leaves_it_alone() {
+    let h = harness(&["ABC"]);
+    let template = h.structures.put(template_with_child());
+    let project = h
+        .usecase
+        .create_structure(CreateStructure {
+            name: "Study".into(),
+            rootpath: "/abs/root".into(),
+            level: StructureLevel::Project,
+            project_code: Some("ABC".into()),
+            template_id: Some(template.id),
+        })
+        .await
+        .unwrap();
+    let updated = h
+        .usecase
+        .update_structure(UpdateStructure {
+            id: project.id,
+            name: "Study renamed".into(),
+            rootpath: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(updated.name, "Study renamed");
+    assert_eq!(updated.rootpath, "/abs/root");
+}
+
+#[tokio::test]
+async fn updating_a_structure_with_a_blank_rootpath_is_rejected() {
+    let h = harness(&["ABC"]);
+    let template = h.structures.put(template_with_child());
+    let project = h
+        .usecase
+        .create_structure(CreateStructure {
+            name: "Study".into(),
+            rootpath: "/abs/root".into(),
+            level: StructureLevel::Project,
+            project_code: Some("ABC".into()),
+            template_id: Some(template.id),
+        })
+        .await
+        .unwrap();
+    let err = h
+        .usecase
+        .update_structure(UpdateStructure {
+            id: project.id,
+            name: "Study renamed".into(),
+            rootpath: Some("   ".into()),
+        })
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, UsecaseError::Validation(DomainError::EmptyRootpath)),
+        "got {err:?}"
+    );
+    // the whole update is rejected -- the name is untouched too
+    let unchanged = h.usecase.get_structure(project.id).await.unwrap();
+    assert_eq!(unchanged.name, "Study");
+    assert_eq!(unchanged.rootpath, "/abs/root");
+}
+
+#[tokio::test]
 async fn renaming_a_structure_with_a_blank_name_is_rejected() {
     let h = harness(&[]);
     let template = h.structures.put(template_with_child());
     let err = h
         .usecase
-        .rename_structure(RenameStructure {
+        .update_structure(UpdateStructure {
             id: template.id,
             name: "  ".into(),
+            rootpath: None,
         })
         .await
         .unwrap_err();

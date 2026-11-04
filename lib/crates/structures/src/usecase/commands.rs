@@ -14,14 +14,16 @@ pub struct CreateStructure {
     pub template_id: Option<i64>,
 }
 
-/// Rename a structure.
+/// Update a structure.
 ///
-/// Only the name is mutable. The level, the owning project and the
-/// template pointer are immutable after creation.
+/// The name is replaced. The root path is optional: `None` leaves the
+/// stored root path unchanged.
 #[derive(Debug, Clone)]
-pub struct RenameStructure {
+pub struct UpdateStructure {
     pub id: i64,
     pub name: String,
+    /// The new root path. `None` leaves the stored one alone.
+    pub rootpath: Option<String>,
 }
 
 /// Place a node under a parent.

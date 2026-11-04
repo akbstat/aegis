@@ -1770,6 +1770,9 @@ pub struct CreateStructureRequest {
 #[serde(rename_all = "camelCase")]
 pub struct RenameStructureRequest {
     pub name: String,
+    /// The new root path. Absent (or `null`) leaves the stored one
+    /// unchanged.
+    pub rootpath: Option<String>,
 }
 
 /// Place a node under a parent. `parent` is always present; `null`
