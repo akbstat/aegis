@@ -3,8 +3,8 @@ use tracing::Instrument;
 use crate::http::client::TRACE_ID;
 use crate::http::dto::ApiError;
 use crate::http::structures::{
-    self, AddNodeRequest, CreateStructureRequest, NodeViewResponse, RenameStructureRequest,
-    StructureLevelResponse, StructureSummaryResponse, StructureViewResponse, UpdateNodeRequest,
+    self, AddNodeRequest, CreateStructureRequest, NodeViewResponse, StructureLevelResponse,
+    StructureSummaryResponse, StructureViewResponse, UpdateNodeRequest, UpdateStructureRequest,
 };
 use crate::state::{Caller, RequestContext, SharedAppState};
 
@@ -63,35 +63,35 @@ pub async fn create_structure_impl(
 }
 
 #[tauri::command]
-pub async fn rename_structure(
+pub async fn update_structure(
     app_state: tauri::State<'_, SharedAppState>,
     id: i64,
-    body: RenameStructureRequest,
+    body: UpdateStructureRequest,
 ) -> Result<StructureViewResponse, ApiError> {
     let req_ctx = RequestContext {
         trace_id: app_state.trace_id_generator().client_side(),
         caller: Caller::User,
     };
-    rename_structure_impl(app_state.inner(), &req_ctx, id, body).await
+    update_structure_impl(app_state.inner(), &req_ctx, id, body).await
 }
 
-pub async fn rename_structure_impl(
+pub async fn update_structure_impl(
     app_state: &SharedAppState,
     req_ctx: &RequestContext,
     id: i64,
-    body: RenameStructureRequest,
+    body: UpdateStructureRequest,
 ) -> Result<StructureViewResponse, ApiError> {
     let span = tracing::info_span!(
         "command",
         trace_id = %req_ctx.trace_id,
         caller = %req_ctx.caller,
-        command = "rename_structure"
+        command = "update_structure"
     );
     async move {
         tracing::info!("enter");
         let result = TRACE_ID
             .scope(req_ctx.trace_id.clone(), async {
-                structures::rename_structure(app_state.http_client(), id, &body).await
+                structures::update_structure(app_state.http_client(), id, &body).await
             })
             .await;
         match &result {
@@ -369,7 +369,7 @@ mod tests {
     //!
     //!   list_structures:       { level? }
     //!   create_structure:      { body }
-    //!   rename_structure:      { id, body }
+    //!   update_structure:      { id, body }
     //!   delete_structure:      { id }
     //!   get_structure:         { id }
     //!   add_structure_node:    { structureId, body }

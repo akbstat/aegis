@@ -19,6 +19,7 @@ import type {
   StructureNodeInput,
   StructureNodeView,
 } from "../../../shared/api";
+import { PathPicker } from "./PathPicker";
 
 export interface NodeDrawerProps {
   open: boolean;
@@ -156,20 +157,20 @@ export function NodeDrawer({
             label={t("templates.node.field.directory")}
           />
           {!directory && (
-            <TextField
-              size="small"
+            <PathPicker
               label={t("templates.node.field.reference")}
               value={reference}
-              onChange={(e) => setReference(e.target.value)}
+              kind="file"
+              onChange={setReference}
             />
           )}
           {directory && (
             <>
-              <TextField
-                size="small"
+              <PathPicker
                 label={t("templates.node.field.migrationDirectory")}
                 value={migrationDirectory}
-                onChange={(e) => setMigrationDirectory(e.target.value)}
+                kind="directory"
+                onChange={setMigrationDirectory}
               />
               {migrationFilters.map((filter, index) => (
                 <TextField

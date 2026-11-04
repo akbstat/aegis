@@ -6,13 +6,20 @@ import type { ComponentProps } from "react";
 import { AegisI18nProvider } from "@aegis/ui/i18n";
 import { AegisThemeProvider } from "@aegis/ui/theme";
 
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
+
+import { open } from "@tauri-apps/plugin-dialog";
+
 import type { StructureNodeView } from "../../../shared/api";
 import {
   NodeDrawer,
   isValidEntryName,
 } from "../../../features/templates/components/NodeDrawer";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.mocked(open).mockReset();
+});
 
 const PARENT: StructureNodeView = {
   nodeId: "n0",
@@ -21,6 +28,28 @@ const PARENT: StructureNodeView = {
   directory: true,
   parent: null,
   reference: null,
+  migration: null,
+  children: [],
+};
+
+const DIRECTORY_NODE: StructureNodeView = {
+  nodeId: "n1",
+  description: "raw",
+  entryName: "raw",
+  directory: true,
+  parent: null,
+  reference: null,
+  migration: { directory: "/opt/sop/raw", filter: [] },
+  children: [],
+};
+
+const FILE_NODE: StructureNodeView = {
+  nodeId: "n2",
+  description: "",
+  entryName: "a.sas7bdat",
+  directory: false,
+  parent: "n1",
+  reference: "/opt/sop/raw/a.sas7bdat",
   migration: null,
   children: [],
 };
@@ -132,12 +161,10 @@ describe("NodeDrawer", () => {
   });
 
   it("drops a blank migration filter", async () => {
+    vi.mocked(open).mockResolvedValue("/opt/sop");
     const onSubmit = vi.fn();
     renderDrawer({ onSubmit });
-    await userEvent.type(
-      screen.getByLabelText("Migration source directory"),
-      "/opt/sop",
-    );
+    await userEvent.click(screen.getByRole("button", { name: /browse/i }));
     await userEvent.click(screen.getByRole("button", { name: "Add filter" }));
     await userEvent.type(
       screen.getAllByLabelText("Migration filter")[0],
@@ -171,5 +198,74 @@ describe("NodeDrawer", () => {
     });
     expect(screen.getByLabelText(/^Entry name/)).toHaveValue("data");
     expect(screen.getByLabelText("Description")).toHaveValue("raw data");
+  });
+
+  it("picks the migration source with a directory dialog", async () => {
+    vi.mocked(open).mockResolvedValue("/opt/sop/raw2");
+    renderDrawer({ mode: "edit", node: DIRECTORY_NODE });
+
+    await userEvent.click(screen.getByRole("button", { name: /browse/i }));
+
+    expect(open).toHaveBeenCalledWith({ directory: true, multiple: false });
+    expect(screen.getByLabelText(/migration source directory/i)).toHaveValue(
+      "/opt/sop/raw2",
+    );
+  });
+
+  it("submits the picked migration source", async () => {
+    vi.mocked(open).mockResolvedValue("/opt/sop/raw2");
+    const onSubmit = vi.fn();
+    renderDrawer({ mode: "edit", node: DIRECTORY_NODE, onSubmit });
+
+    await userEvent.click(screen.getByRole("button", { name: /browse/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        migration: { directory: "/opt/sop/raw2", filter: [] },
+      }),
+    );
+  });
+
+  it("picks the reference path with a file dialog", async () => {
+    vi.mocked(open).mockResolvedValue("/opt/sop/raw/b.sas7bdat");
+    renderDrawer({ mode: "edit", node: FILE_NODE });
+
+    await userEvent.click(screen.getByRole("button", { name: /browse/i }));
+
+    expect(open).toHaveBeenCalledWith({ directory: false, multiple: false });
+    expect(screen.getByLabelText(/reference path/i)).toHaveValue(
+      "/opt/sop/raw/b.sas7bdat",
+    );
+  });
+
+  it("submits the picked reference path", async () => {
+    vi.mocked(open).mockResolvedValue("/opt/sop/raw/b.sas7bdat");
+    const onSubmit = vi.fn();
+    renderDrawer({ mode: "edit", node: FILE_NODE, onSubmit });
+
+    await userEvent.click(screen.getByRole("button", { name: /browse/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reference: "/opt/sop/raw/b.sas7bdat",
+      }),
+    );
+  });
+
+  it("keeps the reference path when the dialog is cancelled", async () => {
+    vi.mocked(open).mockResolvedValue(null);
+    const onSubmit = vi.fn();
+    renderDrawer({ mode: "edit", node: FILE_NODE, onSubmit });
+
+    await userEvent.click(screen.getByRole("button", { name: /browse/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reference: "/opt/sop/raw/a.sas7bdat",
+      }),
+    );
   });
 });

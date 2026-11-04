@@ -495,10 +495,11 @@ export const zhCN = {
   'templates.structure.heading': '项目结构模板',
   'templates.structure.list': '模板结构',
   'templates.structure.add': '添加模板',
-  'templates.structure.rename': '重命名模板',
+  'templates.structure.update': '更新模板',
   'templates.structure.delete': '删除模板',
   'templates.structure.createTitle': '新建模板',
   'templates.structure.name': '名称',
+  'templates.structure.rootpath': '根路径',
   'templates.structure.saveFailed': '保存失败: {message}',
   'templates.structure.deleteMessage':
     '删除 "{name}" 及其所有文件夹?',
@@ -527,4 +528,5 @@ export const zhCN = {
   'templates.node.delete.title': '删除节点',
   'templates.node.delete.message': '删除 "{entryName}" 及其所有子节点?',
   'templates.node.delete.failed': '删除失败: {message}',
+  'templates.path.browse': '选择…',
 } satisfies Record<keyof typeof en, string>;

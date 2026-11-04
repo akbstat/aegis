@@ -18,8 +18,8 @@ export interface StructureSidebarProps {
   onSelect: (id: number) => void;
   /** Open the drawer for a new template structure. */
   onCreate: () => void;
-  /** Open the drawer to rename this structure. */
-  onRename: (structure: StructureSummaryView) => void;
+  /** Open the drawer to update this structure. */
+  onUpdate: (structure: StructureSummaryView) => void;
   /** Open the confirm dialog to delete this structure. */
   onDelete: (structure: StructureSummaryView) => void;
   /** Whether the current user may write. Admin and root only. */
@@ -33,7 +33,7 @@ export function StructureSidebar({
   selectedId,
   onSelect,
   onCreate,
-  onRename,
+  onUpdate,
   onDelete,
   canMutate,
   loading,
@@ -89,12 +89,12 @@ export function StructureSidebar({
               <Stack direction="row" spacing={0}>
                 <IconButton
                   size="small"
-                  aria-label={t("templates.structure.rename")}
+                  aria-label={t("templates.structure.update")}
                   onClick={(e) => {
                     // The row itself selects the structure — an admin
                     // action must not also trigger that.
                     e.stopPropagation();
-                    onRename(structure);
+                    onUpdate(structure);
                   }}
                 >
                   <EditIcon fontSize="small" />

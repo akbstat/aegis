@@ -16,13 +16,13 @@ import {
   useDeleteStructureNode,
   useGetStructure,
   useListTemplateStructures,
-  useRenameStructure,
+  useUpdateStructure,
   useUpdateStructureNode,
 } from "../data/structures";
 import { DeleteNodeDialog } from "../components/DeleteNodeDialog";
 import { DeleteStructureDialog } from "../components/DeleteStructureDialog";
 import { NodeDrawer } from "../components/NodeDrawer";
-import { StructureDrawer } from "../components/StructureDrawer";
+import { StructureDrawer, type StructureFormValue } from "../components/StructureDrawer";
 import { StructureSidebar } from "../components/StructureSidebar";
 import { StructureTree } from "../components/StructureTree";
 
@@ -42,7 +42,7 @@ export function StructureTemplatePage({
   const structure = useGetStructure(structureId);
 
   const createStructure = useCreateStructure();
-  const renameStructure = useRenameStructure();
+  const updateStructure = useUpdateStructure();
   const deleteStructure = useDeleteStructure();
 
   const addNode = useAddStructureNode();
@@ -61,7 +61,7 @@ export function StructureTemplatePage({
 
   const [structureDrawerOpen, setStructureDrawerOpen] = useState(false);
   const [structureDrawerMode, setStructureDrawerMode] = useState<
-    "create" | "rename"
+    "create" | "update"
   >("create");
   const [structureDrawerTarget, setStructureDrawerTarget] =
     useState<StructureSummaryView | null>(null);
@@ -106,16 +106,16 @@ export function StructureTemplatePage({
 
   function openCreateStructure() {
     createStructure.reset();
-    renameStructure.reset();
+    updateStructure.reset();
     setStructureDrawerMode("create");
     setStructureDrawerTarget(null);
     setStructureDrawerOpen(true);
   }
 
-  function openRenameStructure(structure: StructureSummaryView) {
+  function openUpdateStructure(structure: StructureSummaryView) {
     createStructure.reset();
-    renameStructure.reset();
-    setStructureDrawerMode("rename");
+    updateStructure.reset();
+    setStructureDrawerMode("update");
     setStructureDrawerTarget(structure);
     setStructureDrawerOpen(true);
   }
@@ -125,17 +125,29 @@ export function StructureTemplatePage({
     setStructureDeleteTarget(structure);
   }
 
-  function handleStructureSubmit(name: string) {
+  function handleStructureSubmit(value: StructureFormValue) {
     if (structureDrawerMode === "create") {
       createStructure.mutate(
-        { name, level: "template", projectCode: null, templateId: null },
+        {
+          name: value.name,
+          // The drawer keeps the submit button disabled until a root
+          // path is picked, so this is never empty.
+          rootpath: value.rootpath ?? "",
+          level: "template",
+          projectCode: null,
+          templateId: null,
+        },
         { onSuccess: () => setStructureDrawerOpen(false) },
       );
       return;
     }
     if (!structureDrawerTarget) return;
-    renameStructure.mutate(
-      { id: structureDrawerTarget.id, input: { name } },
+    updateStructure.mutate(
+      {
+        id: structureDrawerTarget.id,
+        // A `null` root path leaves the stored one alone.
+        input: { name: value.name, rootpath: value.rootpath },
+      },
       { onSuccess: () => setStructureDrawerOpen(false) },
     );
   }
@@ -219,7 +231,7 @@ export function StructureTemplatePage({
           })
         }
         onCreate={openCreateStructure}
-        onRename={openRenameStructure}
+        onUpdate={openUpdateStructure}
         onDelete={openDeleteStructure}
         canMutate={canMutate}
         loading={structures.isLoading}
@@ -231,8 +243,8 @@ export function StructureTemplatePage({
         structure={structureDrawerTarget}
         onClose={() => setStructureDrawerOpen(false)}
         onSubmit={handleStructureSubmit}
-        pending={createStructure.isPending || renameStructure.isPending}
-        error={createStructure.error ?? renameStructure.error}
+        pending={createStructure.isPending || updateStructure.isPending}
+        error={createStructure.error ?? updateStructure.error}
       />
 
       <DeleteStructureDialog

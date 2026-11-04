@@ -12,6 +12,9 @@ import { AegisI18nProvider } from "@aegis/ui/i18n";
 import { AegisThemeProvider } from "@aegis/ui/theme";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
+
+import { open } from "@tauri-apps/plugin-dialog";
 
 import { renderWithFullRouter } from "../../helpers/file-route-utils";
 import { httpError, mockCommands } from "../../helpers/tauri-mock";
@@ -44,6 +47,7 @@ function createMemoryStorage(): Storage {
 const STRUCTURE = {
   id: 3,
   name: "Standard",
+  rootpath: "/abs/root",
   level: "template",
   projectCode: null,
   templateId: null,
@@ -89,6 +93,7 @@ const TEMPLATES = [
   {
     id: 3,
     name: "Standard",
+    rootpath: "/abs/root",
     level: "template",
     projectCode: null,
     templateId: null,
@@ -121,7 +126,10 @@ beforeEach(() => {
   vi.unstubAllGlobals();
   vi.stubGlobal("localStorage", createMemoryStorage());
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.mocked(open).mockReset();
+});
 
 function renderPage(path = "/templates/structure/3") {
   return renderWithFullRouter({
@@ -259,9 +267,11 @@ describe("StructureTemplatePage", () => {
   });
 
   it("creates a template structure from the sidebar", async () => {
+    vi.mocked(open).mockResolvedValue("/abs/root");
     const createStructure = vi.fn(() => ({
       id: 9,
       name: "Fresh",
+      rootpath: "/abs/root",
       level: "template",
       projectCode: null,
       templateId: null,
@@ -278,11 +288,13 @@ describe("StructureTemplatePage", () => {
       await screen.findByRole("button", { name: /add template/i }),
     );
     await userEvent.type(screen.getByLabelText(/^Name/), "Fresh");
+    await userEvent.click(screen.getByRole("button", { name: /browse/i }));
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
     await waitFor(() => expect(createStructure).toHaveBeenCalled());
     expect(createStructure).toHaveBeenCalledWith({
       body: {
         name: "Fresh",
+        rootpath: "/abs/root",
         level: "template",
         projectCode: null,
         templateId: null,
@@ -290,10 +302,11 @@ describe("StructureTemplatePage", () => {
     });
   });
 
-  it("renames a structure from the sidebar", async () => {
-    const renameStructure = vi.fn(() => ({
+  it("updates a structure from the sidebar", async () => {
+    const updateStructure = vi.fn(() => ({
       id: 3,
       name: "Renamed",
+      rootpath: "/abs/root",
       level: "template",
       projectCode: null,
       templateId: null,
@@ -302,20 +315,21 @@ describe("StructureTemplatePage", () => {
     mockCommands(
       baseCommands({
         current_user: () => ADMIN_USER,
-        rename_structure: renameStructure,
+        update_structure: updateStructure,
       }),
     );
     await renderPage();
     await userEvent.click(
-      await screen.findByRole("button", { name: /rename template/i }),
+      await screen.findByRole("button", { name: /update template/i }),
     );
     await userEvent.clear(screen.getByLabelText(/^Name/));
     await userEvent.type(screen.getByLabelText(/^Name/), "Renamed");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(renameStructure).toHaveBeenCalled());
-    expect(renameStructure).toHaveBeenCalledWith({
+    await waitFor(() => expect(updateStructure).toHaveBeenCalled());
+    // The root path was left alone, so the server keeps the stored one.
+    expect(updateStructure).toHaveBeenCalledWith({
       id: 3,
-      body: { name: "Renamed" },
+      body: { name: "Renamed", rootpath: null },
     });
   });
 

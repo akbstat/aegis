@@ -49,6 +49,8 @@ pub struct NodeViewResponse {
 pub struct StructureViewResponse {
     pub id: i64,
     pub name: String,
+    /// The absolute path the structure's tree is rooted at.
+    pub rootpath: String,
     pub level: StructureLevelResponse,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,
@@ -61,6 +63,8 @@ pub struct StructureViewResponse {
 pub struct StructureSummaryResponse {
     pub id: i64,
     pub name: String,
+    /// The absolute path the structure's tree is rooted at.
+    pub rootpath: String,
     pub level: StructureLevelResponse,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,
@@ -78,16 +82,24 @@ pub struct StructureListResponse {
 #[serde(rename_all = "camelCase")]
 pub struct CreateStructureRequest {
     pub name: String,
+    /// The absolute path the new structure is rooted at. The server
+    /// requires one on create.
+    pub rootpath: String,
     pub level: StructureLevelResponse,
     pub project_code: Option<String>,
     pub template_id: Option<i64>,
 }
 
-/// Rename a structure.
+/// Update a structure.
+///
+/// The name is replaced. The root path is optional: `None` reaches the
+/// wire as an explicit `null`, which is how the server is told to keep
+/// the stored one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RenameStructureRequest {
+pub struct UpdateStructureRequest {
     pub name: String,
+    pub rootpath: Option<String>,
 }
 
 /// Place a node under a parent. `entry_name` is the node's own name —
@@ -208,11 +220,15 @@ pub async fn create_structure(
     c.request(reqwest::Method::POST, "/api/structures", Some(body)).await
 }
 
-/// `PUT /api/structures/{id}` — rename a structure.
-pub async fn rename_structure(
+/// `PUT /api/structures/{id}` — update a structure.
+///
+/// The server names its own request type `RenameStructureRequest`, but
+/// the route replaces the name *and* the root path, so this side calls
+/// it an update. The wire shape is identical either way.
+pub async fn update_structure(
     c: &HttpClient,
     id: i64,
-    body: &RenameStructureRequest,
+    body: &UpdateStructureRequest,
 ) -> Result<StructureViewResponse, ApiError> {
     c.request(
         reqwest::Method::PUT,
@@ -265,6 +281,7 @@ mod tests {
                         "structures": [{
                             "id": 3,
                             "name": "Standard",
+                            "rootpath": "/abs/root",
                             "level": "template",
                             "projectCode": null,
                             "templateId": null
@@ -280,6 +297,7 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].id, 3);
         assert_eq!(out[0].level, StructureLevelResponse::Template);
+        assert_eq!(out[0].rootpath, "/abs/root");
     }
 
     #[tokio::test]
@@ -436,6 +454,7 @@ mod tests {
                     .and(path("/api/structures"))
                     .and(body_json(json!({
                         "name": "Standard",
+                        "rootpath": "/abs/root",
                         "level": "template",
                         "projectCode": null,
                         "templateId": null
@@ -443,6 +462,7 @@ mod tests {
                     .respond_with(ResponseTemplate::new(201).set_body_json(json!({
                         "id": 3,
                         "name": "Standard",
+                        "rootpath": "/abs/root",
                         "level": "template",
                         "projectCode": null,
                         "templateId": null,
@@ -454,6 +474,7 @@ mod tests {
 
         let body = CreateStructureRequest {
             name: "Standard".into(),
+            rootpath: "/abs/root".into(),
             level: StructureLevelResponse::Template,
             project_code: None,
             template_id: None,
@@ -461,19 +482,24 @@ mod tests {
         let view = create_structure(&c, &body).await.unwrap();
         assert_eq!(view.id, 3);
         assert_eq!(view.name, "Standard");
+        assert_eq!(view.rootpath, "/abs/root");
     }
 
     #[tokio::test]
-    async fn rename_structure_puts_the_exact_body() {
+    async fn update_structure_puts_the_exact_body() {
         let server = MockServer::start().await;
         server
             .register(
                 Mock::given(method("PUT"))
                     .and(path("/api/structures/3"))
-                    .and(body_json(json!({ "name": "Renamed" })))
+                    .and(body_json(json!({
+                        "name": "Renamed",
+                        "rootpath": "/abs/root"
+                    })))
                     .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                         "id": 3,
                         "name": "Renamed",
+                        "rootpath": "/abs/root",
                         "level": "template",
                         "projectCode": null,
                         "templateId": null,
@@ -483,11 +509,47 @@ mod tests {
             .await;
         let c = mock_client(&server).await;
 
-        let body = RenameStructureRequest {
+        let body = UpdateStructureRequest {
             name: "Renamed".into(),
+            rootpath: Some("/abs/root".into()),
         };
-        let view = rename_structure(&c, 3, &body).await.unwrap();
+        let view = update_structure(&c, 3, &body).await.unwrap();
         assert_eq!(view.name, "Renamed");
+        assert_eq!(view.rootpath, "/abs/root");
+    }
+
+    /// An absent root path must reach the wire as an explicit `null`,
+    /// which is how the server is told to keep the stored one.
+    #[tokio::test]
+    async fn update_structure_sends_a_null_root_path_when_there_is_none() {
+        let server = MockServer::start().await;
+        server
+            .register(
+                Mock::given(method("PUT"))
+                    .and(path("/api/structures/3"))
+                    .and(body_json(json!({
+                        "name": "Renamed",
+                        "rootpath": null
+                    })))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                        "id": 3,
+                        "name": "Renamed",
+                        "rootpath": "/kept/root",
+                        "level": "template",
+                        "projectCode": null,
+                        "templateId": null,
+                        "nodes": []
+                    }))),
+            )
+            .await;
+        let c = mock_client(&server).await;
+
+        let body = UpdateStructureRequest {
+            name: "Renamed".into(),
+            rootpath: None,
+        };
+        let view = update_structure(&c, 3, &body).await.unwrap();
+        assert_eq!(view.rootpath, "/kept/root");
     }
 
     #[tokio::test]
