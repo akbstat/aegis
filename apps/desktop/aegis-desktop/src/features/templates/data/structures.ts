@@ -4,11 +4,11 @@ import {
   api,
   type ApiError,
   type CreateStructureInput,
-  type RenameStructureInput,
   type StructureNodeInput,
   type StructureNodeView,
   type StructureSummaryView,
   type StructureView,
+  type UpdateStructureInput,
 } from "../../../shared/api";
 import { queryKeys } from "../../../shared/query";
 
@@ -50,14 +50,14 @@ export function useCreateStructure() {
   });
 }
 
-export function useRenameStructure() {
+export function useUpdateStructure() {
   const invalidate = useInvalidateStructures();
   return useMutation<
     StructureView,
     ApiError,
-    { id: number; input: RenameStructureInput }
+    { id: number; input: UpdateStructureInput }
   >({
-    mutationFn: ({ id, input }) => api.renameStructure(id, input),
+    mutationFn: ({ id, input }) => api.updateStructure(id, input),
     onSuccess: (_view, vars) => invalidate(vars.id),
   });
 }

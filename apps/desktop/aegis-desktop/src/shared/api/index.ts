@@ -49,7 +49,6 @@ import type {
   ProjectView,
   RegisterUserInput,
   RegisterUserResponse,
-  RenameStructureInput,
   SdtmDomainListResponse,
   SdtmDomainView,
   SdtmVariableListResponse,
@@ -74,6 +73,7 @@ import type {
   UpdateProjectBody,
   UpdateSdtmDomainInput,
   UpdateSdtmVariableInput,
+  UpdateStructureInput,
   UpdateTerminologyVersionInput,
   UpdateUserBody,
   UpdateUserCredentialInput,
@@ -554,11 +554,11 @@ export const api = {
     input: CreateStructureInput,
   ): Promise<StructureView> =>
     call<StructureView>("create_structure", { body: { ...input } }),
-  renameStructure: (
+  updateStructure: (
     id: number,
-    input: RenameStructureInput,
+    input: UpdateStructureInput,
   ): Promise<StructureView> =>
-    call<StructureView>("rename_structure", { id, body: { ...input } }),
+    call<StructureView>("update_structure", { id, body: { ...input } }),
   deleteStructure: (id: number): Promise<void> =>
     call<void>("delete_structure", { id }),
 } as const;
@@ -627,7 +627,6 @@ export type {
   Role,
   RegisterUserInput,
   RegisterUserResponse,
-  RenameStructureInput,
   SdtmDomainDescription,
   SdtmDomainDescriptionDetail,
   SdtmDomainListResponse,
@@ -662,6 +661,7 @@ export type {
   UpdateProjectBody,
   UpdateSdtmDomainInput,
   UpdateSdtmVariableInput,
+  UpdateStructureInput,
   UpdateTerminologyVersionInput,
   UpdateUserBody,
   UpdateUserCredentialInput,

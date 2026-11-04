@@ -15,6 +15,7 @@ const STRUCTURES: StructureSummaryView[] = [
   {
     id: 3,
     name: "Standard",
+    rootpath: "/abs/root",
     level: "template",
     projectCode: null,
     templateId: null,
@@ -32,7 +33,7 @@ function renderSidebar(
           selectedId={3}
           onSelect={() => {}}
           onCreate={() => {}}
-          onRename={() => {}}
+          onUpdate={() => {}}
           onDelete={() => {}}
           canMutate={false}
           loading={false}
@@ -55,18 +56,18 @@ describe("StructureSidebar", () => {
       screen.queryByRole("button", { name: /add template/i }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /rename template/i }),
+      screen.queryByRole("button", { name: /update template/i }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /delete template/i }),
     ).not.toBeInTheDocument();
   });
 
-  it("offers add, rename and delete to an admin", async () => {
+  it("offers add, update and delete to an admin", async () => {
     const onCreate = vi.fn();
-    const onRename = vi.fn();
+    const onUpdate = vi.fn();
     const onDelete = vi.fn();
-    renderSidebar({ canMutate: true, onCreate, onRename, onDelete });
+    renderSidebar({ canMutate: true, onCreate, onUpdate, onDelete });
 
     await userEvent.click(
       screen.getByRole("button", { name: /add template/i }),
@@ -74,9 +75,9 @@ describe("StructureSidebar", () => {
     expect(onCreate).toHaveBeenCalled();
 
     await userEvent.click(
-      screen.getByRole("button", { name: /rename template/i }),
+      screen.getByRole("button", { name: /update template/i }),
     );
-    expect(onRename).toHaveBeenCalledWith(STRUCTURES[0]);
+    expect(onUpdate).toHaveBeenCalledWith(STRUCTURES[0]);
 
     await userEvent.click(
       screen.getByRole("button", { name: /delete template/i }),
@@ -88,7 +89,7 @@ describe("StructureSidebar", () => {
     const onSelect = vi.fn();
     renderSidebar({ canMutate: true, onSelect });
     await userEvent.click(
-      screen.getByRole("button", { name: /rename template/i }),
+      screen.getByRole("button", { name: /update template/i }),
     );
     expect(onSelect).not.toHaveBeenCalled();
   });

@@ -43,14 +43,15 @@ describe("structures api", () => {
         () =>
           api.createStructure({
             name: "Standard",
+            rootpath: "/abs/root",
             level: "template",
             projectCode: null,
             templateId: null,
           }),
       ],
       [
-        "rename_structure",
-        () => api.renameStructure(3, { name: "Renamed" }),
+        "update_structure",
+        () => api.updateStructure(3, { name: "Renamed", rootpath: "/abs/root" }),
       ],
       ["delete_structure", () => api.deleteStructure(3)],
     ];
@@ -62,7 +63,7 @@ describe("structures api", () => {
       update_structure_node: () => ({}),
       delete_structure_node: () => undefined,
       create_structure: () => ({}),
-      rename_structure: () => ({}),
+      update_structure: () => ({}),
       delete_structure: () => undefined,
     });
 
@@ -139,6 +140,38 @@ describe("structures api", () => {
     expect(mockInvoke).toHaveBeenCalledWith("delete_structure_node", {
       structureId: 3,
       nodeId: "n1",
+    });
+  });
+
+  it("invokes create_structure with the root path in the body", async () => {
+    mockCommands({ create_structure: () => ({}) });
+    await api.createStructure({
+      name: "Standard",
+      rootpath: "/abs/root",
+      level: "template",
+      projectCode: null,
+      templateId: null,
+    });
+    expect(mockInvoke).toHaveBeenCalledWith("create_structure", {
+      body: {
+        name: "Standard",
+        rootpath: "/abs/root",
+        level: "template",
+        projectCode: null,
+        templateId: null,
+      },
+    });
+  });
+
+  it("invokes update_structure with the root path in the body", async () => {
+    mockCommands({ update_structure: () => ({}) });
+    await api.updateStructure(3, {
+      name: "Renamed",
+      rootpath: "/abs/root",
+    });
+    expect(mockInvoke).toHaveBeenCalledWith("update_structure", {
+      id: 3,
+      body: { name: "Renamed", rootpath: "/abs/root" },
     });
   });
 });

@@ -12,17 +12,27 @@ import { useI18n } from "@aegis/ui/i18n";
 
 import { errorMessage } from "../../../shared/api/error";
 import type { ApiError, StructureSummaryView } from "../../../shared/api";
+import { PathPicker } from "./PathPicker";
 
 export interface StructureDrawerProps {
   open: boolean;
-  /** `create` for a new template, `rename` for an existing one. */
-  mode: "create" | "rename";
-  /** The structure being renamed. `null` in create mode. */
+  /** `create` for a new template, `update` for an existing one. */
+  mode: "create" | "update";
+  /** The structure being updated. `null` in create mode. */
   structure: StructureSummaryView | null;
   onClose: () => void;
-  onSubmit: (name: string) => void;
+  onSubmit: (value: StructureFormValue) => void;
   pending: boolean;
   error: ApiError | null;
+}
+
+/**
+ * What the drawer hands back. `rootpath` is `null` when the stored root
+ * path should be left as it is — the server keeps it in that case.
+ */
+export interface StructureFormValue {
+  name: string;
+  rootpath: string | null;
 }
 
 /**
@@ -44,13 +54,35 @@ export function StructureDrawer({
 }: StructureDrawerProps) {
   const { t } = useI18n();
   const [name, setName] = useState("");
+  const [rootpath, setRootpath] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    setName(mode === "create" ? "" : (structure?.name ?? ""));
+    if (mode === "create") {
+      setName("");
+      setRootpath("");
+      return;
+    }
+    setName(structure?.name ?? "");
+    setRootpath(structure?.rootpath ?? "");
   }, [open, mode, structure]);
 
   const nameValid = isValidStructureName(name);
+  // The server rejects a create without a root path. An update may keep
+  // the stored one, so it needs no root path of its own.
+  const rootpathValid = mode === "update" || rootpath.trim() !== "";
+
+  function handleSubmit() {
+    if (!nameValid || !rootpathValid) return;
+    const trimmedRootpath = rootpath.trim();
+    // In update mode an untouched — or emptied — root path means "keep
+    // the stored one".
+    const nextRootpath =
+      mode === "create" || trimmedRootpath !== (structure?.rootpath ?? "")
+        ? trimmedRootpath
+        : null;
+    onSubmit({ name: name.trim(), rootpath: nextRootpath });
+  }
 
   return (
     <Drawer
@@ -63,7 +95,7 @@ export function StructureDrawer({
         <Typography variant="h6">
           {mode === "create"
             ? t("templates.structure.createTitle")
-            : t("templates.structure.rename")}
+            : t("templates.structure.update")}
         </Typography>
 
         <Stack spacing={2}>
@@ -74,6 +106,12 @@ export function StructureDrawer({
             onChange={(e) => setName(e.target.value)}
             required
             autoFocus
+          />
+          <PathPicker
+            label={t("templates.structure.rootpath")}
+            value={rootpath}
+            kind="directory"
+            onChange={setRootpath}
           />
         </Stack>
 
@@ -91,8 +129,8 @@ export function StructureDrawer({
           </Button>
           <Button
             variant="contained"
-            onClick={() => onSubmit(name.trim())}
-            disabled={!nameValid || pending}
+            onClick={handleSubmit}
+            disabled={!nameValid || !rootpathValid || pending}
           >
             {mode === "create" ? t("common.create") : t("common.save")}
           </Button>

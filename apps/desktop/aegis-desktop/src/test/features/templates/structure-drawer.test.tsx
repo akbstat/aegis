@@ -6,17 +6,25 @@ import type { ComponentProps } from "react";
 import { AegisI18nProvider } from "@aegis/ui/i18n";
 import { AegisThemeProvider } from "@aegis/ui/theme";
 
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
+
+import { open } from "@tauri-apps/plugin-dialog";
+
 import type { StructureSummaryView } from "../../../shared/api";
 import {
   StructureDrawer,
   isValidStructureName,
 } from "../../../features/templates/components/StructureDrawer";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.mocked(open).mockReset();
+});
 
 const STRUCTURE: StructureSummaryView = {
   id: 3,
   name: "Standard",
+  rootpath: "/abs/root",
   level: "template",
   projectCode: null,
   templateId: null,
@@ -57,33 +65,79 @@ describe("StructureDrawer", () => {
   it("starts empty in create mode", () => {
     renderDrawer();
     expect(screen.getByLabelText(/^Name/)).toHaveValue("");
+    expect(screen.getByLabelText(/^Root path/)).toHaveValue("");
     expect(
       screen.getByRole("heading", { name: /new template/i }),
     ).toBeInTheDocument();
   });
 
-  it("shows the current name in rename mode", () => {
-    renderDrawer({ mode: "rename", structure: STRUCTURE });
+  it("shows the current name and root path in update mode", () => {
+    renderDrawer({ mode: "update", structure: STRUCTURE });
     expect(screen.getByLabelText(/^Name/)).toHaveValue("Standard");
+    expect(screen.getByLabelText(/^Root path/)).toHaveValue("/abs/root");
     expect(
-      screen.getByRole("heading", { name: /rename template/i }),
+      screen.getByRole("heading", { name: /update template/i }),
     ).toBeInTheDocument();
   });
 
-  it("disables Save while the name is blank", async () => {
+  it("disables Create while the name is blank", async () => {
     renderDrawer();
-    const save = screen.getByRole("button", { name: "Create" });
-    expect(save).toBeDisabled();
+    const create = screen.getByRole("button", { name: "Create" });
+    expect(create).toBeDisabled();
     await userEvent.type(screen.getByLabelText(/^Name/), "Standard");
-    expect(save).toBeEnabled();
+    expect(create).toBeDisabled();
   });
 
-  it("submits the trimmed name", async () => {
+  it("picks a root path with a directory dialog", async () => {
+    vi.mocked(open).mockResolvedValue("/abs/root");
+    renderDrawer();
+    await userEvent.click(screen.getByRole("button", { name: /browse/i }));
+    expect(open).toHaveBeenCalledWith({ directory: true, multiple: false });
+    expect(screen.getByLabelText(/^Root path/)).toHaveValue("/abs/root");
+  });
+
+  it("enables Create once both the name and the root path are set", async () => {
+    vi.mocked(open).mockResolvedValue("/abs/root");
+    renderDrawer();
+    await userEvent.type(screen.getByLabelText(/^Name/), "Standard");
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: /browse/i }));
+    expect(screen.getByRole("button", { name: "Create" })).toBeEnabled();
+  });
+
+  it("submits the trimmed name and the picked root path", async () => {
+    vi.mocked(open).mockResolvedValue("/abs/root");
     const onSubmit = vi.fn();
     renderDrawer({ onSubmit });
     await userEvent.type(screen.getByLabelText(/^Name/), "  Standard  ");
+    await userEvent.click(screen.getByRole("button", { name: /browse/i }));
     await userEvent.click(screen.getByRole("button", { name: "Create" }));
-    expect(onSubmit).toHaveBeenCalledWith("Standard");
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: "Standard",
+      rootpath: "/abs/root",
+    });
+  });
+
+  it("sends no root path when the stored one is left alone", async () => {
+    const onSubmit = vi.fn();
+    renderDrawer({ mode: "update", structure: STRUCTURE, onSubmit });
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: "Standard",
+      rootpath: null,
+    });
+  });
+
+  it("sends the new root path when it is re-picked", async () => {
+    vi.mocked(open).mockResolvedValue("/other/root");
+    const onSubmit = vi.fn();
+    renderDrawer({ mode: "update", structure: STRUCTURE, onSubmit });
+    await userEvent.click(screen.getByRole("button", { name: /browse/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      name: "Standard",
+      rootpath: "/other/root",
+    });
   });
 
   it("shows the save error", () => {

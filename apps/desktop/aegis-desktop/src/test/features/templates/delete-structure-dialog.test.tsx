@@ -14,6 +14,7 @@ afterEach(() => cleanup());
 const STRUCTURE: StructureSummaryView = {
   id: 3,
   name: "Standard",
+  rootpath: "/abs/root",
   level: "template",
   projectCode: null,
   templateId: null,

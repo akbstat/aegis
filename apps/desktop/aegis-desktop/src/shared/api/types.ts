@@ -741,6 +741,8 @@ export interface StructureNodeView {
 export interface StructureView {
   id: number;
   name: string;
+  /** The absolute path the structure's tree is rooted at. */
+  rootpath: string;
   level: StructureLevel;
   projectCode: string | null;
   templateId: number | null;
@@ -750,6 +752,8 @@ export interface StructureView {
 export interface StructureSummaryView {
   id: number;
   name: string;
+  /** The absolute path the structure's tree is rooted at. */
+  rootpath: string;
   level: StructureLevel;
   projectCode: string | null;
   templateId: number | null;
@@ -757,13 +761,20 @@ export interface StructureSummaryView {
 
 export interface CreateStructureInput {
   name: string;
+  /** The absolute path the new structure is rooted at. */
+  rootpath: string;
   level: StructureLevel;
   projectCode: string | null;
   templateId: number | null;
 }
 
-export interface RenameStructureInput {
+export interface UpdateStructureInput {
   name: string;
+  /**
+   * The new root path. `null` (or absent) leaves the stored one
+   * unchanged.
+   */
+  rootpath?: string | null;
 }
 
 export interface StructureNodeInput {

@@ -131,3 +131,21 @@ describe('project dashboard catalog', () => {
     },
   );
 });
+
+describe('templates catalog', () => {
+  const keys = [
+    'templates.structure.update',
+    'templates.structure.rootpath',
+    'templates.path.browse',
+  ] as const;
+
+  it.each(keys)(
+    'has a non-empty en and zh-CN message for %s',
+    (key) => {
+      expect(translate('en', key)).not.toBe(key);
+      expect(translate('en', key).length).toBeGreaterThan(0);
+      expect(translate('zh-CN', key)).not.toBe(key);
+      expect(translate('zh-CN', key).length).toBeGreaterThan(0);
+    },
+  );
+});

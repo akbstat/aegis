@@ -519,10 +519,11 @@ export const en = {
   'templates.structure.heading': 'Project Structure Template',
   'templates.structure.list': 'Structures',
   'templates.structure.add': 'Add template',
-  'templates.structure.rename': 'Rename template',
+  'templates.structure.update': 'Update template',
   'templates.structure.delete': 'Delete template',
   'templates.structure.createTitle': 'New template',
   'templates.structure.name': 'Name',
+  'templates.structure.rootpath': 'Root path',
   'templates.structure.saveFailed': 'Save failed: {message}',
   'templates.structure.deleteMessage':
     'Delete "{name}" and all of its folders?',
@@ -551,4 +552,5 @@ export const en = {
   'templates.node.delete.title': 'Delete node',
   'templates.node.delete.message': 'Delete "{entryName}" and everything under it?',
   'templates.node.delete.failed': 'Delete failed: {message}',
+  'templates.path.browse': 'Browse…',
 } as const;
