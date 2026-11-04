@@ -615,6 +615,130 @@ async fn list_code_lists_with_fragment_uses_full_text_search() {
 
 #[tokio::test]
 #[ignore = "requires AEGIS_TERMINOLOGY_DATABASE_URL"]
+async fn multi_word_fragment_matches_every_term_in_postgres() {
+    // Regression for the `syntax error in tsquery: "vital sign"`
+    // crash: `to_tsquery` parses a tsquery *expression*, so a
+    // fragment carrying several words needs an explicit `&` between
+    // the terms. The adapter builds that expression.
+    use terminology::CodeItemListQuery;
+    with_pool(|pool| async move {
+        let v_repo = TerminologyVersionRepo::new(pool.clone());
+        let l_repo = CodeListRepo::new(pool.clone());
+        let i_repo = CodeItemRepo::new(pool.clone());
+
+        let v = v_repo
+            .create(TerminologyVersionNew {
+                kind: TerminologyKind::Sdtm,
+                name: unique("multi-v"),
+            })
+            .await
+            .expect("version");
+
+        let signs = l_repo
+            .create(CodeListNew {
+                version_id: v.id,
+                code: unique("multi-cl-signs"),
+                extensible: true,
+                name: "Vital Signs".into(),
+                submission_value: "VITAL SIGNS".into(),
+                synonym: "".into(),
+                definition: "".into(),
+                nci_preferred_term: "".into(),
+            })
+            .await
+            .expect("vital signs codelist");
+        let status = l_repo
+            .create(CodeListNew {
+                version_id: v.id,
+                code: unique("multi-cl-status"),
+                extensible: true,
+                name: "Vital Status".into(),
+                submission_value: "VITAL STATUS".into(),
+                synonym: "".into(),
+                definition: "".into(),
+                nci_preferred_term: "".into(),
+            })
+            .await
+            .expect("vital status codelist");
+
+        // "vital sign" becomes "vital:* & sign:*" — both terms have to
+        // match, so "Vital Status" is filtered out.
+        let page = l_repo
+            .search_or_list(CodeListListQuery {
+                version_id: v.id,
+                fragment: Some("vital sign".into()),
+                offset: 0,
+                limit: 50,
+            })
+            .await
+            .expect("multi-word codelist search");
+        let ids: Vec<i64> = page.items.iter().map(|c| c.id).collect();
+        assert_eq!(ids, vec![signs.id], "every term of the fragment must match");
+
+        // The same holds for code items.
+        let signs_item = i_repo
+            .create(CodeItemNew {
+                codelist_id: signs.id,
+                version_id: v.id,
+                code: unique("multi-i-signs"),
+                submission_value: "Vital Signs".into(),
+                synonym: "".into(),
+                definition: "".into(),
+                nci_preferred_term: "".into(),
+            })
+            .await
+            .expect("vital signs item");
+        i_repo
+            .create(CodeItemNew {
+                codelist_id: status.id,
+                version_id: v.id,
+                code: unique("multi-i-status"),
+                submission_value: "Vital Status".into(),
+                synonym: "".into(),
+                definition: "".into(),
+                nci_preferred_term: "".into(),
+            })
+            .await
+            .expect("vital status item");
+
+        let page = i_repo
+            .search_or_list(CodeItemListQuery {
+                version_id: Some(v.id),
+                codelist_id: None,
+                fragment: Some("vital sign".into()),
+                offset: 0,
+                limit: 50,
+            })
+            .await
+            .expect("multi-word code item search");
+        let ids: Vec<i64> = page.items.iter().map(|c| c.id).collect();
+        assert_eq!(
+            ids,
+            vec![signs_item.id],
+            "every term of the fragment must match"
+        );
+
+        // A single term keeps the prefix-match behaviour.
+        let page = l_repo
+            .search_or_list(CodeListListQuery {
+                version_id: v.id,
+                fragment: Some("vital".into()),
+                offset: 0,
+                limit: 50,
+            })
+            .await
+            .expect("single-word search");
+        let mut ids: Vec<i64> = page.items.iter().map(|c| c.id).collect();
+        ids.sort();
+        let mut expected = vec![signs.id, status.id];
+        expected.sort();
+        assert_eq!(ids, expected);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires AEGIS_TERMINOLOGY_DATABASE_URL"]
 async fn list_code_items_filters_by_version_id_in_postgres() {
     // Regression for `CodeItemListQuery::version_id: Option<i64>`
     // on the Postgres path: when the caller supplies
