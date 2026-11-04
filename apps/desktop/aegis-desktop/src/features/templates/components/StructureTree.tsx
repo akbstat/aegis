@@ -188,7 +188,10 @@ export function StructureTree({
         )}
       </Stack>
 
-      <Box sx={{ flexGrow: 1, minHeight: 0, overflow: "auto", px: 3, pb: 3 }}>
+      <Box
+        data-testid="structure-tree-scroll"
+        sx={{ flexGrow: 1, minHeight: 0, overflow: "auto", px: 3, pb: 3 }}
+      >
         {nodes.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             {loading ? "…" : t("templates.structure.noNodes")}

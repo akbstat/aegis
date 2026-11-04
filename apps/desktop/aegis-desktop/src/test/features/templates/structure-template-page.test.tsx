@@ -358,6 +358,21 @@ describe("StructureTemplatePage", () => {
     );
   });
 
+  it("keeps the view toggle and the add button out of the scrolling tree", async () => {
+    mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
+    await renderPage();
+
+    const scroller = await screen.findByTestId("structure-tree-scroll");
+    // The tree scrolls on its own; the toggle and the add button sit
+    // above it and must not scroll away with it.
+    expect(scroller.contains(screen.getByRole("button", { name: "Complete" }))).toBe(false);
+    expect(
+      scroller.contains(screen.getByRole("button", { name: /add root node/i })),
+    ).toBe(false);
+    // ...while the tree itself is inside it.
+    expect(scroller.contains(screen.getByText("raw"))).toBe(true);
+  });
+
   it("does not collapse the node when the action menu is opened", async () => {
     mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
     await renderPage();
