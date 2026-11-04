@@ -165,6 +165,17 @@ The card text lives in the frontend as a constant next to the i18n keys — it i
 structure's `name`. The selected one is highlighted; clicking navigates to
 `/templates/structure/$structureId`.
 
+For an admin, the sidebar also carries the structure management:
+
+- An **add** button beside the heading opens a drawer for a new
+  template-level structure (`POST /api/structures`).
+- Each row carries a **rename** button (a drawer, `PUT /api/structures/{id}`)
+  and a **delete** button (a confirm dialog, `DELETE /api/structures/{id}`).
+
+The three write routes are admin-gated by the server for a template
+structure, and the desktop hides the affordances from a general user, so a
+general user never sees a 403.
+
 **Tree pane (left).** The structure name, a *Complete* / *Flat* toggle, and the
 tree.
 
@@ -334,14 +345,13 @@ id as a prop — the component never reaches into the router for the param.
 **Goals**
 
 - Admins can add, edit and delete nodes of a global template structure.
+- Admins can create, rename and delete the template structures themselves.
 - Everyone authenticated can read the template structures and their trees.
 - Both tree views render from one fetch.
 - The card list and the whole UI are bilingual (en / zh-CN).
 
 **Non-goals**
 
-- Creating, renaming or deleting *structures* — the spec's scope is nodes.
-  A template structure is created out of band.
 - Project-level structures. Only `level=template` is listed and only template
   structures are editable here.
 - Node reordering by drag-and-drop.

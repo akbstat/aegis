@@ -755,6 +755,17 @@ export interface StructureSummaryView {
   templateId: number | null;
 }
 
+export interface CreateStructureInput {
+  name: string;
+  level: StructureLevel;
+  projectCode: string | null;
+  templateId: number | null;
+}
+
+export interface RenameStructureInput {
+  name: string;
+}
+
 export interface StructureNodeInput {
   /** The node's own name — one folder or file name, never a path. */
   entryName: string;

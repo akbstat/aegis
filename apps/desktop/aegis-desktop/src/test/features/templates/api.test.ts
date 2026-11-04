@@ -38,6 +38,21 @@ describe("structures api", () => {
         () => api.updateStructureNode(3, "n1", nodeInput),
       ],
       ["delete_structure_node", () => api.deleteStructureNode(3, "n1")],
+      [
+        "create_structure",
+        () =>
+          api.createStructure({
+            name: "Standard",
+            level: "template",
+            projectCode: null,
+            templateId: null,
+          }),
+      ],
+      [
+        "rename_structure",
+        () => api.renameStructure(3, { name: "Renamed" }),
+      ],
+      ["delete_structure", () => api.deleteStructure(3)],
     ];
 
     mockCommands({
@@ -46,6 +61,9 @@ describe("structures api", () => {
       add_structure_node: () => ({}),
       update_structure_node: () => ({}),
       delete_structure_node: () => undefined,
+      create_structure: () => ({}),
+      rename_structure: () => ({}),
+      delete_structure: () => undefined,
     });
 
     for (const [command, call] of cases) {

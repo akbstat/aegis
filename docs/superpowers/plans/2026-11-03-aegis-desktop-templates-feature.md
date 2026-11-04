@@ -586,12 +586,17 @@ git commit -m "feat(desktop): add the structures Tauri commands"
   - `interface StructureNodeView { nodeId: string; description: string; path: string; directory: boolean; parent: string | null; reference: string | null; migration: MigrationView | null; children: StructureNodeView[] }`
   - `interface StructureView { id: number; name: string; level: StructureLevel; projectCode: string | null; templateId: number | null; nodes: StructureNodeView[] }`
   - `interface StructureSummaryView { id: number; name: string; level: StructureLevel; projectCode: string | null; templateId: number | null }`
-  - `interface StructureNodeInput { path: string; description: string; directory: boolean; parent: string | null; reference: string | null; migration: MigrationView | null }`
+  - `interface StructureNodeInput { entryName: string; description: string; directory: boolean; parent: string | null; reference: string | null; migration: MigrationView | null }`
+  - `interface CreateStructureInput { name: string; level: StructureLevel; projectCode: string | null; templateId: number | null }`
+  - `interface RenameStructureInput { name: string }`
   - `api.listStructures(level?: StructureLevel): Promise<StructureSummaryView[]>`
   - `api.getStructure(id: number): Promise<StructureView>`
   - `api.addStructureNode(structureId: number, input: StructureNodeInput): Promise<StructureNodeView>`
   - `api.updateStructureNode(structureId: number, nodeId: string, input: StructureNodeInput): Promise<StructureNodeView>`
   - `api.deleteStructureNode(structureId: number, nodeId: string): Promise<void>`
+  - `api.createStructure(input: CreateStructureInput): Promise<StructureView>`
+  - `api.renameStructure(id: number, input: RenameStructureInput): Promise<StructureView>`
+  - `api.deleteStructure(id: number): Promise<void>`
   - `queryKeys.structures.list(level: StructureLevel): readonly ["structures", "list", StructureLevel]`
   - `queryKeys.structures.detail(id: number): readonly ["structures", "detail", number]`
 
@@ -775,6 +780,17 @@ export interface StructureSummaryView {
   templateId: number | null;
 }
 
+export interface CreateStructureInput {
+  name: string;
+  level: StructureLevel;
+  projectCode: string | null;
+  templateId: number | null;
+}
+
+export interface RenameStructureInput {
+  name: string;
+}
+
 export interface StructureNodeInput {
   entryName: string;
   description: string;
@@ -833,6 +849,17 @@ Then add a `// structures` section to the `api` object:
     }),
   deleteStructureNode: (structureId: number, nodeId: string): Promise<void> =>
     call<void>("delete_structure_node", { structureId, nodeId }),
+  createStructure: (
+    input: CreateStructureInput,
+  ): Promise<StructureView> =>
+    call<StructureView>("create_structure", { body: { ...input } }),
+  renameStructure: (
+    id: number,
+    input: RenameStructureInput,
+  ): Promise<StructureView> =>
+    call<StructureView>("rename_structure", { id, body: { ...input } }),
+  deleteStructure: (id: number): Promise<void> =>
+    call<void>("delete_structure", { id }),
 ```
 
 - [ ] **Step 5: Add the query keys**
@@ -895,6 +922,15 @@ In `lib/packages/ui/src/i18n/locales/en.ts`, add:
     'Statistical programming standard project folder structure, follow SOP CL-CSP-DOC-004-A01',
   'templates.structure.heading': 'Project Structure Template',
   'templates.structure.list': 'Structures',
+  'templates.structure.add': 'Add template',
+  'templates.structure.rename': 'Rename template',
+  'templates.structure.delete': 'Delete template',
+  'templates.structure.createTitle': 'New template',
+  'templates.structure.name': 'Name',
+  'templates.structure.saveFailed': 'Save failed: {message}',
+  'templates.structure.deleteMessage':
+    'Delete "{name}" and all of its folders?',
+  'templates.structure.deleteFailed': 'Delete failed: {message}',
   'templates.structure.view.complete': 'Complete',
   'templates.structure.view.flat': 'Flat',
   'templates.structure.noTemplates': 'No templates yet',
@@ -937,6 +973,15 @@ Note: `zhCN.ts` closes with `} satisfies Record<keyof typeof en, string>;`, not
     '统计编程工作标准文件夹结构, 遵循SOP CL-CSP-DOC-004-A01',
   'templates.structure.heading': '项目结构模板',
   'templates.structure.list': '模板结构',
+  'templates.structure.add': '添加模板',
+  'templates.structure.rename': '重命名模板',
+  'templates.structure.delete': '删除模板',
+  'templates.structure.createTitle': '新建模板',
+  'templates.structure.name': '名称',
+  'templates.structure.saveFailed': '保存失败: {message}',
+  'templates.structure.deleteMessage':
+    '删除 "{name}" 及其所有文件夹?',
+  'templates.structure.deleteFailed': '删除失败: {message}',
   'templates.structure.view.complete': '完整',
   'templates.structure.view.flat': '扁平',
   'templates.structure.noTemplates': '暂无模板',
@@ -1431,6 +1476,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
   type ApiError,
+  type CreateStructureInput,
+  type RenameStructureInput,
   type StructureNodeInput,
   type StructureNodeView,
   type StructureSummaryView,
@@ -1458,10 +1505,53 @@ export function useGetStructure(id: number | null) {
 /** Invalidate the structure and the sidebar after a node write. */
 function useInvalidateStructures() {
   const qc = useQueryClient();
-  return (structureId: number) => {
-    qc.invalidateQueries({ queryKey: queryKeys.structures.detail(structureId) });
+  return (structureId?: number) => {
+    if (structureId != null) {
+      qc.invalidateQueries({
+        queryKey: queryKeys.structures.detail(structureId),
+      });
+    }
     qc.invalidateQueries({ queryKey: queryKeys.structures.list("template") });
   };
+}
+
+export function useCreateStructure() {
+  const invalidate = useInvalidateStructures();
+  return useMutation<StructureView, ApiError, CreateStructureInput>({
+    mutationFn: (input) => api.createStructure(input),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useRenameStructure() {
+  const invalidate = useInvalidateStructures();
+  return useMutation<
+    StructureView,
+    ApiError,
+    { id: number; input: RenameStructureInput }
+  >({
+    mutationFn: ({ id, input }) => api.renameStructure(id, input),
+    onSuccess: (_view, vars) => invalidate(vars.id),
+  });
+}
+
+export function useDeleteStructure() {
+  const qc = useQueryClient();
+  const invalidate = useInvalidateStructures();
+  return useMutation<void, ApiError, number>({
+    mutationFn: (id) => api.deleteStructure(id),
+    onSuccess: (_void, id) => {
+      // Drop it from the cached list straight away. The invalidation
+      // below refetches it, but until that lands the stale entry would
+      // still be there — and the page's auto-select could pick the
+      // structure that was just deleted.
+      qc.setQueryData<StructureSummaryView[]>(
+        queryKeys.structures.list("template"),
+        (old) => (old ?? []).filter((s) => s.id !== id),
+      );
+      invalidate(id);
+    },
+  });
 }
 
 export function useAddStructureNode() {
@@ -3046,6 +3136,112 @@ describe("StructureTemplatePage", () => {
     expect(screen.queryByText(/Save failed/)).not.toBeInTheDocument();
   });
 
+  it("creates a template structure from the sidebar", async () => {
+    const createStructure = vi.fn(() => ({
+      id: 9,
+      name: "Fresh",
+      level: "template",
+      projectCode: null,
+      templateId: null,
+      nodes: [],
+    }));
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+        create_structure: createStructure,
+      }),
+    );
+    await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /add template/i }),
+    );
+    await userEvent.type(screen.getByLabelText(/^Name/), "Fresh");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(createStructure).toHaveBeenCalled());
+    expect(createStructure).toHaveBeenCalledWith({
+      body: {
+        name: "Fresh",
+        level: "template",
+        projectCode: null,
+        templateId: null,
+      },
+    });
+  });
+
+  it("renames a structure from the sidebar", async () => {
+    const renameStructure = vi.fn(() => ({
+      id: 3,
+      name: "Renamed",
+      level: "template",
+      projectCode: null,
+      templateId: null,
+      nodes: [],
+    }));
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+        rename_structure: renameStructure,
+      }),
+    );
+    await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /rename template/i }),
+    );
+    await userEvent.clear(screen.getByLabelText(/^Name/));
+    await userEvent.type(screen.getByLabelText(/^Name/), "Renamed");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(renameStructure).toHaveBeenCalled());
+    expect(renameStructure).toHaveBeenCalledWith({
+      id: 3,
+      body: { name: "Renamed" },
+    });
+  });
+
+  it("deletes a structure after the confirmation", async () => {
+    const deleteStructure = vi.fn();
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+        delete_structure: deleteStructure,
+      }),
+    );
+    await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /delete template/i }),
+    );
+    expect(
+      await screen.findByText(/Delete "Standard" and all of its folders?/),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(deleteStructure).toHaveBeenCalled());
+    expect(deleteStructure).toHaveBeenCalledWith({ id: 3 });
+  });
+
+  it("moves off a structure that was just deleted", async () => {
+    // The server drops the deleted structure from the list, so the
+    // mock does too — otherwise the refetch would put it straight back.
+    let deleted = false;
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+        list_structures: () => (deleted ? [] : TEMPLATES),
+        delete_structure: () => {
+          deleted = true;
+        },
+      }),
+    );
+    const { router } = await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /delete template/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    // The deleted structure was the one on screen — the page must not
+    // stay pointed at a structure that no longer exists.
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe("/templates/structure"),
+    );
+  });
+
   it("shows the node actions to an admin", async () => {
     mockCommands(
       baseCommands({
@@ -3074,11 +3270,14 @@ Create `apps/desktop/aegis-desktop/src/features/templates/components/StructureSi
 ```tsx
 import {
   Box,
+  IconButton,
   List,
   ListItemButton,
   ListItemText,
+  Stack,
   Typography,
 } from "@aegis/ui/mui";
+import { Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon } from "@aegis/ui/icons";
 import { useI18n } from "@aegis/ui/i18n";
 
 import type { StructureSummaryView } from "../../../shared/api";
@@ -3087,6 +3286,14 @@ export interface StructureSidebarProps {
   structures: StructureSummaryView[];
   selectedId: number | null;
   onSelect: (id: number) => void;
+  /** Open the drawer for a new template structure. */
+  onCreate: () => void;
+  /** Open the drawer to rename this structure. */
+  onRename: (structure: StructureSummaryView) => void;
+  /** Open the confirm dialog to delete this structure. */
+  onDelete: (structure: StructureSummaryView) => void;
+  /** Whether the current user may write. Admin and root only. */
+  canMutate: boolean;
   loading: boolean;
 }
 
@@ -3095,6 +3302,10 @@ export function StructureSidebar({
   structures,
   selectedId,
   onSelect,
+  onCreate,
+  onRename,
+  onDelete,
+  canMutate,
   loading,
 }: StructureSidebarProps) {
   const { t } = useI18n();
@@ -3111,9 +3322,21 @@ export function StructureSidebar({
         p: 2,
       }}
     >
-      <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        {t("templates.structure.list")}
-      </Typography>
+      <Stack
+        direction="row"
+        sx={{ mb: 1, alignItems: "center", justifyContent: "space-between" }}
+      >
+        <Typography variant="subtitle2">{t("templates.structure.list")}</Typography>
+        {canMutate && (
+          <IconButton
+            size="small"
+            aria-label={t("templates.structure.add")}
+            onClick={onCreate}
+          >
+            <AddIcon fontSize="small" />
+          </IconButton>
+        )}
+      </Stack>
 
       {loading && <Typography variant="body2">…</Typography>}
 
@@ -3131,6 +3354,32 @@ export function StructureSidebar({
             onClick={() => onSelect(structure.id)}
           >
             <ListItemText primary={structure.name} />
+            {canMutate && (
+              <Stack direction="row" spacing={0}>
+                <IconButton
+                  size="small"
+                  aria-label={t("templates.structure.rename")}
+                  onClick={(e) => {
+                    // The row itself selects the structure — an admin
+                    // action must not also trigger that.
+                    e.stopPropagation();
+                    onRename(structure);
+                  }}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  aria-label={t("templates.structure.delete")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(structure);
+                  }}
+                >
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+            )}
           </ListItemButton>
         ))}
       </List>
@@ -3347,16 +3596,25 @@ import { Box, Typography } from "@aegis/ui/mui";
 import { useI18n } from "@aegis/ui/i18n";
 
 import { useCurrentUser } from "../../auth";
-import type { StructureNodeInput, StructureNodeView } from "../../../shared/api";
+import type {
+  StructureNodeInput,
+  StructureNodeView,
+  StructureSummaryView,
+} from "../../../shared/api";
 import {
   useAddStructureNode,
+  useCreateStructure,
+  useDeleteStructure,
   useDeleteStructureNode,
   useGetStructure,
   useListTemplateStructures,
+  useRenameStructure,
   useUpdateStructureNode,
 } from "../data/structures";
 import { DeleteNodeDialog } from "../components/DeleteNodeDialog";
+import { DeleteStructureDialog } from "../components/DeleteStructureDialog";
 import { NodeDrawer } from "../components/NodeDrawer";
+import { StructureDrawer } from "../components/StructureDrawer";
 import { StructureSidebar } from "../components/StructureSidebar";
 import { StructureTree } from "../components/StructureTree";
 
@@ -3375,6 +3633,10 @@ export function StructureTemplatePage({
   const structures = useListTemplateStructures();
   const structure = useGetStructure(structureId);
 
+  const createStructure = useCreateStructure();
+  const renameStructure = useRenameStructure();
+  const deleteStructure = useDeleteStructure();
+
   const addNode = useAddStructureNode();
   const updateNode = useUpdateStructureNode();
   const deleteNode = useDeleteStructureNode();
@@ -3388,6 +3650,15 @@ export function StructureTemplatePage({
   const [deleteTarget, setDeleteTarget] = useState<StructureNodeView | null>(
     null,
   );
+
+  const [structureDrawerOpen, setStructureDrawerOpen] = useState(false);
+  const [structureDrawerMode, setStructureDrawerMode] = useState<
+    "create" | "rename"
+  >("create");
+  const [structureDrawerTarget, setStructureDrawerTarget] =
+    useState<StructureSummaryView | null>(null);
+  const [structureDeleteTarget, setStructureDeleteTarget] =
+    useState<StructureSummaryView | null>(null);
 
   const canMutate =
     currentUser.data?.role === "root" || currentUser.data?.role === "admin";
@@ -3423,6 +3694,55 @@ export function StructureTemplatePage({
     setDrawerNode(node);
     setDrawerParent(null);
     setDrawerOpen(true);
+  }
+
+  function openCreateStructure() {
+    createStructure.reset();
+    renameStructure.reset();
+    setStructureDrawerMode("create");
+    setStructureDrawerTarget(null);
+    setStructureDrawerOpen(true);
+  }
+
+  function openRenameStructure(structure: StructureSummaryView) {
+    createStructure.reset();
+    renameStructure.reset();
+    setStructureDrawerMode("rename");
+    setStructureDrawerTarget(structure);
+    setStructureDrawerOpen(true);
+  }
+
+  function openDeleteStructure(structure: StructureSummaryView) {
+    deleteStructure.reset();
+    setStructureDeleteTarget(structure);
+  }
+
+  function handleStructureSubmit(name: string) {
+    if (structureDrawerMode === "create") {
+      createStructure.mutate(
+        { name, level: "template", projectCode: null, templateId: null },
+        { onSuccess: () => setStructureDrawerOpen(false) },
+      );
+      return;
+    }
+    if (!structureDrawerTarget) return;
+    renameStructure.mutate(
+      { id: structureDrawerTarget.id, input: { name } },
+      { onSuccess: () => setStructureDrawerOpen(false) },
+    );
+  }
+
+  function handleStructureDelete(structure: StructureSummaryView) {
+    deleteStructure.mutate(structure.id, {
+      onSuccess: () => {
+        setStructureDeleteTarget(null);
+        // The deleted structure may be the one on screen. Go back to
+        // the index route, where the auto-select effect picks another
+        // one — the deleted one is already out of the cached list.
+        if (structure.id !== structureId) return;
+        navigate({ to: "/templates/structure" });
+      },
+    });
   }
 
   function handleSubmit(input: StructureNodeInput) {
@@ -3486,7 +3806,30 @@ export function StructureTemplatePage({
             params: { structureId: String(id) },
           })
         }
+        onCreate={openCreateStructure}
+        onRename={openRenameStructure}
+        onDelete={openDeleteStructure}
+        canMutate={canMutate}
         loading={structures.isLoading}
+      />
+
+      <StructureDrawer
+        open={structureDrawerOpen}
+        mode={structureDrawerMode}
+        structure={structureDrawerTarget}
+        onClose={() => setStructureDrawerOpen(false)}
+        onSubmit={handleStructureSubmit}
+        pending={createStructure.isPending || renameStructure.isPending}
+        error={createStructure.error ?? renameStructure.error}
+      />
+
+      <DeleteStructureDialog
+        open={structureDeleteTarget != null}
+        structure={structureDeleteTarget}
+        onClose={() => setStructureDeleteTarget(null)}
+        onConfirm={handleStructureDelete}
+        pending={deleteStructure.isPending}
+        error={deleteStructure.error}
       />
 
       <NodeDrawer
@@ -3584,6 +3927,29 @@ git commit -m "feat(desktop): add the project structure template page"
 ```
 
 ---
+
+## Structure management (added after the first build)
+
+The sidebar grew the management of the template structures themselves:
+an **add** button that opens a drawer for a new template structure, and
+a **rename** and a **delete** button on each row. The three write routes
+are admin-gated by the server for a template structure, and the desktop
+hides the affordances from a general user.
+
+- `POST /api/structures` → `create_structure` → `api.createStructure`.
+- `PUT /api/structures/{id}` → `rename_structure` → `api.renameStructure`.
+- `DELETE /api/structures/{id}` → `delete_structure` → `api.deleteStructure`.
+  The server answers `204` with an empty body, so the adapter reads the
+  bytes rather than decoding JSON — the same trap `delete_node` has.
+- The invoke keys were added to `src-tauri/src/structures.contract.json`,
+  so the cross-boundary contract test covers the three new commands.
+
+One consequence worth naming: deleting the structure that is currently on
+screen must not leave the page pointed at a structure that no longer
+exists. The delete hook drops it from the cached list immediately — the
+invalidation refetches it, but until that lands the stale entry would
+still be there, and the page's auto-select could pick the structure that
+was just deleted.
 
 ## The server contract change: `path` → `entryName`
 

@@ -250,6 +250,112 @@ describe("StructureTemplatePage", () => {
     expect(screen.queryByText(/Save failed/)).not.toBeInTheDocument();
   });
 
+  it("creates a template structure from the sidebar", async () => {
+    const createStructure = vi.fn(() => ({
+      id: 9,
+      name: "Fresh",
+      level: "template",
+      projectCode: null,
+      templateId: null,
+      nodes: [],
+    }));
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+        create_structure: createStructure,
+      }),
+    );
+    await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /add template/i }),
+    );
+    await userEvent.type(screen.getByLabelText(/^Name/), "Fresh");
+    await userEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(createStructure).toHaveBeenCalled());
+    expect(createStructure).toHaveBeenCalledWith({
+      body: {
+        name: "Fresh",
+        level: "template",
+        projectCode: null,
+        templateId: null,
+      },
+    });
+  });
+
+  it("renames a structure from the sidebar", async () => {
+    const renameStructure = vi.fn(() => ({
+      id: 3,
+      name: "Renamed",
+      level: "template",
+      projectCode: null,
+      templateId: null,
+      nodes: [],
+    }));
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+        rename_structure: renameStructure,
+      }),
+    );
+    await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /rename template/i }),
+    );
+    await userEvent.clear(screen.getByLabelText(/^Name/));
+    await userEvent.type(screen.getByLabelText(/^Name/), "Renamed");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(renameStructure).toHaveBeenCalled());
+    expect(renameStructure).toHaveBeenCalledWith({
+      id: 3,
+      body: { name: "Renamed" },
+    });
+  });
+
+  it("deletes a structure after the confirmation", async () => {
+    const deleteStructure = vi.fn();
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+        delete_structure: deleteStructure,
+      }),
+    );
+    await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /delete template/i }),
+    );
+    expect(
+      await screen.findByText(/Delete "Standard" and all of its folders?/),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(deleteStructure).toHaveBeenCalled());
+    expect(deleteStructure).toHaveBeenCalledWith({ id: 3 });
+  });
+
+  it("moves off a structure that was just deleted", async () => {
+    // The server drops the deleted structure from the list, so the
+    // mock does too — otherwise the refetch would put it straight back.
+    let deleted = false;
+    mockCommands(
+      baseCommands({
+        current_user: () => ADMIN_USER,
+        list_structures: () => (deleted ? [] : TEMPLATES),
+        delete_structure: () => {
+          deleted = true;
+        },
+      }),
+    );
+    const { router } = await renderPage();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /delete template/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    // The deleted structure was the one on screen — the page must not
+    // stay pointed at a structure that no longer exists.
+    await waitFor(() =>
+      expect(router.state.location.pathname).toBe("/templates/structure"),
+    );
+  });
+
   it("shows the node actions to an admin", async () => {
     mockCommands(
       baseCommands({

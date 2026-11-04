@@ -73,6 +73,23 @@ pub struct StructureListResponse {
     pub structures: Vec<StructureSummaryResponse>,
 }
 
+/// Create a structure.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateStructureRequest {
+    pub name: String,
+    pub level: StructureLevelResponse,
+    pub project_code: Option<String>,
+    pub template_id: Option<i64>,
+}
+
+/// Rename a structure.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameStructureRequest {
+    pub name: String,
+}
+
 /// Place a node under a parent. `entry_name` is the node's own name —
 /// one folder or file name, never a path. `parent` is always explicit:
 /// `None` means "at the root".
@@ -177,6 +194,43 @@ pub async fn delete_node(
         .request_bytes(
             reqwest::Method::DELETE,
             &format!("/api/structures/{structure_id}/nodes/{node_id}"),
+            None::<&()>,
+        )
+        .await?;
+    Ok(())
+}
+
+/// `POST /api/structures` — create a structure.
+pub async fn create_structure(
+    c: &HttpClient,
+    body: &CreateStructureRequest,
+) -> Result<StructureViewResponse, ApiError> {
+    c.request(reqwest::Method::POST, "/api/structures", Some(body)).await
+}
+
+/// `PUT /api/structures/{id}` — rename a structure.
+pub async fn rename_structure(
+    c: &HttpClient,
+    id: i64,
+    body: &RenameStructureRequest,
+) -> Result<StructureViewResponse, ApiError> {
+    c.request(
+        reqwest::Method::PUT,
+        &format!("/api/structures/{id}"),
+        Some(body),
+    )
+    .await
+}
+
+/// `DELETE /api/structures/{id}` — delete a structure.
+///
+/// The server answers `204` with an empty body, so the adapter must not
+/// try to JSON-decode it — see `delete_node` above for the same trap.
+pub async fn delete_structure(c: &HttpClient, id: i64) -> Result<(), ApiError> {
+    let _ = c
+        .request_bytes(
+            reqwest::Method::DELETE,
+            &format!("/api/structures/{id}"),
             None::<&()>,
         )
         .await?;
@@ -371,6 +425,88 @@ mod tests {
         assert!(j.contains("\"parent\":null"), "got {j}");
         assert!(j.contains("\"directory\":true"), "got {j}");
         assert!(j.contains("\"entryName\":\"raw\""), "got {j}");
+    }
+
+    #[tokio::test]
+    async fn create_structure_posts_the_exact_body() {
+        let server = MockServer::start().await;
+        server
+            .register(
+                Mock::given(method("POST"))
+                    .and(path("/api/structures"))
+                    .and(body_json(json!({
+                        "name": "Standard",
+                        "level": "template",
+                        "projectCode": null,
+                        "templateId": null
+                    })))
+                    .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                        "id": 3,
+                        "name": "Standard",
+                        "level": "template",
+                        "projectCode": null,
+                        "templateId": null,
+                        "nodes": []
+                    }))),
+            )
+            .await;
+        let c = mock_client(&server).await;
+
+        let body = CreateStructureRequest {
+            name: "Standard".into(),
+            level: StructureLevelResponse::Template,
+            project_code: None,
+            template_id: None,
+        };
+        let view = create_structure(&c, &body).await.unwrap();
+        assert_eq!(view.id, 3);
+        assert_eq!(view.name, "Standard");
+    }
+
+    #[tokio::test]
+    async fn rename_structure_puts_the_exact_body() {
+        let server = MockServer::start().await;
+        server
+            .register(
+                Mock::given(method("PUT"))
+                    .and(path("/api/structures/3"))
+                    .and(body_json(json!({ "name": "Renamed" })))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                        "id": 3,
+                        "name": "Renamed",
+                        "level": "template",
+                        "projectCode": null,
+                        "templateId": null,
+                        "nodes": []
+                    }))),
+            )
+            .await;
+        let c = mock_client(&server).await;
+
+        let body = RenameStructureRequest {
+            name: "Renamed".into(),
+        };
+        let view = rename_structure(&c, 3, &body).await.unwrap();
+        assert_eq!(view.name, "Renamed");
+    }
+
+    #[tokio::test]
+    async fn delete_structure_succeeds_on_204_no_body() {
+        let server = MockServer::start().await;
+        server
+            .register(
+                Mock::given(method("DELETE"))
+                    .and(path("/api/structures/3"))
+                    .respond_with(ResponseTemplate::new(204)),
+            )
+            .await;
+        let c = mock_client(&server).await;
+
+        let result = delete_structure(&c, 3).await;
+        assert!(
+            result.is_ok(),
+            "delete_structure must succeed on 204; got {result:?}"
+        );
     }
 
     #[tokio::test]

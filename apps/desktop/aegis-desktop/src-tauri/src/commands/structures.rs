@@ -3,8 +3,8 @@ use tracing::Instrument;
 use crate::http::client::TRACE_ID;
 use crate::http::dto::ApiError;
 use crate::http::structures::{
-    self, AddNodeRequest, NodeViewResponse, StructureLevelResponse, StructureSummaryResponse,
-    StructureViewResponse, UpdateNodeRequest,
+    self, AddNodeRequest, CreateStructureRequest, NodeViewResponse, RenameStructureRequest,
+    StructureLevelResponse, StructureSummaryResponse, StructureViewResponse, UpdateNodeRequest,
 };
 use crate::state::{Caller, RequestContext, SharedAppState};
 
@@ -20,6 +20,128 @@ fn parse_level(s: &str) -> Result<StructureLevelResponse, ApiError> {
     serde_json::from_value(serde_json::Value::String(s.to_string())).map_err(|e| ApiError::Parse {
         message: e.to_string(),
     })
+}
+
+#[tauri::command]
+pub async fn create_structure(
+    app_state: tauri::State<'_, SharedAppState>,
+    body: CreateStructureRequest,
+) -> Result<StructureViewResponse, ApiError> {
+    let req_ctx = RequestContext {
+        trace_id: app_state.trace_id_generator().client_side(),
+        caller: Caller::User,
+    };
+    create_structure_impl(app_state.inner(), &req_ctx, body).await
+}
+
+pub async fn create_structure_impl(
+    app_state: &SharedAppState,
+    req_ctx: &RequestContext,
+    body: CreateStructureRequest,
+) -> Result<StructureViewResponse, ApiError> {
+    let span = tracing::info_span!(
+        "command",
+        trace_id = %req_ctx.trace_id,
+        caller = %req_ctx.caller,
+        command = "create_structure"
+    );
+    async move {
+        tracing::info!("enter");
+        let result = TRACE_ID
+            .scope(req_ctx.trace_id.clone(), async {
+                structures::create_structure(app_state.http_client(), &body).await
+            })
+            .await;
+        match &result {
+            Ok(_) => tracing::info!("success"),
+            Err(e) => tracing::error!(error = %e, "failed"),
+        }
+        result
+    }
+    .instrument(span)
+    .await
+}
+
+#[tauri::command]
+pub async fn rename_structure(
+    app_state: tauri::State<'_, SharedAppState>,
+    id: i64,
+    body: RenameStructureRequest,
+) -> Result<StructureViewResponse, ApiError> {
+    let req_ctx = RequestContext {
+        trace_id: app_state.trace_id_generator().client_side(),
+        caller: Caller::User,
+    };
+    rename_structure_impl(app_state.inner(), &req_ctx, id, body).await
+}
+
+pub async fn rename_structure_impl(
+    app_state: &SharedAppState,
+    req_ctx: &RequestContext,
+    id: i64,
+    body: RenameStructureRequest,
+) -> Result<StructureViewResponse, ApiError> {
+    let span = tracing::info_span!(
+        "command",
+        trace_id = %req_ctx.trace_id,
+        caller = %req_ctx.caller,
+        command = "rename_structure"
+    );
+    async move {
+        tracing::info!("enter");
+        let result = TRACE_ID
+            .scope(req_ctx.trace_id.clone(), async {
+                structures::rename_structure(app_state.http_client(), id, &body).await
+            })
+            .await;
+        match &result {
+            Ok(_) => tracing::info!("success"),
+            Err(e) => tracing::error!(error = %e, "failed"),
+        }
+        result
+    }
+    .instrument(span)
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_structure(
+    app_state: tauri::State<'_, SharedAppState>,
+    id: i64,
+) -> Result<(), ApiError> {
+    let req_ctx = RequestContext {
+        trace_id: app_state.trace_id_generator().client_side(),
+        caller: Caller::User,
+    };
+    delete_structure_impl(app_state.inner(), &req_ctx, id).await
+}
+
+pub async fn delete_structure_impl(
+    app_state: &SharedAppState,
+    req_ctx: &RequestContext,
+    id: i64,
+) -> Result<(), ApiError> {
+    let span = tracing::info_span!(
+        "command",
+        trace_id = %req_ctx.trace_id,
+        caller = %req_ctx.caller,
+        command = "delete_structure"
+    );
+    async move {
+        tracing::info!("enter");
+        let result = TRACE_ID
+            .scope(req_ctx.trace_id.clone(), async {
+                structures::delete_structure(app_state.http_client(), id).await
+            })
+            .await;
+        match &result {
+            Ok(_) => tracing::info!("success"),
+            Err(e) => tracing::error!(error = %e, "failed"),
+        }
+        result
+    }
+    .instrument(span)
+    .await
 }
 
 #[tauri::command]
@@ -246,6 +368,9 @@ mod tests {
     //! camelCase name, so the frontend wrappers must send exactly:
     //!
     //!   list_structures:       { level? }
+    //!   create_structure:      { body }
+    //!   rename_structure:      { id, body }
+    //!   delete_structure:      { id }
     //!   get_structure:         { id }
     //!   add_structure_node:    { structureId, body }
     //!   update_structure_node: { structureId, nodeId, body }

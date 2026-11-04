@@ -22,6 +22,7 @@ import type {
   CreateProjectInput,
   CreateSdtmDomainInput,
   CreateSdtmVariableInput,
+  CreateStructureInput,
   CreateTerminologyVersionInput,
   CreateUserInput,
   CrfEdcType,
@@ -48,6 +49,7 @@ import type {
   ProjectView,
   RegisterUserInput,
   RegisterUserResponse,
+  RenameStructureInput,
   SdtmDomainListResponse,
   SdtmDomainView,
   SdtmVariableListResponse,
@@ -548,6 +550,17 @@ export const api = {
     }),
   deleteStructureNode: (structureId: number, nodeId: string): Promise<void> =>
     call<void>("delete_structure_node", { structureId, nodeId }),
+  createStructure: (
+    input: CreateStructureInput,
+  ): Promise<StructureView> =>
+    call<StructureView>("create_structure", { body: { ...input } }),
+  renameStructure: (
+    id: number,
+    input: RenameStructureInput,
+  ): Promise<StructureView> =>
+    call<StructureView>("rename_structure", { id, body: { ...input } }),
+  deleteStructure: (id: number): Promise<void> =>
+    call<void>("delete_structure", { id }),
 } as const;
 
 export type { ApiError } from "./types";
@@ -573,6 +586,7 @@ export type {
   CreateProjectInput,
   CreateSdtmDomainInput,
   CreateSdtmVariableInput,
+  CreateStructureInput,
   CreateTerminologyVersionInput,
   CreateUserInput,
   CrfEdcType,
@@ -613,6 +627,7 @@ export type {
   Role,
   RegisterUserInput,
   RegisterUserResponse,
+  RenameStructureInput,
   SdtmDomainDescription,
   SdtmDomainDescriptionDetail,
   SdtmDomainListResponse,

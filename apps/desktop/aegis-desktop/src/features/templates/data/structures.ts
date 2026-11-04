@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
   type ApiError,
+  type CreateStructureInput,
+  type RenameStructureInput,
   type StructureNodeInput,
   type StructureNodeView,
   type StructureSummaryView,
@@ -30,10 +32,53 @@ export function useGetStructure(id: number | null) {
 /** Invalidate the structure and the sidebar after a node write. */
 function useInvalidateStructures() {
   const qc = useQueryClient();
-  return (structureId: number) => {
-    qc.invalidateQueries({ queryKey: queryKeys.structures.detail(structureId) });
+  return (structureId?: number) => {
+    if (structureId != null) {
+      qc.invalidateQueries({
+        queryKey: queryKeys.structures.detail(structureId),
+      });
+    }
     qc.invalidateQueries({ queryKey: queryKeys.structures.list("template") });
   };
+}
+
+export function useCreateStructure() {
+  const invalidate = useInvalidateStructures();
+  return useMutation<StructureView, ApiError, CreateStructureInput>({
+    mutationFn: (input) => api.createStructure(input),
+    onSuccess: () => invalidate(),
+  });
+}
+
+export function useRenameStructure() {
+  const invalidate = useInvalidateStructures();
+  return useMutation<
+    StructureView,
+    ApiError,
+    { id: number; input: RenameStructureInput }
+  >({
+    mutationFn: ({ id, input }) => api.renameStructure(id, input),
+    onSuccess: (_view, vars) => invalidate(vars.id),
+  });
+}
+
+export function useDeleteStructure() {
+  const qc = useQueryClient();
+  const invalidate = useInvalidateStructures();
+  return useMutation<void, ApiError, number>({
+    mutationFn: (id) => api.deleteStructure(id),
+    onSuccess: (_void, id) => {
+      // Drop it from the cached list straight away. The invalidation
+      // below refetches it, but until that lands the stale entry would
+      // still be there — and the page's auto-select could pick the
+      // structure that was just deleted.
+      qc.setQueryData<StructureSummaryView[]>(
+        queryKeys.structures.list("template"),
+        (old) => (old ?? []).filter((s) => s.id !== id),
+      );
+      invalidate(id);
+    },
+  });
 }
 
 export function useAddStructureNode() {

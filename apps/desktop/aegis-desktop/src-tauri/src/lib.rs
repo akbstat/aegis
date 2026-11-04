@@ -121,6 +121,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             // structures
             commands::structures::list_structures,
             commands::structures::get_structure,
+            commands::structures::create_structure,
+            commands::structures::rename_structure,
+            commands::structures::delete_structure,
             commands::structures::add_structure_node,
             commands::structures::update_structure_node,
             commands::structures::delete_structure_node,
