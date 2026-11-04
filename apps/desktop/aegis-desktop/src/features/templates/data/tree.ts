@@ -82,3 +82,33 @@ export function flattenStructure(nodes: StructureNodeView[]): FlatEntry[] {
   walk(nodes, true);
   return entries;
 }
+
+/**
+ * Keep the flat entries that match a keyword.
+ *
+ * A directory matches on its own name, on its description, or on the
+ * name or description of a file directly inside it. A sub-directory is
+ * never consulted — in the flat view it is an entry of its own and
+ * matches on its own merit.
+ *
+ * A surviving directory keeps its whole file list: the keyword decides
+ * which directories stay, not which files are shown.
+ */
+export function filterFlatEntries(
+  entries: FlatEntry[],
+  keyword: string,
+): FlatEntry[] {
+  const needle = keyword.trim().toLowerCase();
+  if (!needle) return entries;
+
+  const contains = (value: string) => value.toLowerCase().includes(needle);
+
+  return entries.filter((entry) => {
+    if (contains(entry.name)) return true;
+    if (contains(entry.node.description)) return true;
+
+    return entry.files.some(
+      (file) => contains(file.entryName) || contains(file.description),
+    );
+  });
+}

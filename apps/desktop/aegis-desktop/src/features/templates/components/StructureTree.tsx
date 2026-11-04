@@ -2,17 +2,24 @@ import { useState } from "react";
 import {
   Box,
   Button,
+  IconButton,
+  InputAdornment,
   Stack,
+  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from "@aegis/ui/mui";
-import { Add as AddIcon } from "@aegis/ui/icons";
+import {
+  Add as AddIcon,
+  Clear as ClearIcon,
+  Search as SearchIcon,
+} from "@aegis/ui/icons";
 import { useI18n } from "@aegis/ui/i18n";
 import { SimpleTreeView, TreeItem } from "@aegis/ui/tree-view";
 
 import type { StructureNodeView } from "../../../shared/api";
-import { flattenStructure } from "../data/tree";
+import { filterFlatEntries, flattenStructure } from "../data/tree";
 import { StructureNodeRow } from "./StructureNodeRow";
 
 export type StructureTreeViewMode = "complete" | "flat";
@@ -35,6 +42,11 @@ interface TreeProps {
   onAdd: (node: StructureNodeView) => void;
   onEdit: (node: StructureNodeView) => void;
   onDelete: (node: StructureNodeView) => void;
+}
+
+interface FlatTreeProps extends TreeProps {
+  /** The keyword the entries are filtered by; blank filters nothing. */
+  filter: string;
 }
 
 /**
@@ -86,13 +98,35 @@ function CompleteTree(props: TreeProps) {
 }
 
 /** The Flat tree — one row per directory, with its files beneath it. */
-function FlatTree(props: TreeProps) {
-  const entries = flattenStructure(props.nodes);
+function FlatTree(props: FlatTreeProps) {
+  const { t } = useI18n();
+  const entries = filterFlatEntries(
+    flattenStructure(props.nodes),
+    props.filter,
+  );
+
+  if (entries.length === 0 && props.filter.trim() !== "") {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        {t("templates.structure.filter.empty", {
+          keyword: props.filter.trim(),
+        })}
+      </Typography>
+    );
+  }
+
+  const entryIds = entries.map((entry) => entry.node.nodeId);
 
   return (
     // The flat view exists to show a directory's files as its leaves,
-    // so every entry starts expanded.
-    <SimpleTreeView defaultExpandedItems={entries.map((e) => e.node.nodeId)}>
+    // so every entry starts expanded. The key re-initializes the tree
+    // whenever the filter changes the visible entries — an uncontrolled
+    // tree reads its defaults once, and a directory that comes back
+    // must be expanded again rather than stay collapsed.
+    <SimpleTreeView
+      key={entryIds.join("|")}
+      defaultExpandedItems={entryIds}
+    >
       {entries.map((entry) => (
         <TreeItem
           key={entry.node.nodeId}
@@ -141,6 +175,7 @@ export function StructureTree({
 }: StructureTreeProps) {
   const { t } = useI18n();
   const [mode, setMode] = useState<StructureTreeViewMode>("complete");
+  const [filter, setFilter] = useState("");
 
   const shared: TreeProps = { nodes, canMutate, onAdd, onEdit, onDelete };
 
@@ -177,6 +212,39 @@ export function StructureTree({
           </ToggleButton>
         </ToggleButtonGroup>
 
+        {mode === "flat" && (
+          <TextField
+            size="small"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder={t("templates.structure.filter.placeholder")}
+            slotProps={{
+              htmlInput: {
+                "aria-label": t("templates.structure.filter.label"),
+              },
+              input: {
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+                endAdornment: filter ? (
+                  <InputAdornment position="end">
+                    <IconButton
+                      size="small"
+                      aria-label={t("templates.structure.filter.clear")}
+                      onClick={() => setFilter("")}
+                    >
+                      <ClearIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null,
+              },
+            }}
+            sx={{ minWidth: 280 }}
+          />
+        )}
+
         {canMutate && canAddRoot && (
           <Button
             size="small"
@@ -199,7 +267,7 @@ export function StructureTree({
         ) : mode === "complete" ? (
           <CompleteTree {...shared} />
         ) : (
-          <FlatTree {...shared} />
+          <FlatTree {...shared} filter={filter} />
         )}
       </Box>
     </Box>
