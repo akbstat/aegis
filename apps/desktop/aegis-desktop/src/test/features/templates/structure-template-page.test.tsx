@@ -1,6 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AegisI18nProvider } from "@aegis/ui/i18n";
 import { AegisThemeProvider } from "@aegis/ui/theme";
@@ -373,12 +379,43 @@ describe("StructureTemplatePage", () => {
     expect(scroller.contains(screen.getByText("raw"))).toBe(true);
   });
 
+  it("does not collapse the node when a menu item is clicked", async () => {
+    mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
+    await renderPage();
+    const item = (await screen.findByText("raw")).closest("li");
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /node actions/i }))[0],
+    );
+    await userEvent.click(screen.getByText("Add node"));
+
+    // The menu renders in a portal, but React portals bubble events
+    // through the React tree — so the click must not reach the tree
+    // item, which would collapse it.
+    expect(item).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("does not collapse the node when the menu is dismissed", async () => {
+    mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
+    await renderPage();
+    const item = (await screen.findByText("raw")).closest("li");
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /node actions/i }))[0],
+    );
+    const backdrop = document.querySelector(".MuiBackdrop-root");
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop!);
+
+    expect(item).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("does not collapse the node when the action menu is opened", async () => {
     mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
     await renderPage();
     // The tree renders fully expanded, so the child is on screen.
     expect(await screen.findByText("data")).toBeInTheDocument();
-    const item = screen.getByText("raw").closest("li");
+    const item = (await screen.findByText("raw")).closest("li");
     expect(item).toHaveAttribute("aria-expanded", "true");
 
     await userEvent.click(

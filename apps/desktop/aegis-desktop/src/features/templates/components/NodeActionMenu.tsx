@@ -48,7 +48,17 @@ export function NodeActionMenu({
       >
         <MoreHorizIcon fontSize="small" />
       </IconButton>
-      <Menu anchorEl={anchor} open={anchor != null} onClose={close}>
+      <Menu
+        anchorEl={anchor}
+        open={anchor != null}
+        onClose={close}
+        // The menu renders in a portal, but React portals bubble events
+        // through the *React* tree — so a click on a menu item, or on the
+        // backdrop that dismisses it, would still reach the tree item and
+        // toggle it. The menu's root is an ancestor of both the backdrop
+        // and the items, so stopping the click here covers both.
+        onClick={(e) => e.stopPropagation()}
+      >
         {node.directory && (
           <MenuItem
             onClick={() => {

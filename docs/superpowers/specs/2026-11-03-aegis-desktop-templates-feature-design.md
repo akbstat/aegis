@@ -185,9 +185,9 @@ primary label. Below it, in secondary text:
 - `reference` — files only (the server rejects `reference` on a directory).
   Shown by **file name only**; the whole path is the row's tooltip.
 - `migration` — directories only: the migration `directory` shown by its
-  **whole path**, with the complete path in a tooltip for when the inline
-  text is truncated, plus its `filter` list as **chips** to the right of the
-  node name. (The server rejects `migration` on a file.)
+  **name**, with the whole path in its tooltip, plus its `filter` list as
+  **chips** to the right of that path name. (The server rejects `migration`
+  on a file.)
 
 The `description` is **not** shown inline — it is the name's tooltip, so a
 long description cannot push the name out of view. The tooltips use MUI's
@@ -202,6 +202,8 @@ sidebar on the right stays visible too.
 **Admin affordances.** For `root` and `admin` roles only:
 
 - Every node row gets a trailing tool icon (`MoreHoriz`). Clicking it opens a
+  menu; the click is stopped there, and stopped again inside the menu, so
+  opening it, choosing an item, or dismissing it never toggles the node.
   menu with the three actions — **add** (opens the add drawer with this node as
   the parent), **edit** (opens the drawer on this node), **delete** (opens the
   confirm dialog). The spec calls these "a list of icon buttons"; they are

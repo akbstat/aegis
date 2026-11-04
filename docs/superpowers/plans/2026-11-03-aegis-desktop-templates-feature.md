@@ -2052,14 +2052,11 @@ describe("StructureNodeRow", () => {
     expect(tooltip).toHaveTextContent("/opt/sop/raw/a.sas7bdat");
   });
 
-  it("shows the whole migration path inline", () => {
+  it("shows the migration path by name, with the whole path in a tooltip", async () => {
     renderRow(DIRECTORY);
-    expect(screen.getByText("/opt/sop/raw")).toBeInTheDocument();
-  });
-
-  it("shows the migration path in a tooltip when hovered", async () => {
-    renderRow(DIRECTORY);
-    await userEvent.hover(screen.getByText("/opt/sop/raw"));
+    expect(screen.getByText("raw")).toBeInTheDocument();
+    expect(screen.queryByText("/opt/sop/raw")).not.toBeInTheDocument();
+    await userEvent.hover(screen.getByText("raw"));
     const tooltip = await screen.findByRole("tooltip");
     expect(tooltip).toHaveTextContent("/opt/sop/raw");
   });
@@ -2069,14 +2066,14 @@ describe("StructureNodeRow", () => {
     expect(screen.queryByText("Migration")).not.toBeInTheDocument();
   });
 
-  it("puts the migration filter chips to the right of the name", () => {
+  it("puts the migration filter chips to the right of the path name", () => {
     renderRow(DIRECTORY);
     const filters = screen.getByTestId("structure-node-filters");
-    const name = screen.getByText("data");
-    // The chips are beside the name, not tucked under it.
-    expect(filters.contains(name)).toBe(false);
+    const pathName = screen.getByText("raw");
+    // The chips are beside the migration path, not tucked under it.
+    expect(filters.contains(pathName)).toBe(false);
     expect(
-      name.compareDocumentPosition(filters) &
+      pathName.compareDocumentPosition(filters) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
@@ -2177,7 +2174,17 @@ export function NodeActionMenu({
       >
         <MoreHorizIcon fontSize="small" />
       </IconButton>
-      <Menu anchorEl={anchor} open={anchor != null} onClose={close}>
+      <Menu
+        anchorEl={anchor}
+        open={anchor != null}
+        onClose={close}
+        // The menu renders in a portal, but React portals bubble events
+        // through the *React* tree — so a click on a menu item, or on the
+        // backdrop that dismisses it, would still reach the tree item and
+        // toggle it. The menu's root is an ancestor of both the backdrop
+        // and the items, so stopping the click here covers both.
+        onClick={(e) => e.stopPropagation()}
+      >
         {node.directory && (
           <MenuItem
             onClick={() => {
@@ -2303,30 +2310,34 @@ export function StructureNodeRow({
             describeChild
             placement="top"
           >
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {node.migration.directory}
-            </Typography>
+            <Box sx={{ display: "flex", flexDirection: "row", alignItems: "center" }}>
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {basename(node.migration.directory)}
+              </Typography>
+
+              {node.migration && node.migration.filter.length > 0 && (
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  data-testid="structure-node-filters"
+                  sx={{ flexShrink: 0, alignItems: "center", ml: 0.5 }}
+                >
+                  {node.migration.filter.map((filter) => (
+                    <Chip
+                      key={filter}
+                      size="small"
+                      label={filter}
+                      sx={{ height: 18, fontSize: 11 }}
+                    />
+                  ))}
+                </Stack>
+              )}
+            </Box>
           </Tooltip>
         )}
       </Box>
 
-      {node.migration && node.migration.filter.length > 0 && (
-        <Stack
-          direction="row"
-          spacing={0.5}
-          data-testid="structure-node-filters"
-          sx={{ flexShrink: 0, alignItems: "center" }}
-        >
-          {node.migration.filter.map((filter) => (
-            <Chip
-              key={filter}
-              size="small"
-              label={filter}
-              sx={{ height: 18, fontSize: 11 }}
-            />
-          ))}
-        </Stack>
-      )}
+
 
       {canMutate && (
         <NodeActionMenu
@@ -2972,7 +2983,13 @@ Create `apps/desktop/aegis-desktop/src/test/features/templates/structure-templat
 ```tsx
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AegisI18nProvider } from "@aegis/ui/i18n";
 import { AegisThemeProvider } from "@aegis/ui/theme";
@@ -3330,12 +3347,58 @@ describe("StructureTemplatePage", () => {
     );
   });
 
+  it("keeps the view toggle and the add button out of the scrolling tree", async () => {
+    mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
+    await renderPage();
+
+    const scroller = await screen.findByTestId("structure-tree-scroll");
+    // The tree scrolls on its own; the toggle and the add button sit
+    // above it and must not scroll away with it.
+    expect(scroller.contains(screen.getByRole("button", { name: "Complete" }))).toBe(false);
+    expect(
+      scroller.contains(screen.getByRole("button", { name: /add root node/i })),
+    ).toBe(false);
+    // ...while the tree itself is inside it.
+    expect(scroller.contains(screen.getByText("raw"))).toBe(true);
+  });
+
+  it("does not collapse the node when a menu item is clicked", async () => {
+    mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
+    await renderPage();
+    const item = (await screen.findByText("raw")).closest("li");
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /node actions/i }))[0],
+    );
+    await userEvent.click(screen.getByText("Add node"));
+
+    // The menu renders in a portal, but React portals bubble events
+    // through the React tree — so the click must not reach the tree
+    // item, which would collapse it.
+    expect(item).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("does not collapse the node when the menu is dismissed", async () => {
+    mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
+    await renderPage();
+    const item = (await screen.findByText("raw")).closest("li");
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /node actions/i }))[0],
+    );
+    const backdrop = document.querySelector(".MuiBackdrop-root");
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop!);
+
+    expect(item).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("does not collapse the node when the action menu is opened", async () => {
     mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
     await renderPage();
     // The tree renders fully expanded, so the child is on screen.
     expect(await screen.findByText("data")).toBeInTheDocument();
-    const item = screen.getByText("raw").closest("li");
+    const item = (await screen.findByText("raw")).closest("li");
     expect(item).toHaveAttribute("aria-expanded", "true");
 
     await userEvent.click(
@@ -4053,15 +4116,26 @@ git commit -m "feat(desktop): add the project structure template page"
 
 ---
 
+## The action menu and the tree item (added after the first build)
+
+Opening the operation menu, choosing an item in it, and dismissing it by
+clicking elsewhere must all leave the tree node as it was.
+
+The menu renders in a portal, but React portals bubble events through the
+**React** tree, not the DOM tree — so a click inside the menu still
+reached the tree item, whose content click toggles the item. The menu
+stops the click at its root, which is an ancestor of both the menu items
+and the backdrop that dismisses it.
+
 ## The migration row (added after the first build)
 
 The migration block of a node row was reworked:
 
-- The migration source is shown by its **whole path** inline, with the
-  complete path in its tooltip for when the inline text is truncated.
+- The migration source is shown by its **name**, with the whole path in its
+  tooltip.
 - The "Migration" label above the path is gone.
-- The filter chips sit to the **right** of the node name, beside the action
-  menu, rather than tucked under the path.
+- The filter chips sit to the **right of the migration path name**, not
+  tucked under the path.
 
 ## The node row and the tree layout (added after the first build)
 
