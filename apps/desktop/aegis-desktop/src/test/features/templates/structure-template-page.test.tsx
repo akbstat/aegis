@@ -63,7 +63,9 @@ const STRUCTURE = {
             {
               nodeId: "f1",
               description: "",
-              entryName: "a.sas7bdat",
+              // The name differs from the reference's file name on
+              // purpose, so the two are not mistaken for each other.
+              entryName: "b.sas7bdat",
               directory: false,
               parent: "d2",
               reference: "/abs/a.sas7bdat",
@@ -354,6 +356,22 @@ describe("StructureTemplatePage", () => {
     await waitFor(() =>
       expect(router.state.location.pathname).toBe("/templates/structure"),
     );
+  });
+
+  it("does not collapse the node when the action menu is opened", async () => {
+    mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
+    await renderPage();
+    // The tree renders fully expanded, so the child is on screen.
+    expect(await screen.findByText("data")).toBeInTheDocument();
+    const item = screen.getByText("raw").closest("li");
+    expect(item).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /node actions/i }))[0],
+    );
+
+    // The click must not reach the tree item, which would collapse it.
+    expect(item).toHaveAttribute("aria-expanded", "true");
   });
 
   it("shows the node actions to an admin", async () => {

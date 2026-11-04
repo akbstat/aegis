@@ -145,8 +145,22 @@ export function StructureTree({
   const shared: TreeProps = { nodes, canMutate, onAdd, onEdit, onDelete };
 
   return (
-    <Box sx={{ flexGrow: 1, minWidth: 0, p: 3, overflow: "auto" }}>
-      <Stack direction="row" spacing={2} sx={{ mb: 2, alignItems: "center" }}>
+    <Box
+      sx={{
+        flexGrow: 1,
+        minWidth: 0,
+        minHeight: 0,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{ px: 3, pt: 3, pb: 2, flexShrink: 0, alignItems: "center" }}
+      >
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -174,15 +188,17 @@ export function StructureTree({
         )}
       </Stack>
 
-      {nodes.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
-          {loading ? "…" : t("templates.structure.noNodes")}
-        </Typography>
-      ) : mode === "complete" ? (
-        <CompleteTree {...shared} />
-      ) : (
-        <FlatTree {...shared} />
-      )}
+      <Box sx={{ flexGrow: 1, minHeight: 0, overflow: "auto", px: 3, pb: 3 }}>
+        {nodes.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {loading ? "…" : t("templates.structure.noNodes")}
+          </Typography>
+        ) : mode === "complete" ? (
+          <CompleteTree {...shared} />
+        ) : (
+          <FlatTree {...shared} />
+        )}
+      </Box>
     </Box>
   );
 }

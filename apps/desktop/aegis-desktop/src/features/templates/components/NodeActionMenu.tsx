@@ -38,7 +38,13 @@ export function NodeActionMenu({
       <IconButton
         size="small"
         aria-label={t("templates.node.actions")}
-        onClick={(e) => setAnchor(e.currentTarget)}
+        onClick={(e) => {
+          // The row lives inside a tree item whose content click toggles
+          // the item. Stop the click here so opening the menu does not
+          // also collapse the node.
+          e.stopPropagation();
+          setAnchor(e.currentTarget);
+        }}
       >
         <MoreHorizIcon fontSize="small" />
       </IconButton>

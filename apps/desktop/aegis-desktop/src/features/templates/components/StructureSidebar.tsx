@@ -45,6 +45,7 @@ export function StructureSidebar({
       data-testid="structure-sidebar"
       sx={{
         width: 260,
+        height: "100%",
         flexShrink: 0,
         borderLeft: 1,
         borderColor: "divider",

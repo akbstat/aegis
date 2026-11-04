@@ -18,14 +18,19 @@ const DIRECTORY: StructureNodeView = {
   directory: true,
   parent: "n0",
   reference: null,
-  migration: { directory: "/opt/sop/raw", filter: ["*.sas7bdat"] },
+  migration: {
+    directory: "/opt/sop/raw",
+    filter: ["*.sas7bdat", "*.xpt"],
+  },
   children: [],
 };
 
 const FILE: StructureNodeView = {
   nodeId: "n2",
   description: "",
-  entryName: "a.sas7bdat",
+  // The name differs from the reference's file name on purpose, so the
+  // two are not mistaken for each other in the row.
+  entryName: "b.sas7bdat",
   directory: false,
   parent: "n1",
   reference: "/opt/sop/raw/a.sas7bdat",
@@ -59,25 +64,59 @@ describe("StructureNodeRow", () => {
     expect(screen.getByText("data")).toBeInTheDocument();
   });
 
-  it("shows the description, the migration source and the filters", () => {
+  it("does not show the description inline", () => {
     renderRow(DIRECTORY);
     expect(
-      screen.getByText("Statistical programming raw data"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Migration")).toBeInTheDocument();
-    expect(screen.getByText("/opt/sop/raw")).toBeInTheDocument();
-    expect(screen.getByText("*.sas7bdat")).toBeInTheDocument();
+      screen.queryByText("Statistical programming raw data"),
+    ).not.toBeInTheDocument();
   });
 
-  it("omits the empty description instead of rendering a blank line", () => {
+  it("shows the description as a tooltip when the row is hovered", async () => {
+    renderRow(DIRECTORY);
+    await userEvent.hover(screen.getByText("data"));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Statistical programming raw data");
+  });
+
+  it("marks a directory with a folder icon and a file with a file icon", () => {
+    const { unmount } = renderRow(DIRECTORY);
+    expect(screen.getByTestId("FolderIcon")).toBeInTheDocument();
+    unmount();
+
+    renderRow(FILE);
+    expect(screen.getByTestId("InsertDriveFileIcon")).toBeInTheDocument();
+  });
+
+  it("shows only the file name of the reference path", () => {
     renderRow(FILE);
     expect(screen.getByText("a.sas7bdat")).toBeInTheDocument();
-    expect(screen.queryByText("Migration")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("/opt/sop/raw/a.sas7bdat"),
+    ).not.toBeInTheDocument();
   });
 
-  it("shows the reference path of a file", () => {
+  it("shows the complete reference path in a tooltip", async () => {
     renderRow(FILE);
-    expect(screen.getByText("/opt/sop/raw/a.sas7bdat")).toBeInTheDocument();
+    await userEvent.hover(screen.getByText("a.sas7bdat"));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("/opt/sop/raw/a.sas7bdat");
+  });
+
+  it("shows the migration source as a file name with the whole path in a tooltip", async () => {
+    renderRow(DIRECTORY);
+    expect(screen.getByText("raw")).toBeInTheDocument();
+    expect(screen.queryByText("/opt/sop/raw")).not.toBeInTheDocument();
+    await userEvent.hover(screen.getByText("raw"));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("/opt/sop/raw");
+  });
+
+  it("shows the migration filters as chips", () => {
+    renderRow(DIRECTORY);
+    const chips = document.querySelectorAll(".MuiChip-root");
+    expect(chips).toHaveLength(2);
+    expect(chips[0]).toHaveTextContent("*.sas7bdat");
+    expect(chips[1]).toHaveTextContent("*.xpt");
   });
 
   it("shows the given label and the extra full path", () => {
@@ -91,16 +130,6 @@ describe("StructureNodeRow", () => {
     expect(
       screen.queryByRole("button", { name: /node actions/i }),
     ).not.toBeInTheDocument();
-  });
-
-  it("does not offer to add a child under a file", async () => {
-    renderRow(FILE, { canMutate: true });
-    await userEvent.click(screen.getByRole("button", { name: /node actions/i }));
-    // The server rejects a parent that is not a directory, so the action
-    // is not offered on a file.
-    expect(screen.queryByText("Add node")).not.toBeInTheDocument();
-    expect(screen.getByText("Edit node")).toBeInTheDocument();
-    expect(screen.getByText("Delete node")).toBeInTheDocument();
   });
 
   it("offers add, edit and delete to an admin", async () => {

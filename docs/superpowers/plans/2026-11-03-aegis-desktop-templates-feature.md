@@ -1970,14 +1970,19 @@ const DIRECTORY: StructureNodeView = {
   directory: true,
   parent: "n0",
   reference: null,
-  migration: { directory: "/opt/sop/raw", filter: ["*.sas7bdat"] },
+  migration: {
+    directory: "/opt/sop/raw",
+    filter: ["*.sas7bdat", "*.xpt"],
+  },
   children: [],
 };
 
 const FILE: StructureNodeView = {
   nodeId: "n2",
   description: "",
-  entryName: "a.sas7bdat",
+  // The name differs from the reference's file name on purpose, so the
+  // two are not mistaken for each other in the row.
+  entryName: "b.sas7bdat",
   directory: false,
   parent: "n1",
   reference: "/opt/sop/raw/a.sas7bdat",
@@ -2011,25 +2016,59 @@ describe("StructureNodeRow", () => {
     expect(screen.getByText("data")).toBeInTheDocument();
   });
 
-  it("shows the description, the migration source and the filters", () => {
+  it("does not show the description inline", () => {
     renderRow(DIRECTORY);
     expect(
-      screen.getByText("Statistical programming raw data"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Migration")).toBeInTheDocument();
-    expect(screen.getByText("/opt/sop/raw")).toBeInTheDocument();
-    expect(screen.getByText("*.sas7bdat")).toBeInTheDocument();
+      screen.queryByText("Statistical programming raw data"),
+    ).not.toBeInTheDocument();
   });
 
-  it("omits the empty description instead of rendering a blank line", () => {
+  it("shows the description as a tooltip when the row is hovered", async () => {
+    renderRow(DIRECTORY);
+    await userEvent.hover(screen.getByText("data"));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("Statistical programming raw data");
+  });
+
+  it("marks a directory with a folder icon and a file with a file icon", () => {
+    const { unmount } = renderRow(DIRECTORY);
+    expect(screen.getByTestId("FolderIcon")).toBeInTheDocument();
+    unmount();
+
+    renderRow(FILE);
+    expect(screen.getByTestId("InsertDriveFileIcon")).toBeInTheDocument();
+  });
+
+  it("shows only the file name of the reference path", () => {
     renderRow(FILE);
     expect(screen.getByText("a.sas7bdat")).toBeInTheDocument();
-    expect(screen.queryByText("Migration")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("/opt/sop/raw/a.sas7bdat"),
+    ).not.toBeInTheDocument();
   });
 
-  it("shows the reference path of a file", () => {
+  it("shows the complete reference path in a tooltip", async () => {
     renderRow(FILE);
-    expect(screen.getByText("/opt/sop/raw/a.sas7bdat")).toBeInTheDocument();
+    await userEvent.hover(screen.getByText("a.sas7bdat"));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("/opt/sop/raw/a.sas7bdat");
+  });
+
+  it("shows the migration source as a file name with the whole path in a tooltip", async () => {
+    renderRow(DIRECTORY);
+    expect(screen.getByText("raw")).toBeInTheDocument();
+    expect(screen.queryByText("/opt/sop/raw")).not.toBeInTheDocument();
+    await userEvent.hover(screen.getByText("raw"));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("/opt/sop/raw");
+  });
+
+  it("shows the migration filters as chips", () => {
+    renderRow(DIRECTORY);
+    const chips = document.querySelectorAll(".MuiChip-root");
+    expect(chips).toHaveLength(2);
+    expect(chips[0]).toHaveTextContent("*.sas7bdat");
+    expect(chips[1]).toHaveTextContent("*.xpt");
   });
 
   it("shows the given label and the extra full path", () => {
@@ -2043,16 +2082,6 @@ describe("StructureNodeRow", () => {
     expect(
       screen.queryByRole("button", { name: /node actions/i }),
     ).not.toBeInTheDocument();
-  });
-
-  it("does not offer to add a child under a file", async () => {
-    renderRow(FILE, { canMutate: true });
-    await userEvent.click(screen.getByRole("button", { name: /node actions/i }));
-    // The server rejects a parent that is not a directory, so the action
-    // is not offered on a file.
-    expect(screen.queryByText("Add node")).not.toBeInTheDocument();
-    expect(screen.getByText("Edit node")).toBeInTheDocument();
-    expect(screen.getByText("Delete node")).toBeInTheDocument();
   });
 
   it("offers add, edit and delete to an admin", async () => {
@@ -2120,7 +2149,13 @@ export function NodeActionMenu({
       <IconButton
         size="small"
         aria-label={t("templates.node.actions")}
-        onClick={(e) => setAnchor(e.currentTarget)}
+        onClick={(e) => {
+          // The row lives inside a tree item whose content click toggles
+          // the item. Stop the click here so opening the menu does not
+          // also collapse the node.
+          e.stopPropagation();
+          setAnchor(e.currentTarget);
+        }}
       >
         <MoreHorizIcon fontSize="small" />
       </IconButton>
@@ -2166,7 +2201,11 @@ export function NodeActionMenu({
 Create `apps/desktop/aegis-desktop/src/features/templates/components/StructureNodeRow.tsx`:
 
 ```tsx
-import { Box, Stack, Typography } from "@aegis/ui/mui";
+import { Box, Chip, Stack, Tooltip, Typography } from "@aegis/ui/mui";
+import {
+  Folder as FolderIcon,
+  InsertDriveFile as InsertDriveFileIcon,
+} from "@aegis/ui/icons";
 import { useI18n } from "@aegis/ui/i18n";
 
 import type { StructureNodeView } from "../../../shared/api";
@@ -2185,9 +2224,23 @@ export interface StructureNodeRowProps {
 }
 
 /**
- * One node's row: the node's own name as the label, then the description, the
- * reference and the migration as secondary text. An empty description
- * is skipped rather than rendered as a blank line.
+ * The last segment of a path — the file or folder name.
+ *
+ * The reference and the migration source are absolute paths; only the
+ * name is shown inline, with the whole path in the tooltip.
+ */
+export function basename(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
+/**
+ * One node's row: a folder or file icon, then the node's own name, then
+ * the reference and the migration.
+ *
+ * The description is not shown inline — it is the row's tooltip, so a
+ * long description cannot push the name out of view. The reference and
+ * the migration source are shown by name only, with the whole path in
+ * their tooltip; the migration filters are chips.
  */
 export function StructureNodeRow({
   node,
@@ -2201,47 +2254,64 @@ export function StructureNodeRow({
   const { t } = useI18n();
 
   return (
-    <Stack direction="row" spacing={1} sx={{ alignItems: "flex-start" }}>
+    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+      {node.directory ? (
+        <FolderIcon fontSize="small" color="primary" />
+      ) : (
+        <InsertDriveFileIcon fontSize="small" color="action" />
+      )}
+
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-        <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
-          {label ?? node.entryName}
-        </Typography>
+        <Tooltip title={node.description} describeChild placement="top">
+          <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
+            {label ?? node.entryName}
+          </Typography>
+        </Tooltip>
+
         {secondaryPath && (
           <Typography variant="caption" color="text.secondary" noWrap>
             {secondaryPath}
           </Typography>
         )}
-        {node.description && (
-          <Typography variant="caption" color="text.secondary" noWrap>
-            {node.description}
-          </Typography>
-        )}
+
         {node.reference && (
-          <Typography variant="caption" color="text.secondary" noWrap>
-            {node.reference}
-          </Typography>
+          <Tooltip title={node.reference} describeChild placement="top">
+            <Typography variant="caption" color="text.secondary" noWrap>
+              {basename(node.reference)}
+            </Typography>
+          </Tooltip>
         )}
+
         {node.migration && (
           <>
             <Typography variant="caption" color="text.secondary" noWrap>
               {t("templates.node.field.migration")}
             </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {node.migration.directory}
-            </Typography>
-            {node.migration.filter.map((f) => (
-              <Typography
-                key={f}
-                variant="caption"
-                color="text.secondary"
-                noWrap
-              >
-                {f}
+            <Tooltip
+              title={node.migration.directory}
+              describeChild
+              placement="top"
+            >
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {basename(node.migration.directory)}
               </Typography>
-            ))}
+            </Tooltip>
+            {node.migration.filter.length > 0 && (
+              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                {node.migration.filter.map((filter) => (
+                  <Chip
+                    key={filter}
+                    size="small"
+                    label={filter}
+                    sx={{ height: 18, fontSize: 11 }}
+                  />
+                ))}
+              </Box>
+            )}
           </>
         )}
       </Box>
+
       {canMutate && (
         <NodeActionMenu
           node={node}
@@ -2949,7 +3019,9 @@ const STRUCTURE = {
             {
               nodeId: "f1",
               description: "",
-              entryName: "a.sas7bdat",
+              // The name differs from the reference's file name on
+              // purpose, so the two are not mistaken for each other.
+              entryName: "b.sas7bdat",
               directory: false,
               parent: "d2",
               reference: "/abs/a.sas7bdat",
@@ -3242,6 +3314,22 @@ describe("StructureTemplatePage", () => {
     );
   });
 
+  it("does not collapse the node when the action menu is opened", async () => {
+    mockCommands(baseCommands({ current_user: () => ADMIN_USER }));
+    await renderPage();
+    // The tree renders fully expanded, so the child is on screen.
+    expect(await screen.findByText("data")).toBeInTheDocument();
+    const item = screen.getByText("raw").closest("li");
+    expect(item).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /node actions/i }))[0],
+    );
+
+    // The click must not reach the tree item, which would collapse it.
+    expect(item).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("shows the node actions to an admin", async () => {
     mockCommands(
       baseCommands({
@@ -3315,6 +3403,7 @@ export function StructureSidebar({
       data-testid="structure-sidebar"
       sx={{
         width: 260,
+        height: "100%",
         flexShrink: 0,
         borderLeft: 1,
         borderColor: "divider",
@@ -3541,8 +3630,22 @@ export function StructureTree({
   const shared: TreeProps = { nodes, canMutate, onAdd, onEdit, onDelete };
 
   return (
-    <Box sx={{ flexGrow: 1, minWidth: 0, p: 3, overflow: "auto" }}>
-      <Stack direction="row" spacing={2} sx={{ mb: 2, alignItems: "center" }}>
+    <Box
+      sx={{
+        flexGrow: 1,
+        minWidth: 0,
+        minHeight: 0,
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
+    >
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{ px: 3, pt: 3, pb: 2, flexShrink: 0, alignItems: "center" }}
+      >
         <ToggleButtonGroup
           size="small"
           exclusive
@@ -3570,15 +3673,17 @@ export function StructureTree({
         )}
       </Stack>
 
-      {nodes.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
-          {loading ? "…" : t("templates.structure.noNodes")}
-        </Typography>
-      ) : mode === "complete" ? (
-        <CompleteTree {...shared} />
-      ) : (
-        <FlatTree {...shared} />
-      )}
+      <Box sx={{ flexGrow: 1, minHeight: 0, overflow: "auto", px: 3, pb: 3 }}>
+        {nodes.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {loading ? "…" : t("templates.structure.noNodes")}
+          </Typography>
+        ) : mode === "complete" ? (
+          <CompleteTree {...shared} />
+        ) : (
+          <FlatTree {...shared} />
+        )}
+      </Box>
     </Box>
   );
 }
@@ -3774,16 +3879,20 @@ export function StructureTemplatePage({
   }
 
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh" }}>
+    // A bounded height: the page is exactly one viewport tall, so the
+    // tree pane scrolls inside it and the heading, the toggle and the
+    // sidebar stay put.
+    <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
       <Box
         sx={{
           flexGrow: 1,
           minWidth: 0,
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
         }}
       >
-        <Typography variant="h5" sx={{ p: 3, pb: 0 }}>
+        <Typography variant="h5" sx={{ p: 3, pb: 0, flexShrink: 0 }}>
           {structure.data?.name ?? t("templates.structure.heading")}
         </Typography>
         <StructureTree
@@ -3927,6 +4036,25 @@ git commit -m "feat(desktop): add the project structure template page"
 ```
 
 ---
+
+## The node row and the tree layout (added after the first build)
+
+The node row was tightened, and the tree pane given a bounded layout:
+
+- The `description` is no longer shown inline. It is the tooltip on the
+  name, so a long description cannot push the name out of view.
+- A folder icon marks a directory and a file icon a file, before the name.
+- The `reference` and the migration source are shown by file name only; the
+  whole path is in their tooltip. The migration filters are chips.
+- The tooltips use the MUI `describeChild` prop, so the description is
+  conveyed as a description of the name rather than replacing the name as
+  the accessible name.
+- The action menu trigger stops the click, so opening it does not also
+  collapse the tree node it sits in. The tree item content click toggles
+  the item, so the trigger has to keep the click to itself.
+- The page is exactly one viewport tall: the Complete / Flat toggle and the
+  Add root node button sit above the tree and never scroll away, only the
+  tree scrolls, and the structure sidebar stays visible.
 
 ## Structure management (added after the first build)
 

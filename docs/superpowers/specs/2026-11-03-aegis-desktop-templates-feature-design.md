@@ -179,13 +179,24 @@ general user never sees a 403.
 **Tree pane (left).** The structure name, a *Complete* / *Flat* toggle, and the
 tree.
 
-**Node row.** The node's **own name** as the primary label. Below it, in
-secondary text:
+**Node row.** A folder or file icon, then the node's **own name** as the
+primary label. Below it, in secondary text:
 
-- `description` — always, when non-empty.
 - `reference` — files only (the server rejects `reference` on a directory).
-- `migration` — directories only: the migration `directory`, plus its `filter`
-  list. (The server rejects `migration` on a file.)
+  Shown by **file name only**; the whole path is the row's tooltip.
+- `migration` — directories only: the migration `directory`, again by file
+  name with the whole path in a tooltip, plus its `filter` list as **chips**.
+  (The server rejects `migration` on a file.)
+
+The `description` is **not** shown inline — it is the name's tooltip, so a
+long description cannot push the name out of view. The tooltips use MUI's
+`describeChild`, so the description is conveyed as a description of the name
+rather than replacing the name as the accessible name.
+
+The tree pane is a bounded column: the *Complete* / *Flat* toggle and the
+*Add root node* button sit above the tree and never scroll away, and only the
+tree itself scrolls. The page is exactly one viewport tall, so the structure
+sidebar on the right stays visible too.
 
 **Admin affordances.** For `root` and `admin` roles only:
 

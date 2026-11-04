@@ -182,16 +182,20 @@ export function StructureTemplatePage({
   }
 
   return (
-    <Box sx={{ display: "flex", minHeight: "100vh" }}>
+    // A bounded height: the page is exactly one viewport tall, so the
+    // tree pane scrolls inside it and the heading, the toggle and the
+    // sidebar stay put.
+    <Box sx={{ display: "flex", height: "100vh", overflow: "hidden" }}>
       <Box
         sx={{
           flexGrow: 1,
           minWidth: 0,
+          minHeight: 0,
           display: "flex",
           flexDirection: "column",
         }}
       >
-        <Typography variant="h5" sx={{ p: 3, pb: 0 }}>
+        <Typography variant="h5" sx={{ p: 3, pb: 0, flexShrink: 0 }}>
           {structure.data?.name ?? t("templates.structure.heading")}
         </Typography>
         <StructureTree
