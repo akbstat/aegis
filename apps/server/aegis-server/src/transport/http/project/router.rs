@@ -17,4 +17,8 @@ pub fn router() -> OpenApiRouter<AppState> {
         .routes(routes!(handlers::list_projects))
         .routes(routes!(handlers::get_project_by_code))
         .routes(routes!(handlers::update_project))
+        .routes(routes!(handlers::create_project_branch))
+        .routes(routes!(handlers::list_project_branches))
+        .routes(routes!(handlers::get_project_branch_by_id))
+        .routes(routes!(handlers::update_project_branch))
 }

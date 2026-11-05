@@ -15,10 +15,11 @@ use apis::project::{
 
 use crate::adapter::facade::internal::ProjectServiceImpl;
 use crate::domain::{
-    DomainError, Project, ProjectMember, ProjectNew, ProjectRepository, ProjectTag, ProjectUpdate,
+    DomainError, Project, ProjectBranch, ProjectBranchNew, ProjectBranchRepository,
+    ProjectBranchUpdate, ProjectMember, ProjectNew, ProjectRepository, ProjectTag, ProjectUpdate,
     RoleType, TeamType, UserService, UserSummary,
 };
-use crate::usecase::{ProjectUsecase, ProjectUsecaseConfig};
+use crate::usecase::{ProjectBranchUsecase, ProjectUsecase, ProjectUsecaseConfig};
 
 fn mock_now() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 8, 9, 0, 0, 0).unwrap()
@@ -135,6 +136,117 @@ impl ProjectRepository for InMemProjectRepo {
     }
 }
 
+#[derive(Default)]
+struct InMemBranchState {
+    branches: HashMap<i32, ProjectBranch>,
+    next_id: AtomicI32,
+}
+
+#[derive(Clone, Default)]
+struct InMemBranchRepo {
+    state: Arc<Mutex<InMemBranchState>>,
+}
+
+impl InMemBranchRepo {
+    fn new() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(InMemBranchState {
+                branches: HashMap::new(),
+                next_id: AtomicI32::new(1),
+            })),
+        }
+    }
+}
+
+#[async_trait]
+impl ProjectBranchRepository for InMemBranchRepo {
+    async fn create(&self, input: ProjectBranchNew) -> Result<ProjectBranch, DomainError> {
+        let mut s = self.state.lock().unwrap();
+        if s.branches
+            .values()
+            .any(|b| b.project_id == input.project_id && b.branch == input.branch)
+        {
+            return Err(DomainError::DuplicateBranch(input.branch));
+        }
+        let id = s.next_id.fetch_add(1, Ordering::SeqCst);
+        let now = mock_now();
+        // The switch: a branch created as active deactivates the
+        // project's other active branches.
+        if input.active {
+            for b in s.branches.values_mut() {
+                if b.project_id == input.project_id {
+                    b.active = false;
+                }
+            }
+        }
+        let branch = ProjectBranch::for_repository(
+            id,
+            input.project_id,
+            input.branch,
+            input.active,
+            now,
+            now,
+        );
+        s.branches.insert(id, branch.clone());
+        Ok(branch)
+    }
+    async fn find_by_id(&self, id: i32) -> Result<ProjectBranch, DomainError> {
+        let s = self.state.lock().unwrap();
+        let b = s
+            .branches
+            .get(&id)
+            .cloned()
+            .ok_or(DomainError::BranchNotFound(id))?;
+        Ok(b)
+    }
+    async fn list_by_project(&self, project_id: i32) -> Result<Vec<ProjectBranch>, DomainError> {
+        let mut out: Vec<ProjectBranch> = self
+            .state
+            .lock()
+            .unwrap()
+            .branches
+            .values()
+            .filter(|b| b.project_id == project_id)
+            .cloned()
+            .collect();
+        out.sort_by_key(|b| b.id);
+        Ok(out)
+    }
+    async fn update(&self, input: ProjectBranchUpdate) -> Result<ProjectBranch, DomainError> {
+        let mut s = self.state.lock().unwrap();
+        if let Some(ref name) = input.branch {
+            let dup = s
+                .branches
+                .values()
+                .any(|o| o.project_id == input.project_id && o.branch == *name && o.id != input.id);
+            if dup {
+                return Err(DomainError::DuplicateBranch(name.clone()));
+            }
+        }
+        // The switch: activating this branch deactivates the project's
+        // other active branches.
+        if input.active == Some(true) {
+            for o in s.branches.values_mut() {
+                if o.project_id == input.project_id && o.id != input.id {
+                    o.active = false;
+                }
+            }
+        }
+        let b = s
+            .branches
+            .get_mut(&input.id)
+            .filter(|b| b.project_id == input.project_id)
+            .ok_or(DomainError::BranchNotFound(input.id))?;
+        if let Some(ref name) = input.branch {
+            b.branch = name.clone();
+        }
+        if let Some(a) = input.active {
+            b.active = a;
+        }
+        Ok(b.clone())
+    }
+}
+
 #[derive(Clone, Default)]
 struct InMemUserService {
     users: Arc<Mutex<Vec<UserSummary>>>,
@@ -164,7 +276,7 @@ impl UserService for InMemUserService {
     }
 }
 
-fn make_service() -> ProjectServiceImpl<InMemProjectRepo, InMemUserService> {
+fn make_service() -> ProjectServiceImpl<InMemProjectRepo, InMemUserService, InMemBranchRepo> {
     let projects = InMemProjectRepo::new();
     let users = InMemUserService::with_users(vec![
         UserSummary {
@@ -184,7 +296,8 @@ fn make_service() -> ProjectServiceImpl<InMemProjectRepo, InMemUserService> {
         project_repo: projects,
         users,
     });
-    ProjectServiceImpl::new(usecase)
+    let branch_usecase = ProjectBranchUsecase::new(InMemBranchRepo::new());
+    ProjectServiceImpl::new(usecase, branch_usecase)
 }
 
 fn tag(key: &str, value: &str) -> TagData {
@@ -368,7 +481,7 @@ async fn update_project_replaces_configuration_whole_list() {
 #[tokio::test]
 async fn project_service_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<ProjectServiceImpl<InMemProjectRepo, InMemUserService>>();
+    assert_send_sync::<ProjectServiceImpl<InMemProjectRepo, InMemUserService, InMemBranchRepo>>();
 }
 
 #[tokio::test]
@@ -418,4 +531,145 @@ fn _force_use_project_member() -> ProjectMember {
 #[allow(dead_code)]
 fn _force_use_project_tag() -> ProjectTag {
     ProjectTag::for_repository("k".into(), "v".into())
+}
+
+// ---------- branch methods through the port ----------
+
+#[tokio::test]
+async fn create_project_branch_through_the_port() {
+    let service = make_service();
+    let view = service
+        .create_project_branch(apis::project::CreateProjectBranchRequest {
+            project_id: 1,
+            branch: "2026Q1".into(),
+            active: true,
+        })
+        .await
+        .expect("create");
+    assert_eq!(view.branch, "2026Q1");
+    assert_eq!(view.project_id, 1);
+    assert!(view.active);
+}
+
+#[tokio::test]
+async fn create_project_branch_with_a_blank_name_is_a_validation_error() {
+    let service = make_service();
+    let err = service
+        .create_project_branch(apis::project::CreateProjectBranchRequest {
+            project_id: 1,
+            branch: "   ".into(),
+            active: false,
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ProjectApiError::Validation(_)));
+}
+
+#[tokio::test]
+async fn create_project_branch_with_a_duplicate_name_is_a_conflict() {
+    let service = make_service();
+    service
+        .create_project_branch(apis::project::CreateProjectBranchRequest {
+            project_id: 1,
+            branch: "2026Q1".into(),
+            active: false,
+        })
+        .await
+        .expect("create");
+    let err = service
+        .create_project_branch(apis::project::CreateProjectBranchRequest {
+            project_id: 1,
+            branch: "2026Q1".into(),
+            active: false,
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(err, ProjectApiError::DuplicateBranch(_)));
+}
+
+#[tokio::test]
+async fn list_project_branches_through_the_port() {
+    let service = make_service();
+    service
+        .create_project_branch(apis::project::CreateProjectBranchRequest {
+            project_id: 1,
+            branch: "2026Q1".into(),
+            active: false,
+        })
+        .await
+        .expect("create");
+    let views = service.list_project_branches(1).await.expect("list");
+    assert_eq!(views.len(), 1);
+    assert_eq!(views[0].branch, "2026Q1");
+}
+
+#[tokio::test]
+async fn update_project_branch_renames_through_the_port() {
+    let service = make_service();
+    let created = service
+        .create_project_branch(apis::project::CreateProjectBranchRequest {
+            project_id: 1,
+            branch: "old".into(),
+            active: false,
+        })
+        .await
+        .expect("create");
+    let updated = service
+        .update_project_branch(apis::project::UpdateProjectBranchRequest {
+            id: created.id,
+            project_id: 1,
+            branch: Some("new".into()),
+            active: None,
+        })
+        .await
+        .expect("update");
+    assert_eq!(updated.branch, "new");
+}
+
+#[tokio::test]
+async fn get_project_branch_by_id_reports_an_unknown_branch_as_not_found() {
+    let service = make_service();
+    let err = service.get_project_branch_by_id(42).await.unwrap_err();
+    assert!(matches!(err, ProjectApiError::BranchNotFound(42)));
+}
+
+#[tokio::test]
+async fn activating_a_branch_through_the_port_switches_the_active_branch() {
+    let service = make_service();
+    let first = service
+        .create_project_branch(apis::project::CreateProjectBranchRequest {
+            project_id: 1,
+            branch: "a".into(),
+            active: true,
+        })
+        .await
+        .expect("create a");
+    let second = service
+        .create_project_branch(apis::project::CreateProjectBranchRequest {
+            project_id: 1,
+            branch: "b".into(),
+            active: false,
+        })
+        .await
+        .expect("create b");
+
+    service
+        .update_project_branch(apis::project::UpdateProjectBranchRequest {
+            id: second.id,
+            project_id: 1,
+            branch: None,
+            active: Some(true),
+        })
+        .await
+        .expect("activate b");
+
+    let views = service.list_project_branches(1).await.expect("list");
+    let active: Vec<_> = views.iter().filter(|b| b.active).collect();
+    assert_eq!(active.len(), 1, "exactly one branch may be active");
+    assert_eq!(active[0].id, second.id);
+    let first_after = views.iter().find(|b| b.id == first.id).expect("a");
+    assert!(
+        !first_after.active,
+        "the previous active branch is deactivated"
+    );
 }

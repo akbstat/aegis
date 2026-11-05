@@ -330,6 +330,30 @@ impl ProjectService for NullProjectService {
     ) -> Result<apis::project::ProjectView, apis::project::ProjectApiError> {
         unimplemented!()
     }
+    async fn create_project_branch(
+        &self,
+        _req: apis::project::CreateProjectBranchRequest,
+    ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
+        unimplemented!()
+    }
+    async fn get_project_branch_by_id(
+        &self,
+        _id: i32,
+    ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
+        unimplemented!()
+    }
+    async fn list_project_branches(
+        &self,
+        _project_id: i32,
+    ) -> Result<Vec<apis::project::ProjectBranchView>, apis::project::ProjectApiError> {
+        unimplemented!()
+    }
+    async fn update_project_branch(
+        &self,
+        _req: apis::project::UpdateProjectBranchRequest,
+    ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
+        unimplemented!()
+    }
 }
 
 /// Stub [`apis::terminology::TerminologyService`] for the live-DB auth

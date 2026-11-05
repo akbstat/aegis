@@ -23,11 +23,20 @@ pub enum ProjectApiError {
     #[error("not found")]
     NotFound,
 
+    #[error("branch not found: {0}")]
+    BranchNotFound(i32),
+
+    #[error("branch project not found: {0}")]
+    BranchProjectNotFound(i32),
+
     #[error("user not found: {0}")]
     UserNotFound(String),
 
     #[error("code already exists: {0}")]
     DuplicateCode(String),
+
+    #[error("branch already exists: {0}")]
+    DuplicateBranch(String),
 
     #[error("repository error: {0}")]
     Repository(String),
@@ -170,6 +179,47 @@ pub struct ProjectMemberData {
     pub workers: Vec<String>,
 }
 
+/// Server-side projection of a single project branch.
+///
+/// Branches are a standalone resource: `ProjectView` does not carry
+/// them, and they are read through the branch endpoints only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectBranchView {
+    pub id: i32,
+    pub project_id: i32,
+    pub branch: String,
+    pub active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request-side payload for creating a branch of a project.
+///
+/// `project_id` is resolved from the project's code by the transport
+/// layer before the request reaches the backend.
+#[derive(Debug, Clone)]
+pub struct CreateProjectBranchRequest {
+    pub project_id: i32,
+    pub branch: String,
+    /// Whether the new branch becomes the project's active one. When
+    /// true, the project's other active branches are deactivated.
+    pub active: bool,
+}
+
+/// Request-side payload for renaming a branch and / or changing
+/// whether it is the project's active branch.
+///
+/// `None` for `branch` leaves the name alone; `None` for `active`
+/// leaves the flag alone. `project_id` scopes the write, so a branch
+/// of another project is reported as not found.
+#[derive(Debug, Clone, Default)]
+pub struct UpdateProjectBranchRequest {
+    pub id: i32,
+    pub project_id: i32,
+    pub branch: Option<String>,
+    pub active: Option<bool>,
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateProjectRequest {
     pub code: String,
@@ -215,4 +265,29 @@ pub trait ProjectService: Send + Sync {
         &self,
         req: UpdateProjectRequest,
     ) -> Result<ProjectView, ProjectApiError>;
+
+    /// Creates a branch of a project. When `req.active` is true the new
+    /// branch becomes the project's active one and the project's other
+    /// active branches are deactivated.
+    async fn create_project_branch(
+        &self,
+        req: CreateProjectBranchRequest,
+    ) -> Result<ProjectBranchView, ProjectApiError>;
+
+    /// Fetches one branch by its id.
+    async fn get_project_branch_by_id(&self, id: i32)
+    -> Result<ProjectBranchView, ProjectApiError>;
+
+    /// Lists every branch of one project.
+    async fn list_project_branches(
+        &self,
+        project_id: i32,
+    ) -> Result<Vec<ProjectBranchView>, ProjectApiError>;
+
+    /// Renames a branch and / or changes whether it is the project's
+    /// active branch.
+    async fn update_project_branch(
+        &self,
+        req: UpdateProjectBranchRequest,
+    ) -> Result<ProjectBranchView, ProjectApiError>;
 }

@@ -209,13 +209,15 @@ fn build_project_service(
     pool: PgPool,
     user: Arc<dyn apis::user::UserService>,
 ) -> Arc<dyn apis::project::ProjectService> {
-    let project_repo = project::ProjectRepo::new(pool);
+    let project_repo = project::ProjectRepo::new(pool.clone());
+    let branch_repo = project::ProjectBranchRepo::new(pool);
     let users = project::UserServiceImpl::new(user);
     let usecase = project::ProjectUsecase::new(project::ProjectUsecaseConfig {
         project_repo,
         users,
     });
-    Arc::new(project::ProjectServiceImpl::new(usecase))
+    let branch_usecase = project::ProjectBranchUsecase::new(branch_repo);
+    Arc::new(project::ProjectServiceImpl::new(usecase, branch_usecase))
 }
 
 /// Wire the terminology crate's adapters into the apis

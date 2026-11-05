@@ -133,3 +133,27 @@ impl ProjectView {
         }
     }
 }
+
+/// Server-side projection of a single project branch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectBranchView {
+    pub id: i32,
+    pub project_id: i32,
+    pub branch: String,
+    pub active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl From<crate::domain::ProjectBranch> for ProjectBranchView {
+    fn from(b: crate::domain::ProjectBranch) -> Self {
+        Self {
+            id: b.id,
+            project_id: b.project_id,
+            branch: b.branch,
+            active: b.active,
+            created_at: b.created_at,
+            updated_at: b.updated_at,
+        }
+    }
+}

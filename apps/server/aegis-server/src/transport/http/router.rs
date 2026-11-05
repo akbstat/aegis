@@ -228,6 +228,30 @@ mod tests {
         ) -> Result<apis::project::ProjectView, apis::project::ProjectApiError> {
             unimplemented!()
         }
+        async fn create_project_branch(
+            &self,
+            _req: apis::project::CreateProjectBranchRequest,
+        ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
+            unimplemented!()
+        }
+        async fn get_project_branch_by_id(
+            &self,
+            _id: i32,
+        ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
+            unimplemented!()
+        }
+        async fn list_project_branches(
+            &self,
+            _project_id: i32,
+        ) -> Result<Vec<apis::project::ProjectBranchView>, apis::project::ProjectApiError> {
+            unimplemented!()
+        }
+        async fn update_project_branch(
+            &self,
+            _req: apis::project::UpdateProjectBranchRequest,
+        ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
+            unimplemented!()
+        }
     }
 
     /// Null terminology service for tests that don't exercise the
@@ -443,6 +467,30 @@ mod tests {
         ) -> Result<apis::project::ProjectView, apis::project::ProjectApiError> {
             Ok(sample_project_view(1, "pr1"))
         }
+        async fn create_project_branch(
+            &self,
+            _req: apis::project::CreateProjectBranchRequest,
+        ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
+            unimplemented!()
+        }
+        async fn get_project_branch_by_id(
+            &self,
+            _id: i32,
+        ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
+            unimplemented!()
+        }
+        async fn list_project_branches(
+            &self,
+            _project_id: i32,
+        ) -> Result<Vec<apis::project::ProjectBranchView>, apis::project::ProjectApiError> {
+            unimplemented!()
+        }
+        async fn update_project_branch(
+            &self,
+            _req: apis::project::UpdateProjectBranchRequest,
+        ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
+            unimplemented!()
+        }
     }
 
     #[tokio::test]
@@ -638,6 +686,66 @@ mod tests {
                 properties.get("override").is_some(),
                 "{schema} must carry an `override` property: {properties}",
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn openapi_json_advertises_the_project_branch_namespace() {
+        let app = router(test_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api-docs/openapi.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), AxStatus::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Every branch route must be present and require BearerAuth.
+        let routes: Vec<(&str, &str)> = vec![
+            ("post", "/api/project/{code}/branches"),
+            ("get", "/api/project/{code}/branches"),
+            ("get", "/api/project/{code}/branches/{id}"),
+            ("patch", "/api/project/{code}/branches/{id}"),
+        ];
+        for (method, path) in &routes {
+            let op = &doc["paths"][path][method];
+            assert!(op.is_object(), "missing {method} {path} in openapi");
+            assert_eq!(
+                op["security"][0]["BearerAuth"],
+                serde_json::json!([]),
+                "{method} {path} must require BearerAuth",
+            );
+        }
+
+        // A write is admin-or-root only, so the two write routes
+        // advertise a 403 - and the two read routes do not.
+        for (method, path) in &routes {
+            let op = &doc["paths"][path][method];
+            let response_keys: Vec<&str> = op["responses"]
+                .as_object()
+                .expect("responses object")
+                .keys()
+                .map(|s| s.as_str())
+                .collect();
+            let is_write = matches!(*method, "post" | "patch");
+            if is_write {
+                assert!(
+                    response_keys.contains(&"403"),
+                    "{method} {path} must advertise a 403 (got {response_keys:?})",
+                );
+            } else {
+                assert!(
+                    !response_keys.contains(&"403"),
+                    "{method} {path} must not advertise a 403 (got {response_keys:?})",
+                );
+            }
         }
     }
 
