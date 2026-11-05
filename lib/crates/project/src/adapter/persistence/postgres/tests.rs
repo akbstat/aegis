@@ -199,6 +199,69 @@ fn sdtm_terminology_migration_updates_default_to_include_sdtm_terminology_null()
     );
 }
 
+#[test]
+fn project_branches_migration_creates_the_table_with_required_columns() {
+    let block = create_table_block(&load_migration(
+        "20261105024632_create_project_branches.sql",
+    ));
+    let upper = block.to_uppercase();
+    for required in [
+        "ID INTEGER",
+        "PROJECT_ID INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE",
+        "BRANCH TEXT NOT NULL",
+        "ACTIVE BOOLEAN NOT NULL DEFAULT FALSE",
+        "CREATED_AT TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+        "UPDATED_AT TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+    ] {
+        assert!(
+            upper.contains(&required.to_uppercase()),
+            "project_branches table must include `{required}`; got:\n{block}"
+        );
+    }
+}
+
+#[test]
+fn project_branches_migration_makes_the_name_unique_within_a_project() {
+    let block = create_table_block(&load_migration(
+        "20261105024632_create_project_branches.sql",
+    ));
+    assert!(
+        block.contains("UNIQUE (project_id, branch)"),
+        "expected UNIQUE (project_id, branch); got:\n{block}"
+    );
+}
+
+#[test]
+fn project_branches_migration_rejects_a_blank_name() {
+    let block = create_table_block(&load_migration(
+        "20261105024632_create_project_branches.sql",
+    ));
+    assert!(
+        block.contains("length(btrim(branch)) > 0"),
+        "expected a CHECK on the trimmed name; got:\n{block}"
+    );
+}
+
+#[test]
+fn project_branches_migration_allows_at_most_one_active_branch_per_project() {
+    let sql = load_migration("20261105024632_create_project_branches.sql");
+    assert!(
+        sql.contains("CREATE UNIQUE INDEX project_branches_one_active_per_project"),
+        "the partial unique index is the database backstop for the switch rule; got:\n{sql}"
+    );
+    assert!(
+        sql.contains("ON project_branches (project_id) WHERE active"),
+        "the partial unique index must be scoped to active rows of one project; got:\n{sql}"
+    );
+}
+
+#[test]
+fn project_branches_migration_has_updated_at_trigger() {
+    let sql = load_migration("20261105024632_create_project_branches.sql");
+    assert!(sql.contains("CREATE TRIGGER project_branches_set_updated_at"));
+    assert!(sql.contains("BEFORE UPDATE ON project_branches"));
+}
+
 #[cfg(test)]
 mod row_tests {
     use chrono::{TimeZone, Utc};
