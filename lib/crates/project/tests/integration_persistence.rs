@@ -12,8 +12,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use sqlx::PgPool;
 
-use project::domain::{ProjectConfiguration, ProjectMember, ProjectNew, ProjectTag, ProjectUpdate};
-use project::{ProjectRepo, ProjectRepository};
+use project::domain::{
+    DomainError, ProjectBranch, ProjectBranchNew, ProjectBranchRepository, ProjectBranchUpdate,
+    ProjectConfiguration, ProjectMember, ProjectNew, ProjectTag, ProjectUpdate,
+};
+use project::{ProjectBranchRepo, ProjectRepo, ProjectRepository};
 
 async fn with_pool<F, Fut, T>(f: F) -> T
 where
@@ -33,6 +36,10 @@ where
 
     // Destructive cleanup. The integration tests own the schema; if
     // you point them at production by mistake you will lose data.
+    sqlx::query("DROP TABLE IF EXISTS project_branches CASCADE")
+        .execute(&pool)
+        .await
+        .expect("drop project_branches");
     sqlx::query("DROP TABLE IF EXISTS project_members CASCADE")
         .execute(&pool)
         .await
@@ -226,6 +233,313 @@ async fn project_update_replaces_configuration_whole_list() {
         assert_eq!(raw_tags.len(), 2);
         assert_eq!(raw_tags[0]["key"], "k2");
         assert_eq!(raw_tags[1]["value"], "v3");
+    })
+    .await;
+}
+
+// ---------- project branches ----------
+
+#[tokio::test]
+#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+async fn branch_create_then_activate_switches_the_active_branch() {
+    with_pool(|pool| async move {
+        let projects = ProjectRepo::new(pool.clone());
+        let branches = ProjectBranchRepo::new(pool.clone());
+        let project = projects
+            .create(ProjectNew {
+                code: unique_code("proj-branch"),
+                description: "".into(),
+                members: None,
+                unblind_members: None,
+                configuration: None,
+            })
+            .await
+            .expect("create project");
+
+        let first = branches
+            .create(ProjectBranchNew {
+                project_id: project.id,
+                branch: "2026Q1".into(),
+                active: true,
+            })
+            .await
+            .expect("create first branch");
+        assert!(first.active);
+
+        // Creating a second *active* branch switches: the first one
+        // must be deactivated.
+        let second = branches
+            .create(ProjectBranchNew {
+                project_id: project.id,
+                branch: "2026Q2".into(),
+                active: true,
+            })
+            .await
+            .expect("create second branch");
+        assert!(second.active);
+
+        let listed = branches
+            .list_by_project(project.id)
+            .await
+            .expect("list branches");
+        assert_eq!(listed.len(), 2);
+        let active: Vec<&ProjectBranch> = listed.iter().filter(|b| b.active).collect();
+        assert_eq!(active.len(), 1, "at most one branch may be active");
+        assert_eq!(active[0].branch, "2026Q2");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+async fn branch_activate_via_update_switches_the_active_branch() {
+    with_pool(|pool| async move {
+        let projects = ProjectRepo::new(pool.clone());
+        let branches = ProjectBranchRepo::new(pool.clone());
+        let project = projects
+            .create(ProjectNew {
+                code: unique_code("proj-switch"),
+                description: "".into(),
+                members: None,
+                unblind_members: None,
+                configuration: None,
+            })
+            .await
+            .expect("create project");
+
+        let first = branches
+            .create(ProjectBranchNew {
+                project_id: project.id,
+                branch: "a".into(),
+                active: false,
+            })
+            .await
+            .expect("create a");
+        let second = branches
+            .create(ProjectBranchNew {
+                project_id: project.id,
+                branch: "b".into(),
+                active: false,
+            })
+            .await
+            .expect("create b");
+
+        branches
+            .update(ProjectBranchUpdate {
+                id: first.id,
+                project_id: project.id,
+                branch: None,
+                active: Some(true),
+            })
+            .await
+            .expect("activate a");
+        // Activating the branch that is already active is a no-op, not
+        // an error.
+        let again = branches
+            .update(ProjectBranchUpdate {
+                id: first.id,
+                project_id: project.id,
+                branch: None,
+                active: Some(true),
+            })
+            .await
+            .expect("activate a again");
+        assert!(again.active);
+
+        let updated = branches
+            .update(ProjectBranchUpdate {
+                id: second.id,
+                project_id: project.id,
+                branch: None,
+                active: Some(true),
+            })
+            .await
+            .expect("activate b");
+        assert!(updated.active);
+
+        let listed = branches
+            .list_by_project(project.id)
+            .await
+            .expect("list branches");
+        let active: Vec<&ProjectBranch> = listed.iter().filter(|b| b.active).collect();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].id, second.id);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+async fn branch_rename_to_its_own_name_succeeds() {
+    with_pool(|pool| async move {
+        let projects = ProjectRepo::new(pool.clone());
+        let branches = ProjectBranchRepo::new(pool.clone());
+        let project = projects
+            .create(ProjectNew {
+                code: unique_code("proj-rename"),
+                description: "".into(),
+                members: None,
+                unblind_members: None,
+                configuration: None,
+            })
+            .await
+            .expect("create project");
+
+        let branch = branches
+            .create(ProjectBranchNew {
+                project_id: project.id,
+                branch: "keep".into(),
+                active: false,
+            })
+            .await
+            .expect("create branch");
+
+        let renamed = branches
+            .update(ProjectBranchUpdate {
+                id: branch.id,
+                project_id: project.id,
+                branch: Some("keep".into()),
+                active: None,
+            })
+            .await
+            .expect("rename to the same name");
+        assert_eq!(renamed.branch, "keep");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+async fn branch_name_is_unique_within_a_project_but_free_across_projects() {
+    with_pool(|pool| async move {
+        let projects = ProjectRepo::new(pool.clone());
+        let branches = ProjectBranchRepo::new(pool.clone());
+        let project = projects
+            .create(ProjectNew {
+                code: unique_code("proj-dup"),
+                description: "".into(),
+                members: None,
+                unblind_members: None,
+                configuration: None,
+            })
+            .await
+            .expect("create project");
+        let other = projects
+            .create(ProjectNew {
+                code: unique_code("proj-dup"),
+                description: "".into(),
+                members: None,
+                unblind_members: None,
+                configuration: None,
+            })
+            .await
+            .expect("create other project");
+
+        branches
+            .create(ProjectBranchNew {
+                project_id: project.id,
+                branch: "shared".into(),
+                active: false,
+            })
+            .await
+            .expect("create branch");
+
+        // The same name under another project is legal.
+        branches
+            .create(ProjectBranchNew {
+                project_id: other.id,
+                branch: "shared".into(),
+                active: false,
+            })
+            .await
+            .expect("create branch under the other project");
+
+        // The same name under the same project is not.
+        let err = branches
+            .create(ProjectBranchNew {
+                project_id: project.id,
+                branch: "shared".into(),
+                active: false,
+            })
+            .await
+            .expect_err("duplicate branch name");
+        assert!(
+            matches!(err, DomainError::DuplicateBranch(_)),
+            "expected DuplicateBranch, got {err:?}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+async fn branch_of_another_project_is_reported_as_not_found() {
+    with_pool(|pool| async move {
+        let projects = ProjectRepo::new(pool.clone());
+        let branches = ProjectBranchRepo::new(pool.clone());
+        let project = projects
+            .create(ProjectNew {
+                code: unique_code("proj-owner"),
+                description: "".into(),
+                members: None,
+                unblind_members: None,
+                configuration: None,
+            })
+            .await
+            .expect("create project");
+        let other = projects
+            .create(ProjectNew {
+                code: unique_code("proj-owner"),
+                description: "".into(),
+                members: None,
+                unblind_members: None,
+                configuration: None,
+            })
+            .await
+            .expect("create other project");
+        let branch = branches
+            .create(ProjectBranchNew {
+                project_id: project.id,
+                branch: "mine".into(),
+                active: false,
+            })
+            .await
+            .expect("create branch");
+
+        let err = branches
+            .update(ProjectBranchUpdate {
+                id: branch.id,
+                project_id: other.id,
+                branch: Some("stolen".into()),
+                active: None,
+            })
+            .await
+            .expect_err("cross-project write");
+        assert!(
+            matches!(err, DomainError::BranchNotFound(_)),
+            "expected BranchNotFound, got {err:?}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+async fn branch_for_an_unknown_project_is_rejected() {
+    with_pool(|pool| async move {
+        let branches = ProjectBranchRepo::new(pool);
+        let err = branches
+            .create(ProjectBranchNew {
+                project_id: 999_999_999,
+                branch: "orphan".into(),
+                active: false,
+            })
+            .await
+            .expect_err("foreign key violation");
+        assert!(
+            !matches!(err, DomainError::DuplicateBranch(_)),
+            "expected a foreign-key failure, got {err:?}"
+        );
     })
     .await;
 }
