@@ -175,6 +175,31 @@ export interface UpdateProjectBody {
   configurations?: ProjectConfiguration;
 }
 
+/** A named working branch of a project. Mirrors
+ *  `src-tauri/src/http/project.rs::ProjectBranchViewResponse`.
+ *
+ *  There is deliberately no `active` field: the server dropped the flag
+ *  from the branch row, and which branch the desktop is working on is
+ *  local state, not something the server knows. */
+export interface ProjectBranchView {
+  id: number;
+  projectId: number;
+  branch: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Body for `api.createProjectBranch(code, body)`. */
+export interface CreateProjectBranchInput {
+  branch: string;
+}
+
+/** Body for `api.updateProjectBranch(code, id, body)`. An absent
+ *  `branch` leaves the name alone. */
+export interface UpdateProjectBranchInput {
+  branch?: string;
+}
+
 // Terminology
 
 export type TerminologyKind = "sdtm" | "adam";

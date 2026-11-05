@@ -19,6 +19,7 @@ import type {
   CreateCrfFormInput,
   CreateDomainAnnotationInput,
   CreateMissionInput,
+  CreateProjectBranchInput,
   CreateProjectInput,
   CreateSdtmDomainInput,
   CreateSdtmVariableInput,
@@ -46,6 +47,7 @@ import type {
   MissionViewResponse,
   PagedCodeItemListResponse,
   PagedCodeListListResponse,
+  ProjectBranchView,
   ProjectView,
   RegisterUserInput,
   RegisterUserResponse,
@@ -70,6 +72,7 @@ import type {
   UpdateCrfOptionInput,
   UpdateCrfUnitInput,
   UpdateDomainAnnotationInput,
+  UpdateProjectBranchInput,
   UpdateProjectBody,
   UpdateSdtmDomainInput,
   UpdateSdtmVariableInput,
@@ -136,6 +139,31 @@ export const api = {
     call<ProjectView>("get_project_by_code", { code }),
   updateProject: (code: string, body: UpdateProjectBody): Promise<ProjectView> =>
     call<ProjectView>("update_project", { code, body: { ...body } }),
+
+  // project branches
+  //
+  // The server's branch object carries no `active` flag — the desktop
+  // keeps its own active branch in the settings store. `body` is
+  // nested under the `body` key because the Rust command takes it as
+  // a struct parameter named `body`; Tauri looks each argument up by
+  // name and has no whole-payload fallback.
+  listProjectBranches: (code: string): Promise<ProjectBranchView[]> =>
+    call<ProjectBranchView[]>("list_project_branches", { code }),
+  createProjectBranch: (
+    code: string,
+    body: CreateProjectBranchInput,
+  ): Promise<ProjectBranchView> =>
+    call<ProjectBranchView>("create_project_branch", { code, body: { ...body } }),
+  updateProjectBranch: (
+    code: string,
+    id: number,
+    body: UpdateProjectBranchInput,
+  ): Promise<ProjectBranchView> =>
+    call<ProjectBranchView>("update_project_branch", {
+      code,
+      id,
+      body: { ...body },
+    }),
 
   // health
   healthz: (): Promise<string> => call<string>("healthz"),
@@ -584,6 +612,7 @@ export type {
   CreateCrfFormInput,
   CreateDomainAnnotationInput,
   CreateMissionInput,
+  CreateProjectBranchInput,
   CreateProjectInput,
   CreateSdtmDomainInput,
   CreateSdtmVariableInput,
@@ -618,6 +647,7 @@ export type {
   MissionViewResponse,
   PagedCodeItemListResponse,
   PagedCodeListListResponse,
+  ProjectBranchView,
   ProjectMembers,
   ProjectMembersView,
   ProjectConfiguration,
@@ -659,6 +689,7 @@ export type {
   UpdateCrfOptionInput,
   UpdateCrfUnitInput,
   UpdateDomainAnnotationInput,
+  UpdateProjectBranchInput,
   UpdateProjectBody,
   UpdateSdtmDomainInput,
   UpdateSdtmVariableInput,

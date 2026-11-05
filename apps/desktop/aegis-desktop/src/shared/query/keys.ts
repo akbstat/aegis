@@ -20,6 +20,11 @@ export const queryKeys = {
   project: {
     all: () => ["project", "list"] as const,
     byCode: (code: string) => ["project", "byCode", code] as const,
+    branches: (code: string) => ["project", "branches", code] as const,
+    // The active branch is desktop-local state (the server does not
+    // model one), so this key guards the settings-store read, not a
+    // server request.
+    activeBranch: (code: string) => ["project", "activeBranch", code] as const,
   },
   product: {
     all: () => ["product", "list"] as const,
