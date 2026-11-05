@@ -197,11 +197,7 @@ pub async fn update_node(
 /// try to JSON-decode it — `request::<Value>` would fail with
 /// `decode_failed: EOF while parsing a value`. See
 /// `http::mission::remove_assignee` for the same trap.
-pub async fn delete_node(
-    c: &HttpClient,
-    structure_id: i64,
-    node_id: &str,
-) -> Result<(), ApiError> {
+pub async fn delete_node(c: &HttpClient, structure_id: i64, node_id: &str) -> Result<(), ApiError> {
     let _ = c
         .request_bytes(
             reqwest::Method::DELETE,
@@ -217,7 +213,8 @@ pub async fn create_structure(
     c: &HttpClient,
     body: &CreateStructureRequest,
 ) -> Result<StructureViewResponse, ApiError> {
-    c.request(reqwest::Method::POST, "/api/structures", Some(body)).await
+    c.request(reqwest::Method::POST, "/api/structures", Some(body))
+        .await
 }
 
 /// `PUT /api/structures/{id}` — update a structure.

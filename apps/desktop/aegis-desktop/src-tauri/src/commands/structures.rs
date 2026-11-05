@@ -301,13 +301,8 @@ pub async fn update_structure_node_impl(
         tracing::info!("enter");
         let result = TRACE_ID
             .scope(req_ctx.trace_id.clone(), async {
-                structures::update_node(
-                    app_state.http_client(),
-                    structure_id,
-                    &node_id,
-                    &body,
-                )
-                .await
+                structures::update_node(app_state.http_client(), structure_id, &node_id, &body)
+                    .await
             })
             .await;
         match &result {
