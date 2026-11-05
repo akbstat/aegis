@@ -1507,9 +1507,15 @@ Co-Authored-By: Claude Code <noreply@anthropic.com>"
 - Modify: `lib/crates/project/src/adapter/facade/internal/tests.rs`
 - Modify: `lib/crates/project/src/lib.rs` (crate-root re-exports)
 - Modify: `lib/crates/project/tests/public_api.rs`
+- Modify: `lib/crates/mission/src/adapter/service/project/tests.rs`
+- Modify: `apps/server/aegis-server/tests/integration_auth.rs`
 - Modify: `apps/server/aegis-server/src/transport/http/project/handlers.rs` (`MockProjectService`)
-- Modify: `apps/server/aegis-server/src/transport/http/state.rs` (`NullProjectService`)
-- Modify: `apps/server/aegis-server/src/transport/http/router.rs` (`NullProjectService`)
+- Modify: `apps/server/aegis-server/src/transport/http/router.rs` (`NullProjectService`, `StubProjectService`)
+- Modify: `apps/server/aegis-server/src/state.rs` (`NullProjectService`)
+- Modify: `apps/server/aegis-server/src/transport/http/auth/middleware.rs` (`NullProjectService`)
+- Modify: `apps/server/aegis-server/src/transport/http/auth/handlers.rs` (`NullProjectService`)
+- Modify: `apps/server/aegis-server/src/transport/http/auth/user_credential/handlers.rs` (`NullProjectService`)
+- Modify: `apps/server/aegis-server/src/transport/http/user/handlers.rs` (`NullProjectService`)
 
 **Interfaces:**
 - Consumes: `apis::project::ProjectBranchView`,
@@ -1842,46 +1848,72 @@ nameability tests:
     assert_err(ProjectApiError::BranchNotFound(7));
 ```
 
-- [ ] **Step 7: Update the server's three `ProjectService` implementations**
+- [ ] **Step 7: Update every other `ProjectService` implementation**
 
-In `apps/server/aegis-server/src/transport/http/project/handlers.rs`, add the
-four methods to `MockProjectService`'s `impl apis::project::ProjectService`
-block:
+Adding methods to the trait breaks **every** implementation of it, not
+just the server's. A repo-wide grep for `ProjectService for` (excluding
+`SdtmProjectService for`) finds these, and each needs the four methods
+added:
+
+| File | Implementor |
+| --- | --- |
+| `lib/crates/mission/src/adapter/service/project/tests.rs` | `FakeProject`, `NotFound` |
+| `apps/server/aegis-server/tests/integration_auth.rs` | `NullProjectService` |
+| `apps/server/aegis-server/src/transport/http/project/handlers.rs` | `MockProjectService` |
+| `apps/server/aegis-server/src/transport/http/router.rs` | `NullProjectService`, `StubProjectService` |
+| `apps/server/aegis-server/src/state.rs` | `NullProjectService` |
+| `apps/server/aegis-server/src/transport/http/auth/middleware.rs` | `NullProjectService` |
+| `apps/server/aegis-server/src/transport/http/auth/handlers.rs` | `NullProjectService` |
+| `apps/server/aegis-server/src/transport/http/auth/user_credential/handlers.rs` | `NullProjectService` |
+| `apps/server/aegis-server/src/transport/http/user/handlers.rs` | `NullProjectService` |
+
+Every one of them except `MockProjectService` is a null double whose
+other methods are already `unimplemented!()`, so the four new methods get
+the same treatment. The block to add is:
 
 ```rust
         async fn create_project_branch(
             &self,
             _req: apis::project::CreateProjectBranchRequest,
         ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
-            unimplemented!("not exercised by this handler")
+            unimplemented!()
         }
         async fn get_project_branch_by_id(
             &self,
             _id: i32,
         ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
-            unimplemented!("not exercised by this handler")
+            unimplemented!()
         }
         async fn list_project_branches(
             &self,
             _project_id: i32,
         ) -> Result<Vec<apis::project::ProjectBranchView>, apis::project::ProjectApiError> {
-            unimplemented!("not exercised by this handler")
+            unimplemented!()
         }
         async fn update_project_branch(
             &self,
             _req: apis::project::UpdateProjectBranchRequest,
         ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
-            unimplemented!("not exercised by this handler")
+            unimplemented!()
         }
 ```
 
-In `apps/server/aegis-server/src/transport/http/state.rs`, add the same four
-methods to the `NullProjectService` impl, each with an `unimplemented!()`
-body.
+Adapt the path prefix to the file: the server's own modules write
+`apis::project::…` in full, while the mission crate's test module
+imports the names at the top of the file and writes them bare
+(`CreateProjectBranchRequest`, `ProjectBranchView`,
+`UpdateProjectBranchRequest`, `ProjectApiError`). Match whatever the
+surrounding methods in that file already do.
 
-In `apps/server/aegis-server/src/transport/http/router.rs`, add the same
-four methods to that file's `NullProjectService` impl, each with an
-`unimplemented!()` body.
+`MockProjectService` is handled in Task 7 Step 1, which replaces these
+stubs with real behaviour; add the `unimplemented!()` versions here and
+let Task 7 replace them.
+
+Note that the crates which *consume* the trait — `crf`, `structures`,
+`sdtm-project`, `mission`'s production code — hold an
+`Arc<dyn apis::project::ProjectService>` and call methods on it. Adding
+methods to a trait does not break its consumers, so those files are
+untouched.
 
 - [ ] **Step 8: Update the server's project wiring**
 
