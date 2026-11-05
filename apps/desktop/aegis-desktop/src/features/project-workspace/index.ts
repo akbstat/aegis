@@ -16,3 +16,5 @@ export {
   type ConfigurationSection,
 } from "./components/ConfigurationSidebar";
 export { InitializeProjectFolderDialog } from "./components/InitializeProjectFolderDialog";
+export { BranchNameDialog } from "./components/BranchNameDialog";
+export { ProjectBranchesSection } from "./components/ProjectBranchesSection";
