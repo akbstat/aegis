@@ -182,23 +182,7 @@ impl ProjectBranchRepository for MockBranchRepo {
         let id = s.next_id;
         s.next_id += 1;
         let now = mock_now();
-        // The switch: a branch created as active deactivates the
-        // project's other active branches.
-        if input.active {
-            for b in s.branches.values_mut() {
-                if b.project_id == input.project_id {
-                    b.active = false;
-                }
-            }
-        }
-        let branch = ProjectBranch::for_repository(
-            id,
-            input.project_id,
-            input.branch,
-            input.active,
-            now,
-            now,
-        );
+        let branch = ProjectBranch::for_repository(id, input.project_id, input.branch, now, now);
         s.branches.insert(id, branch.clone());
         Ok(branch)
     }
@@ -235,15 +219,6 @@ impl ProjectBranchRepository for MockBranchRepo {
                 return Err(DomainError::DuplicateBranch(name.clone()));
             }
         }
-        // The switch: activating this branch deactivates the project's
-        // other active branches.
-        if input.active == Some(true) {
-            for o in s.branches.values_mut() {
-                if o.project_id == input.project_id && o.id != input.id {
-                    o.active = false;
-                }
-            }
-        }
         let b = s
             .branches
             .get_mut(&input.id)
@@ -251,9 +226,6 @@ impl ProjectBranchRepository for MockBranchRepo {
             .ok_or(DomainError::BranchNotFound(input.id))?;
         if let Some(ref name) = input.branch {
             b.branch = name.clone();
-        }
-        if let Some(a) = input.active {
-            b.active = a;
         }
         Ok(b.clone())
     }
@@ -680,7 +652,6 @@ async fn create_branch_rejects_a_blank_name() {
         .create_branch(CreateProjectBranch {
             project_id: 1,
             branch: "   ".into(),
-            active: false,
         })
         .await
         .unwrap_err();
@@ -698,7 +669,6 @@ async fn create_branch_stores_the_trimmed_name() {
         .create_branch(CreateProjectBranch {
             project_id: 1,
             branch: "  2026Q1  ".into(),
-            active: false,
         })
         .await
         .expect("create");
@@ -714,7 +684,6 @@ async fn update_branch_rejects_a_blank_name() {
             id: 1,
             project_id: 1,
             branch: Some("".into()),
-            active: None,
         })
         .await
         .unwrap_err();
@@ -732,7 +701,6 @@ async fn list_branches_returns_only_the_project_s_own_branches() {
         .create_branch(CreateProjectBranch {
             project_id: 1,
             branch: "a".into(),
-            active: false,
         })
         .await
         .expect("create a");
@@ -740,7 +708,6 @@ async fn list_branches_returns_only_the_project_s_own_branches() {
         .create_branch(CreateProjectBranch {
             project_id: 2,
             branch: "b".into(),
-            active: false,
         })
         .await
         .expect("create b");
@@ -757,7 +724,6 @@ async fn update_branch_renames_the_branch() {
         .create_branch(CreateProjectBranch {
             project_id: 1,
             branch: "old".into(),
-            active: false,
         })
         .await
         .expect("create");
@@ -766,11 +732,57 @@ async fn update_branch_renames_the_branch() {
             id: created.id,
             project_id: 1,
             branch: Some("new".into()),
-            active: None,
         })
         .await
         .expect("update");
     assert_eq!(updated.branch, "new");
+}
+
+#[tokio::test]
+async fn update_branch_without_a_name_leaves_the_branch_alone() {
+    let repo = MockBranchRepo::new();
+    let usecase = ProjectBranchUsecase::new(repo);
+    let created = usecase
+        .create_branch(CreateProjectBranch {
+            project_id: 1,
+            branch: "keep".into(),
+        })
+        .await
+        .expect("create");
+    let updated = usecase
+        .update_branch(UpdateProjectBranch {
+            id: created.id,
+            project_id: 1,
+            branch: None,
+        })
+        .await
+        .expect("update");
+    assert_eq!(updated.branch, "keep");
+}
+
+#[tokio::test]
+async fn update_branch_reports_another_project_s_branch_as_not_found() {
+    let repo = MockBranchRepo::new();
+    let usecase = ProjectBranchUsecase::new(repo);
+    let created = usecase
+        .create_branch(CreateProjectBranch {
+            project_id: 1,
+            branch: "mine".into(),
+        })
+        .await
+        .expect("create");
+    let err = usecase
+        .update_branch(UpdateProjectBranch {
+            id: created.id,
+            project_id: 2,
+            branch: Some("stolen".into()),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        UsecaseError::Repository(DomainError::BranchNotFound(_))
+    ));
 }
 
 #[tokio::test]
@@ -781,7 +793,6 @@ async fn create_branch_rejects_a_name_that_collides_only_after_trimming() {
         .create_branch(CreateProjectBranch {
             project_id: 1,
             branch: "2026Q1".into(),
-            active: false,
         })
         .await
         .expect("create");
@@ -789,7 +800,6 @@ async fn create_branch_rejects_a_name_that_collides_only_after_trimming() {
         .create_branch(CreateProjectBranch {
             project_id: 1,
             branch: "  2026Q1  ".into(),
-            active: false,
         })
         .await
         .unwrap_err();
@@ -822,120 +832,4 @@ async fn get_branch_by_id_reports_an_unknown_branch_as_not_found() {
 async fn project_branch_usecase_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<ProjectBranchUsecase<MockBranchRepo>>();
-}
-
-#[tokio::test]
-async fn activating_a_branch_deactivates_the_project_s_other_branches() {
-    let repo = MockBranchRepo::new();
-    let usecase = ProjectBranchUsecase::new(repo);
-    let first = usecase
-        .create_branch(CreateProjectBranch {
-            project_id: 1,
-            branch: "a".into(),
-            active: true,
-        })
-        .await
-        .expect("create a");
-    let second = usecase
-        .create_branch(CreateProjectBranch {
-            project_id: 1,
-            branch: "b".into(),
-            active: false,
-        })
-        .await
-        .expect("create b");
-
-    usecase
-        .update_branch(UpdateProjectBranch {
-            id: second.id,
-            project_id: 1,
-            branch: None,
-            active: Some(true),
-        })
-        .await
-        .expect("activate b");
-
-    let branches = usecase.list_branches(1).await.expect("list");
-    let active: Vec<_> = branches.iter().filter(|b| b.active).collect();
-    assert_eq!(active.len(), 1, "exactly one branch may be active");
-    assert_eq!(active[0].id, second.id);
-    let first_after = branches.iter().find(|b| b.id == first.id).expect("a");
-    assert!(
-        !first_after.active,
-        "the previous active branch is deactivated"
-    );
-}
-
-#[tokio::test]
-async fn creating_an_active_branch_deactivates_the_project_s_other_branches() {
-    let repo = MockBranchRepo::new();
-    let usecase = ProjectBranchUsecase::new(repo);
-    usecase
-        .create_branch(CreateProjectBranch {
-            project_id: 1,
-            branch: "a".into(),
-            active: true,
-        })
-        .await
-        .expect("create a");
-    usecase
-        .create_branch(CreateProjectBranch {
-            project_id: 1,
-            branch: "b".into(),
-            active: true,
-        })
-        .await
-        .expect("create b");
-
-    let branches = usecase.list_branches(1).await.expect("list");
-    let active: Vec<_> = branches.iter().filter(|b| b.active).collect();
-    assert_eq!(active.len(), 1, "exactly one branch may be active");
-    assert_eq!(active[0].branch, "b");
-}
-
-#[tokio::test]
-async fn activating_a_branch_leaves_another_project_s_branches_alone() {
-    let repo = MockBranchRepo::new();
-    let usecase = ProjectBranchUsecase::new(repo);
-    usecase
-        .create_branch(CreateProjectBranch {
-            project_id: 1,
-            branch: "a".into(),
-            active: true,
-        })
-        .await
-        .expect("create a");
-    usecase
-        .create_branch(CreateProjectBranch {
-            project_id: 2,
-            branch: "b".into(),
-            active: true,
-        })
-        .await
-        .expect("create b");
-    usecase
-        .create_branch(CreateProjectBranch {
-            project_id: 2,
-            branch: "c".into(),
-            active: false,
-        })
-        .await
-        .expect("create c");
-
-    usecase
-        .update_branch(UpdateProjectBranch {
-            id: 3,
-            project_id: 2,
-            branch: None,
-            active: Some(true),
-        })
-        .await
-        .expect("activate c");
-
-    let p1 = usecase.list_branches(1).await.expect("list p1");
-    assert!(p1[0].active, "project 1's branch is untouched");
-    let p2 = usecase.list_branches(2).await.expect("list p2");
-    let active: Vec<_> = p2.iter().filter(|b| b.active).collect();
-    assert_eq!(active.len(), 1);
-    assert_eq!(active[0].branch, "c");
 }

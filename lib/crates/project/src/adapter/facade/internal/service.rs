@@ -124,7 +124,6 @@ where
             .create_branch(CreateProjectBranch {
                 project_id: req.project_id,
                 branch: req.branch,
-                active: req.active,
             })
             .await
             .map_err(map_error)?;
@@ -165,7 +164,6 @@ where
                 id: req.id,
                 project_id: req.project_id,
                 branch: req.branch,
-                active: req.active,
             })
             .await
             .map_err(map_error)?;
@@ -256,7 +254,6 @@ impl From<ProjectBranchView> for ApiProjectBranchView {
             id: v.id,
             project_id: v.project_id,
             branch: v.branch,
-            active: v.active,
             created_at: v.created_at,
             updated_at: v.updated_at,
         }

@@ -554,7 +554,6 @@ fn project_branch_public_types_are_nameable() {
         id: 1,
         project_id: 2,
         branch: "2026Q1".into(),
-        active: true,
         created_at: chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
             .unwrap()
             .with_timezone(&chrono::Utc),
@@ -565,13 +564,11 @@ fn project_branch_public_types_are_nameable() {
     assert_create(CreateProjectBranchRequest {
         project_id: 2,
         branch: "2026Q1".into(),
-        active: false,
     });
     assert_update(UpdateProjectBranchRequest {
         id: 1,
         project_id: 2,
         branch: Some("2026Q2".into()),
-        active: Some(true),
     });
     assert_err(ProjectApiError::DuplicateBranch("2026Q1".into()));
     assert_err(ProjectApiError::BranchNotFound(7));

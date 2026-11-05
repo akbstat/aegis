@@ -26,9 +26,8 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 # Loads `.env` at test startup so live-DB integration tests can find
-# the workspace-shared `AEGIS_DATABASE_URL` without the user having
-# to `source` it manually. Same convention as the `auth` / `user`
-# crates.
+# `AEGIS_TEST_DATABASE_URL` (the disposable test database) without the
+# user having to `source` it manually.
 dotenvy = { workspace = true }
 # Re-export the SQLx driver in `[dev-dependencies]` so the integration
 # tests can build their own `PgPool` without going through the public

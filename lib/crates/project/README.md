@@ -5,7 +5,7 @@ Manages the lifecycle of the `Project` aggregate — each `Project` carries
 two parallel teams (`members` and `unblind_members`) that the facade
 hydrates from the user-crate's `UserService`, plus the
 `ProjectBranch` aggregate: the named working branches a project owns
-over time, of which at most one is active at a time.
+over time.
 
 > See [docs/guidelines/lib-crate-development.md](../../docs/guidelines/lib-crate-development.md)
 > for the cross-cutting conventions this crate follows (workspace deps,
@@ -53,7 +53,7 @@ and the facade `ProjectServiceImpl`) so consumers can
 - `ProjectConfiguration { language: Option<ProjectLanguage>, tags: Vec<ProjectTag> }` — language hint + tag list, persisted as a single JSONB column on `projects.configuration`. `language` is optional (no default); `tags` defaults to empty.
 - `ProjectLanguage { English, SimplifiedChinese }` — locale hint with a stable `as_str` (`"en"`, `"zh-CN"`). Unknown values on the wire surface as `DomainError::UnknownLanguage` after the migration lands.
 - `ProjectMember { leaders: Vec<String>, workers: Vec<String> }` — user *codes* (not full user records). The usecase layer hydrates these into `UserSummaryView` on read.
-- `ProjectBranch { id, project_id, branch, active, created_at, updated_at }` — a named working branch of a project. The name is unique within its project (the same name may exist under two different projects). At most one branch of a project is active at a time: activating a branch *switches* — it becomes active and the project's other branches are deactivated in the same transaction. The rule is backed by a partial unique index (`project_branches_one_active_per_project`). A project may have zero branches, and branches are never deleted.
+- `ProjectBranch { id, project_id, branch, created_at, updated_at }` — a named working branch of a project. The name is unique within its project (the same name may exist under two different projects). A project may have zero branches, and branches are never deleted.
 
 `members` and `unblind_members` are two independent teams that share
 the same `leaders` / `workers` shape. `create_project` accepts both as
@@ -141,10 +141,9 @@ Run them against a local PostgreSQL with:
 
 ```bash
 # .env at the workspace root is sourced automatically by the tests
-# via dotenvy; AEGIS_DATABASE_URL (the workspace-shared env var,
-# same as the auth / user crates) must point at a reachable server
-# (and ideally an empty schema — the tests drop their own tables
-# at the end of each run).
+# via dotenvy; AEGIS_TEST_DATABASE_URL must point at a reachable
+# *test* server (never production — the tests drop their own tables
+# before each run).
 cargo test -p project -- --ignored
 ```
 

@@ -176,13 +176,11 @@ fn project_branch_public_types_are_nameable() {
     assert_branch_new(ProjectBranchNew {
         project_id: 2,
         branch: "2026Q1".into(),
-        active: true,
     });
     assert_branch_update(ProjectBranchUpdate {
         id: 1,
         project_id: 2,
         branch: Some("2026Q2".into()),
-        active: Some(true),
     });
     assert_branch_usecase_type::<ProjectBranchUsecase<ProjectBranchRepo>>();
     assert_branch_repo_impls_port::<ProjectBranchRepo>();
@@ -190,7 +188,6 @@ fn project_branch_public_types_are_nameable() {
         id: 1,
         project_id: 2,
         branch: "2026Q1".into(),
-        active: true,
         created_at: chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
             .unwrap()
             .with_timezone(&chrono::Utc),
@@ -202,7 +199,6 @@ fn project_branch_public_types_are_nameable() {
         id: 1,
         project_id: 2,
         branch: "2026Q1".into(),
-        active: true,
         created_at: chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
             .unwrap()
             .with_timezone(&chrono::Utc),
@@ -213,24 +209,20 @@ fn project_branch_public_types_are_nameable() {
     assert_create_cmd(CreateProjectBranch {
         project_id: 2,
         branch: "2026Q1".into(),
-        active: true,
     });
     assert_update_cmd(UpdateProjectBranch {
         id: 1,
         project_id: 2,
         branch: None,
-        active: Some(true),
     });
     assert_create_req(CreateProjectBranchRequest {
         project_id: 2,
         branch: "2026Q1".into(),
-        active: true,
     });
     assert_update_req(UpdateProjectBranchRequest {
         id: 1,
         project_id: 2,
         branch: None,
-        active: Some(true),
     });
 }
 

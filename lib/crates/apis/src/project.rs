@@ -188,7 +188,6 @@ pub struct ProjectBranchView {
     pub id: i32,
     pub project_id: i32,
     pub branch: String,
-    pub active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -201,23 +200,17 @@ pub struct ProjectBranchView {
 pub struct CreateProjectBranchRequest {
     pub project_id: i32,
     pub branch: String,
-    /// Whether the new branch becomes the project's active one. When
-    /// true, the project's other active branches are deactivated.
-    pub active: bool,
 }
 
-/// Request-side payload for renaming a branch and / or changing
-/// whether it is the project's active branch.
+/// Request-side payload for renaming a branch.
 ///
-/// `None` for `branch` leaves the name alone; `None` for `active`
-/// leaves the flag alone. `project_id` scopes the write, so a branch
-/// of another project is reported as not found.
+/// `None` for `branch` leaves the name alone. `project_id` scopes the
+/// write, so a branch of another project is reported as not found.
 #[derive(Debug, Clone, Default)]
 pub struct UpdateProjectBranchRequest {
     pub id: i32,
     pub project_id: i32,
     pub branch: Option<String>,
-    pub active: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -266,9 +259,7 @@ pub trait ProjectService: Send + Sync {
         req: UpdateProjectRequest,
     ) -> Result<ProjectView, ProjectApiError>;
 
-    /// Creates a branch of a project. When `req.active` is true the new
-    /// branch becomes the project's active one and the project's other
-    /// active branches are deactivated.
+    /// Creates a branch of a project.
     async fn create_project_branch(
         &self,
         req: CreateProjectBranchRequest,
@@ -284,8 +275,7 @@ pub trait ProjectService: Send + Sync {
         project_id: i32,
     ) -> Result<Vec<ProjectBranchView>, ProjectApiError>;
 
-    /// Renames a branch and / or changes whether it is the project's
-    /// active branch.
+    /// Renames a branch.
     async fn update_project_branch(
         &self,
         req: UpdateProjectBranchRequest,
