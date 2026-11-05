@@ -15,3 +15,4 @@ export {
   ConfigurationSidebar,
   type ConfigurationSection,
 } from "./components/ConfigurationSidebar";
+export { InitializeProjectFolderDialog } from "./components/InitializeProjectFolderDialog";
