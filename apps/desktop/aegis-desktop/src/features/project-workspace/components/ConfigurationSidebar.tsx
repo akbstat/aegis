@@ -1,9 +1,13 @@
 import { Box, Tab, Tabs } from "@aegis/ui/mui";
-import { Folder, People, Settings } from "@aegis/ui/icons";
+import { AccountTree, Folder, People, Settings } from "@aegis/ui/icons";
 import { useI18n } from "@aegis/ui/i18n";
 import type { ComponentType } from "react";
 
-export type ConfigurationSection = "general" | "members" | "filepath";
+export type ConfigurationSection =
+  | "general"
+  | "members"
+  | "branches"
+  | "filepath";
 
 export interface ConfigurationSidebarProps {
   value: ConfigurationSection;
@@ -19,6 +23,7 @@ interface SectionEntry {
 const ORDER: SectionEntry[] = [
   { key: "general", icon: Settings },
   { key: "members", icon: People },
+  { key: "branches", icon: AccountTree },
   { key: "filepath", icon: Folder },
 ];
 

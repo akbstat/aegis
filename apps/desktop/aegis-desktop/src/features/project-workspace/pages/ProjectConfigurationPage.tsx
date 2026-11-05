@@ -7,6 +7,7 @@ import { useProjectConfiguration } from "../data/project-configuration";
 import { ConfigurationFilepathSection } from "../components/ConfigurationFilepathSection";
 import { ConfigurationGeneralSection } from "../components/ConfigurationGeneralSection";
 import { ConfigurationMembersSection } from "../components/ConfigurationMembersSection";
+import { ProjectBranchesSection } from "../components/ProjectBranchesSection";
 import {
   ConfigurationSidebar,
   type ConfigurationSection,
@@ -96,6 +97,12 @@ export function ProjectConfigurationPage() {
             projectCode={projectCode}
             readonly={readonly}
             initial={data.members}
+          />
+        )}
+        {section === "branches" && (
+          <ProjectBranchesSection
+            projectCode={projectCode}
+            isLeader={isLeader === true}
           />
         )}
         {section === "filepath" && <ConfigurationFilepathSection />}

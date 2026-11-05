@@ -7,6 +7,20 @@ import { AegisThemeProvider } from "@aegis/ui/theme";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
+// The branches section reads the active branch from the settings store.
+const store = new Map<string, unknown>();
+vi.mock("@tauri-apps/plugin-store", () => ({
+  load: () =>
+    Promise.resolve({
+      get: (k: string) => Promise.resolve(store.get(k)),
+      set: (k: string, v: unknown) => {
+        store.set(k, v);
+        return Promise.resolve();
+      },
+      save: () => Promise.resolve(),
+    }),
+}));
+
 import { invoke } from "@tauri-apps/api/core";
 import { TestQueryProvider } from "../../../test/helpers/test-query-provider";
 import { renderWithFullRouter } from "../../../test/helpers/file-route-utils";
@@ -111,6 +125,7 @@ const projectWithSdtmig: ProjectView = makeProject({
 
 beforeEach(() => {
   (invoke as unknown as ReturnType<typeof vi.fn>).mockReset();
+  store.clear();
   vi.stubGlobal("localStorage", {
     getItem: () => null,
     setItem: () => {},
@@ -155,7 +170,7 @@ describe("ProjectConfigurationPage — leader view", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the three-section sidebar with General selected", async () => {
+  it("renders the section sidebar with General selected", async () => {
     await renderPage();
     const general = await screen.findByTestId("config-section-general");
     const members = await screen.findByTestId("config-section-members");
@@ -165,6 +180,18 @@ describe("ProjectConfigurationPage — leader view", () => {
     expect(general.className).toMatch(/Mui-selected/);
     expect(members.className).not.toMatch(/Mui-selected/);
     expect(filepath.className).not.toMatch(/Mui-selected/);
+  });
+
+  it("orders the sections General, Members, Branches, Filepath", async () => {
+    await renderPage();
+    await screen.findByTestId("config-section-general");
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      "General",
+      "Members",
+      "Branches",
+      "Filepath",
+    ]);
   });
 
   it("does NOT render the read-only banner for a project leader", async () => {
@@ -488,6 +515,29 @@ describe("ProjectConfigurationPage — non-leader view", () => {
       ).toBe(true);
     });
   });
+
+  it("renders the branches section without the leader-only actions", async () => {
+    mockCommands({
+      is_logged_in: () => true,
+      current_user: () => other,
+      get_project_by_code: () => projectFixture,
+      list_project_branches: () => [
+        {
+          id: 4,
+          projectId: 9,
+          branch: "2026Q1",
+          createdAt: "2026-01-02T03:04:05Z",
+          updatedAt: "2026-01-02T03:04:05Z",
+        },
+      ],
+    });
+    await renderPage();
+    await userEvent.click(await screen.findByTestId("config-section-branches"));
+    expect(await screen.findByTestId("project-branches-table")).toBeInTheDocument();
+    // The switch is available to everyone; creating is not.
+    expect(screen.getByRole("switch", { name: /2026Q1/ })).toBeInTheDocument();
+    expect(screen.queryByTestId("branch-create")).not.toBeInTheDocument();
+  });
 });
 
 describe("ProjectConfigurationPage — filepath placeholder", () => {
@@ -506,6 +556,36 @@ describe("ProjectConfigurationPage — filepath placeholder", () => {
     expect(
       await screen.findByTestId("config-filepath-placeholder"),
     ).toBeInTheDocument();
+  });
+});
+
+describe("ProjectConfigurationPage — branches section", () => {
+  const branches = [
+    {
+      id: 4,
+      projectId: 9,
+      branch: "2026Q1",
+      createdAt: "2026-01-02T03:04:05Z",
+      updatedAt: "2026-01-02T03:04:05Z",
+    },
+  ];
+
+  beforeEach(() => {
+    mockCommands({
+      is_logged_in: () => true,
+      current_user: () => leader,
+      get_project_by_code: () => projectFixture,
+      list_sdtm_versions: () => sdtmVersionsResponse,
+      list_terminology_versions: () => terminologyVersionsResponse,
+      list_project_branches: () => branches,
+    });
+  });
+
+  it("clicking Branches shows the branches table", async () => {
+    await renderPage();
+    await userEvent.click(await screen.findByTestId("config-section-branches"));
+    expect(await screen.findByTestId("project-branches-table")).toBeInTheDocument();
+    expect(await screen.findByText("2026Q1")).toBeInTheDocument();
   });
 });
 
