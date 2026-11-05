@@ -87,18 +87,20 @@ sqlx migrate add --source lib/crates/sdtm-project/migrations --timestamp <descri
 ### Running the live tests
 
 ```bash
-export AEGIS_SDTM_PROJECT_DATABASE_URL=postgres://user:pass@localhost/aegis_sdtm_project_test
+export AEGIS_TEST_DATABASE_URL=postgres://user:pass@localhost/aegis_test
 cargo test -p sdtm-project -- --ignored --test-threads=1
 ```
 
-> **The URL must point at a DEDICATED database.**
+> **The URL must point at a DISPOSABLE test database.**
 >
-> The live test drops the `_sqlx_migrations` bookkeeping table so each run
-> starts clean. SQLx keeps exactly one `_sqlx_migrations` table *per database*,
-> shared by every crate that migrates it — so pointing this at the server's
-> database would erase the applied-migration record for auth, user, project,
-> terminology, mission and crf alike, and the next `sqlx migrate run` would
-> try to re-apply every one of them.
+> Every crate's live-DB test reads the same `AEGIS_TEST_DATABASE_URL`, so it
+> must not be the server's database. The live test drops the
+> `_sqlx_migrations` bookkeeping table so each run starts clean. SQLx keeps
+> exactly one `_sqlx_migrations` table *per database*, shared by every crate
+> that migrates it — so pointing this at the server's database would erase the
+> applied-migration record for auth, user, project, terminology, mission and
+> crf alike, and the next `sqlx migrate run` would try to re-apply every one
+> of them.
 >
 > The test is destructive against whatever database it is pointed at. That is
 > intentional.

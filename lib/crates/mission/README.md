@@ -97,9 +97,9 @@ timestamp prefix is the migration's version.
 sqlx migrate add --source lib/crates/mission/migrations --timestamp <description>
 ```
 
-The live-DB URL comes from the
-`AEGIS_MISSION_DATABASE_URL` environment variable (or `.env` at
-the workspace root).
+The runtime URL comes from the server's `AEGIS_DATABASE_URL`. The
+live-DB integration tests use the disposable `AEGIS_TEST_DATABASE_URL`
+(or `.env` at the workspace root).
 
 ```rust
 use sqlx::postgres::PgPoolOptions;
@@ -111,7 +111,7 @@ use mission::service::user::UserLookupImpl;
 use std::sync::Arc;
 
 let pool = PgPoolOptions::new()
-    .connect(&std::env::var("AEGIS_MISSION_DATABASE_URL")?)
+    .connect(&std::env::var("AEGIS_DATABASE_URL")?)
     .await?;
 
 // All five repos share the same pool; `from_repos` builds both
@@ -165,7 +165,7 @@ assignee.
 
 ```bash
 cargo test -p mission                                  # unit + public_api
-cargo test -p mission -- --ignored --test-threads=1    # when AEGIS_MISSION_DATABASE_URL is set
+cargo test -p mission -- --ignored --test-threads=1    # when AEGIS_TEST_DATABASE_URL is set
 ```
 
 The live-DB integration tests are destructive on purpose: they

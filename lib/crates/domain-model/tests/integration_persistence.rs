@@ -1,7 +1,7 @@
 //! Live-database integration tests for the PostgreSQL adapter.
 //!
 //! `#[ignore]`-gated; opt in with
-//! `AEGIS_DOMAIN_MODEL_DATABASE_URL` set:
+//! `AEGIS_TEST_DATABASE_URL` set:
 //!
 //! ```text
 //! cargo test -p domain-model -- --ignored --test-threads=1
@@ -30,16 +30,16 @@ where
     Fut: std::future::Future<Output = T>,
 {
     let _ = dotenvy::dotenv();
-    let url = std::env::var("AEGIS_DOMAIN_MODEL_DATABASE_URL").unwrap_or_else(|_| {
+    let url = std::env::var("AEGIS_TEST_DATABASE_URL").unwrap_or_else(|_| {
         panic!(
-            "AEGIS_DOMAIN_MODEL_DATABASE_URL must be set (or present in .env \
+            "AEGIS_TEST_DATABASE_URL must be set (or present in .env \
              at the workspace root) to run --ignored tests"
         )
     });
 
     let pool = PgPool::connect(&url)
         .await
-        .expect("connect to PostgreSQL via AEGIS_DOMAIN_MODEL_DATABASE_URL");
+        .expect("connect to PostgreSQL via AEGIS_TEST_DATABASE_URL");
 
     // Drop in reverse FK order so cascading rules never matter.
     sqlx::query("DROP TABLE IF EXISTS sdtm_variables CASCADE")
@@ -80,7 +80,7 @@ fn unique(prefix: &str) -> String {
 // ---- SdtmVersion -------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn version_create_then_list_round_trips() {
     with_pool(|pool| async move {
         let repo = SdtmVersionRepoPg::new(pool);
@@ -100,7 +100,7 @@ async fn version_create_then_list_round_trips() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn version_update_changes_name() {
     with_pool(|pool| async move {
         let repo = SdtmVersionRepoPg::new(pool);
@@ -127,7 +127,7 @@ async fn version_update_changes_name() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn version_duplicate_name_returns_duplicate_error() {
     with_pool(|pool| async move {
         let repo = SdtmVersionRepoPg::new(pool);
@@ -148,7 +148,7 @@ async fn version_duplicate_name_returns_duplicate_error() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn version_delete_then_recreate_works() {
     with_pool(|pool| async move {
         let repo = SdtmVersionRepoPg::new(pool);
@@ -173,7 +173,7 @@ async fn version_delete_then_recreate_works() {
 // ---- SdtmDomain --------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_create_then_list_round_trips_with_descriptions() {
     with_pool(|pool| async move {
         let v_repo = SdtmVersionRepoPg::new(pool.clone());
@@ -224,7 +224,7 @@ async fn domain_create_then_list_round_trips_with_descriptions() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_duplicate_returns_duplicate_error() {
     with_pool(|pool| async move {
         let v_repo = SdtmVersionRepoPg::new(pool.clone());
@@ -261,7 +261,7 @@ async fn domain_duplicate_returns_duplicate_error() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_missing_parent_version_returns_fk_error() {
     with_pool(|pool| async move {
         let d_repo = SdtmDomainRepoPg::new(pool);
@@ -283,7 +283,7 @@ async fn domain_missing_parent_version_returns_fk_error() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_update_with_partial_fields() {
     with_pool(|pool| async move {
         let v_repo = SdtmVersionRepoPg::new(pool.clone());
@@ -330,7 +330,7 @@ async fn domain_update_with_partial_fields() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_delete_cascades_to_variables() {
     with_pool(|pool| async move {
         let v_repo = SdtmVersionRepoPg::new(pool.clone());
@@ -379,7 +379,7 @@ async fn domain_delete_cascades_to_variables() {
 /// as *present* — `Some(vec![])` and "absent" are different values,
 /// and the column must not collapse one into the other.
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_with_present_but_empty_code_list_round_trips_as_present() {
     with_pool(|pool| async move {
         let v_repo = SdtmVersionRepoPg::new(pool.clone());
@@ -437,7 +437,7 @@ async fn variable_with_present_but_empty_code_list_round_trips_as_present() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_create_then_list_round_trips_with_descriptions() {
     with_pool(|pool| async move {
         let v_repo = SdtmVersionRepoPg::new(pool.clone());
@@ -499,7 +499,7 @@ async fn variable_create_then_list_round_trips_with_descriptions() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_three_state_update_does_not_change_when_outer_none() {
     with_pool(|pool| async move {
         let v_repo = SdtmVersionRepoPg::new(pool.clone());
@@ -562,7 +562,7 @@ async fn variable_three_state_update_does_not_change_when_outer_none() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_three_state_update_replaces_when_outer_some_inner_some() {
     with_pool(|pool| async move {
         let v_repo = SdtmVersionRepoPg::new(pool.clone());
@@ -628,7 +628,7 @@ async fn variable_three_state_update_replaces_when_outer_some_inner_some() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_three_state_update_clears_when_outer_some_inner_none() {
     with_pool(|pool| async move {
         let v_repo = SdtmVersionRepoPg::new(pool.clone());
@@ -685,7 +685,7 @@ async fn variable_three_state_update_clears_when_outer_some_inner_none() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_duplicate_returns_duplicate_error() {
     with_pool(|pool| async move {
         let v_repo = SdtmVersionRepoPg::new(pool.clone());
@@ -741,7 +741,7 @@ async fn variable_duplicate_returns_duplicate_error() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_missing_parent_domain_returns_fk_error() {
     with_pool(|pool| async move {
         let va_repo = SdtmVariableRepoPg::new(pool);
@@ -769,7 +769,7 @@ async fn variable_missing_parent_domain_returns_fk_error() {
 // ---- end-to-end usecase over Pg ---------------------------------------
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DOMAIN_MODEL_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn usecase_end_to_end_against_pg() {
     use domain_model::CreateSdtmDomain;
     with_pool(|pool| async move {

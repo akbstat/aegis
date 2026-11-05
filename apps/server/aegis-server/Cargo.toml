@@ -106,7 +106,7 @@ argon2 = { workspace = true }
 # `rand_core` powers argon2's `SaltString::generate` (`OsRng`).
 # The runtime / derive-features come from the workspace dep.
 rand_core = { workspace = true }
-# `dotenvy` lets the integration test load `.env` so `AEGIS_DATABASE_URL`
+# `dotenvy` lets the integration test load `.env` so `AEGIS_TEST_DATABASE_URL`
 # can be set in a file during development.
 dotenvy = { workspace = true }
 # `sqlx::migrate!` + `PgPoolOptions` are used by the integration test

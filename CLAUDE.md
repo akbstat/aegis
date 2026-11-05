@@ -28,7 +28,7 @@ The repo ships three runnable surfaces that share one codebase:
 
 - **Wire DTOs are duplicated by hand, not generated.** The desktop's `src/shared/api/types.ts` mirrors the Rust DTOs in `src-tauri/src/http/*` 1:1. TS identifiers are camelCase; the wire is snake_case; the rename happens at the serde boundary. Any change to wire shape must update both halves in the same commit.
 - **One error type per boundary.** Server: `ApiError → ErrorBody` (`src-tauri/src/http/dto.rs`). Desktop: `ApiError` (tagged, `#[serde(tag = "kind", rename_all = "camelCase")]`, struct-shaped variants). Per-layer error enums (`DomainError`, `UsecaseError`) wrap the inner one with `#[source]` so `Error::source()` keeps the chain.
-- **Ignore-gated live-DB tests.** Every business lib crate and the server ship live-Postgres integration tests behind `#[ignore]`. They load `.env` via `dotenvy`, read `AEGIS_<CRATE>_DATABASE_URL`, run migrations, and **drop the live table + `_sqlx_migrations`** before each run — destructive on purpose. Run with `cargo test -p <crate> -- --ignored --test-threads=1`.
+- **Ignore-gated live-DB tests.** Every business lib crate and the server ship live-Postgres integration tests behind `#[ignore]`. They load `.env` via `dotenvy`, read the single `AEGIS_TEST_DATABASE_URL`, run migrations, and **drop the live table + `_sqlx_migrations`** before each run — destructive on purpose. Run with `cargo test -p <crate> -- --ignored --test-threads=1`.
 - **Default `QueryClient` is non-retrying.** Tauri calls hit a local sidecar, not a flaky network; `staleTime: Infinity`, `retry: false`, `refetchOnWindowFocus/Reconnect: false` are the defaults for queries, and `retry: false` for mutations. Per-query overrides live in the hook file (e.g. `bootstrap.ts` pins `staleTime: 0`).
 - **Bootstrap-then-route flow.** Desktop `main.tsx` synchronously redirects `/` to `/bootstrap`; `shouldRedirectToBootstrap` excludes `/project/<code>` so workspace windows skip the probes. `/_authed/route.tsx` is the pathless auth guard — any failure (including a broken token store) is treated as logged-out.
 
@@ -41,7 +41,7 @@ All commands run from the workspace root unless noted.
 ```bash
 cargo build -p <crate>                # build a single crate
 cargo test -p <crate>                 # unit + doc tests
-cargo test -p <crate> -- --ignored --test-threads=1   # live-DB integration (needs AEGIS_<CRATE>_DATABASE_URL)
+cargo test -p <crate> -- --ignored --test-threads=1   # live-DB integration (needs AEGIS_TEST_DATABASE_URL)
 cargo clippy -p <crate> --all-targets --all-features -- -D warnings
 cargo fmt --all -- --check
 cargo doc -p <crate> --no-deps
@@ -49,7 +49,7 @@ cargo check --workspace               # cheap cross-crate sanity check
 cargo test --workspace                # full Rust test run
 ```
 
-Live-DB env vars per crate: `AEGIS_AUTH_DATABASE_URL`, `AEGIS_USER_DATABASE_URL`, `AEGIS_PROJECT_DATABASE_URL`, `AEGIS_TERMINOLOGY_DATABASE_URL`, `AEGIS_DOMAIN_MODEL_DATABASE_URL`, `AEGIS_DATABASE_URL` (server). All live-DB tests are destructive against a real production database; they intentionally drop tables on every run.
+Live-DB env var: every live-DB test — one per business lib crate plus the server's own integration tests — reads the single `AEGIS_TEST_DATABASE_URL` (a disposable test database, never the server's `AEGIS_DATABASE_URL`). All live-DB tests are destructive against that database; they intentionally drop tables on every run.
 
 ### Server (`apps/server/aegis-server`)
 

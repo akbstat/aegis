@@ -96,7 +96,7 @@ cargo doc -p domain-model --no-deps
 ```
 
 Live-DB integration tests (gated with `#[ignore]`) require
-`AEGIS_DOMAIN_MODEL_DATABASE_URL`:
+`AEGIS_TEST_DATABASE_URL`:
 
 ```bash
 cargo test -p domain-model -- --ignored --test-threads=1

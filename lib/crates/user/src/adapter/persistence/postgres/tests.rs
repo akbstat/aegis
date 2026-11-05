@@ -15,7 +15,7 @@
 //! cargo test -p user -- --ignored
 //! ```
 //!
-//! They require the `AEGIS_DATABASE_URL` environment variable (or a
+//! They require the `AEGIS_TEST_DATABASE_URL` environment variable (or a
 //! `.env` file containing it at the workspace root) and apply the
 //! migration against the database before each test run.
 

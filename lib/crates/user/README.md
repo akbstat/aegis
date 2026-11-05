@@ -70,6 +70,6 @@ Run them against a local PostgreSQL with:
 
 ```bash
 # .env at the workspace root is sourced automatically by the tests
-# via dotenvy; AEGIS_DATABASE_URL must point at a reachable server.
+# via dotenvy; AEGIS_TEST_DATABASE_URL must point at a reachable server.
 cargo test -p user -- --ignored
 ```

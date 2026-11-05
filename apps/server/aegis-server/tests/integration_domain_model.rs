@@ -17,7 +17,7 @@
 //! matching the convention used by `integration_auth.rs` and the
 //! `integration_persistence` suite inside `domain-model` itself.
 //!
-//! First, each test reads `AEGIS_DOMAIN_MODEL_DATABASE_URL` from
+//! First, each test reads `AEGIS_TEST_DATABASE_URL` from
 //! the environment (mirroring `domain_model`'s integration tests)
 //! and aborts early with a helpful message if it is missing. The
 //! schema is brought up via `sqlx::migrate!` against the

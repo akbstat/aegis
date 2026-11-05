@@ -1,6 +1,6 @@
 //! Live-DB round-trips for the crf crate.
 //!
-//! `#[ignore]`-gated. Requires `AEGIS_DATABASE_URL` (the
+//! `#[ignore]`-gated. Requires `AEGIS_TEST_DATABASE_URL` (the
 //! workspace-shared connection URL — same convention as
 //! `auth/tests/integration_persistence.rs` and
 //! `project/tests/integration_persistence.rs`).
@@ -39,9 +39,9 @@ fn unique_suffix() -> String {
 
 async fn connect() -> sqlx::PgPool {
     let _ = dotenvy::dotenv();
-    let url = std::env::var("AEGIS_DATABASE_URL").unwrap_or_else(|_| {
+    let url = std::env::var("AEGIS_TEST_DATABASE_URL").unwrap_or_else(|_| {
         panic!(
-            "AEGIS_DATABASE_URL must be set to run integration_persistence tests \
+            "AEGIS_TEST_DATABASE_URL must be set to run integration_persistence tests \
              (cargo test -p crf -- --ignored --test-threads=1)"
         )
     });
