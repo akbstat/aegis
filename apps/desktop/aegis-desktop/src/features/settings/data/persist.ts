@@ -89,3 +89,40 @@ export async function persistSettings(patch: {
   if (patch.locale !== undefined) await store.set("locale", patch.locale);
   await store.save();
 }
+
+/**
+ * The settings-store key holding a project's active branch. One key
+ * per project code.
+ */
+const activeBranchKey = (projectCode: string) => `activeBranch.${projectCode}`;
+
+/**
+ * Read the branch id this installation is working on for a project, or
+ * `null` when it has no active branch.
+ *
+ * The server dropped the `active` flag from the branch row, so this is
+ * desktop-local state: it is shared by every window of this app on
+ * this machine, and by nothing else. The id is stored rather than the
+ * name so that renaming the branch does not lose the selection —
+ * branches are never deleted, so an id stays valid.
+ */
+export async function readActiveBranch(
+  projectCode: string,
+): Promise<number | null> {
+  const store = await getStore();
+  const value = await store.get<number | null>(activeBranchKey(projectCode));
+  return typeof value === "number" ? value : null;
+}
+
+/**
+ * Write the branch id this installation is working on for a project.
+ * `null` clears it — a project may have no active branch.
+ */
+export async function writeActiveBranch(
+  projectCode: string,
+  branchId: number | null,
+): Promise<void> {
+  const store = await getStore();
+  await store.set(activeBranchKey(projectCode), branchId);
+  await store.save();
+}

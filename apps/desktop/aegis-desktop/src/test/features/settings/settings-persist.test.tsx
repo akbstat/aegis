@@ -35,6 +35,8 @@ import {
   useHydrateSettingsFromStore,
   useListenForSettingsChanges,
   persistSettings,
+  readActiveBranch,
+  writeActiveBranch,
 } from "../../../features/settings";
 
 function HydrateProbe() {
@@ -194,5 +196,39 @@ describe("persistSettings", () => {
     await persistSettings({ theme: "dark" });
     expect(store.get("theme")).toBe("dark");
     expect(store.get("locale")).toBe("en"); // unchanged
+  });
+});
+
+// The active branch is desktop-local state: the server dropped the
+// `active` flag from the branch row, so which branch this installation
+// is working on lives in the settings store, one key per project.
+describe("the active branch", () => {
+  it("writes the active branch under the project key", async () => {
+    await writeActiveBranch("DEMO-001", 4);
+    expect(store.get("activeBranch.DEMO-001")).toBe(4);
+  });
+
+  it("reads back the active branch", async () => {
+    await writeActiveBranch("DEMO-001", 4);
+    expect(await readActiveBranch("DEMO-001")).toBe(4);
+  });
+
+  it("keeps each project's active branch apart", async () => {
+    await writeActiveBranch("DEMO-001", 4);
+    await writeActiveBranch("DEMO-002", 7);
+    expect(await readActiveBranch("DEMO-001")).toBe(4);
+    expect(await readActiveBranch("DEMO-002")).toBe(7);
+  });
+
+  it("reports no active branch when the key is absent", async () => {
+    // The store mock returns `undefined` for a missing key; the reader
+    // must map that to `null` rather than leak `undefined` into a
+    // `number | null` type.
+    expect(await readActiveBranch("DEMO-404")).toBeNull();
+  });
+
+  it("reports no active branch when the stored value is null", async () => {
+    await writeActiveBranch("DEMO-001", null);
+    expect(await readActiveBranch("DEMO-001")).toBeNull();
   });
 });
