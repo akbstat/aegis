@@ -3275,6 +3275,80 @@ impl From<apis::sdtm_project::SdtmProjectVariableOverrideView>
     }
 }
 
+// -- project branch DTOs ------------------------------------------------
+
+/// Wire-level extractor for the `{code}` and `{id}` URL parameters of
+/// the branch routes.
+///
+/// One extractor, not two: axum's `Path` deserializes from the whole
+/// parameter map, so a bare `Path<i32>` cannot pick a single parameter
+/// out of `{code, id}`.
+#[derive(Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PathProjectBranch {
+    pub code: String,
+    pub id: i32,
+}
+
+/// Wire-level request body for `POST /api/project/{code}/branches`.
+///
+/// The project is named by the URL, not by the body, so the body
+/// carries only the branch name and whether it becomes the project's
+/// active branch. `active` defaults to false when absent.
+#[derive(Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProjectBranchRequest {
+    pub branch: String,
+    #[serde(default)]
+    pub active: bool,
+}
+
+/// Wire-level request body for `PATCH /api/project/{code}/branches/{id}`.
+///
+/// Every field is optional: absent `branch` leaves the name alone,
+/// absent `active` leaves the flag alone.
+#[derive(Serialize, Deserialize, ToSchema, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProjectBranchRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active: Option<bool>,
+}
+
+/// Wire-level projection of a project branch. Mirrors
+/// `apis::project::ProjectBranchView` field-for-field.
+#[derive(Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectBranchViewResponse {
+    pub id: i32,
+    pub project_id: i32,
+    pub branch: String,
+    pub active: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl From<apis::project::ProjectBranchView> for ProjectBranchViewResponse {
+    fn from(view: apis::project::ProjectBranchView) -> Self {
+        Self {
+            id: view.id,
+            project_id: view.project_id,
+            branch: view.branch,
+            active: view.active,
+            created_at: view.created_at,
+            updated_at: view.updated_at,
+        }
+    }
+}
+
+/// Wire-level wrapper for `GET /api/project/{code}/branches`.
+#[derive(Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectBranchListResponse {
+    pub branches: Vec<ProjectBranchViewResponse>,
+}
+
 #[cfg(test)]
 mod tests {
     /// The nullable `variableRole` update field must distinguish all

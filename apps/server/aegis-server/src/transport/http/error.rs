@@ -667,6 +667,24 @@ mod tests {
         assert_eq!(body.code, "repository_error");
     }
 
+    #[tokio::test]
+    async fn project_branch_not_found_maps_to_404() {
+        let (status, body) =
+            render_project(apis::project::ProjectApiError::BranchNotFound(7)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.code, "branch_not_found");
+    }
+
+    #[tokio::test]
+    async fn project_duplicate_branch_maps_to_409() {
+        let (status, body) = render_project(apis::project::ProjectApiError::DuplicateBranch(
+            "2026Q1".into(),
+        ))
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(body.code, "duplicate_branch");
+    }
+
     // ---- Forbidden (authorization) -----
 
     #[tokio::test]

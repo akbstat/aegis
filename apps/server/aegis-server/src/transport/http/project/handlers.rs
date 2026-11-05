@@ -11,7 +11,7 @@ use axum::http::StatusCode;
 
 use crate::state::AppState;
 use crate::transport::http::auth::middleware::{AuthClaims, require_admin_or_root};
-use crate::transport::http::dto::{self, PathCode};
+use crate::transport::http::dto::{self, PathCode, PathProjectBranch};
 use crate::transport::http::error::ApiError;
 
 /// Translate the wire DTO into the apis DTO for project membership.
@@ -180,6 +180,148 @@ pub async fn update_project(
     Ok(Json(view.into()))
 }
 
+// -- project branches -----------------------------------------------------
+
+/// `POST /api/project/{code}/branches` — create a branch of a project.
+#[utoipa::path(
+    post, path = "/{code}/branches", tag = "project",
+    operation_id = "project_branch_create",
+    params(
+        ("code" = String, Path, description = "Project code that owns the branch"),
+    ),
+    request_body = dto::CreateProjectBranchRequest,
+    responses(
+        (status = 201, description = "Branch created", body = dto::ProjectBranchViewResponse),
+        (status = 400, description = "Validation failed", body = crate::transport::http::error::ErrorBody),
+        (status = 401, description = "Missing / invalid token", body = crate::transport::http::error::ErrorBody),
+        (status = 403, description = "Admin or root required", body = crate::transport::http::error::ErrorBody),
+        (status = 404, description = "Project not found", body = crate::transport::http::error::ErrorBody),
+        (status = 409, description = "Branch name already used in this project", body = crate::transport::http::error::ErrorBody),
+        (status = 500, description = "Repository failure", body = crate::transport::http::error::ErrorBody),
+    ),
+    security(("BearerAuth" = [])),
+)]
+pub async fn create_project_branch(
+    State(state): State<AppState>,
+    claims: AuthClaims,
+    Path(PathCode { code }): Path<PathCode>,
+    Json(req): Json<dto::CreateProjectBranchRequest>,
+) -> Result<(StatusCode, Json<dto::ProjectBranchViewResponse>), ApiError> {
+    require_admin_or_root(&claims)?;
+    let project_id = state.project.get_project_by_code(&code).await?.id;
+    let view = state
+        .project
+        .create_project_branch(apis::project::CreateProjectBranchRequest {
+            project_id,
+            branch: req.branch,
+            active: req.active,
+        })
+        .await?;
+    Ok((StatusCode::CREATED, Json(view.into())))
+}
+
+/// `GET /api/project/{code}/branches` — list a project's branches.
+#[utoipa::path(
+    get, path = "/{code}/branches", tag = "project",
+    operation_id = "project_branch_list",
+    params(
+        ("code" = String, Path, description = "Project code to list branches for"),
+    ),
+    responses(
+        (status = 200, description = "Branches list", body = dto::ProjectBranchListResponse),
+        (status = 401, description = "Missing / invalid token", body = crate::transport::http::error::ErrorBody),
+        (status = 404, description = "Project not found", body = crate::transport::http::error::ErrorBody),
+        (status = 500, description = "Repository failure", body = crate::transport::http::error::ErrorBody),
+    ),
+    security(("BearerAuth" = [])),
+)]
+pub async fn list_project_branches(
+    State(state): State<AppState>,
+    _claims: AuthClaims,
+    Path(PathCode { code }): Path<PathCode>,
+) -> Result<Json<dto::ProjectBranchListResponse>, ApiError> {
+    let project_id = state.project.get_project_by_code(&code).await?.id;
+    let views = state.project.list_project_branches(project_id).await?;
+    let branches = views.into_iter().map(Into::into).collect();
+    Ok(Json(dto::ProjectBranchListResponse { branches }))
+}
+
+/// `GET /api/project/{code}/branches/{id}` — fetch one branch.
+///
+/// A branch that belongs to another project is reported as not found,
+/// so the response never leaks a branch outside the named project.
+#[utoipa::path(
+    get, path = "/{code}/branches/{id}", tag = "project",
+    operation_id = "project_branch_get",
+    params(
+        ("code" = String, Path, description = "Project code that owns the branch"),
+        ("id" = i32, Path, description = "Branch id"),
+    ),
+    responses(
+        (status = 200, description = "Branch found", body = dto::ProjectBranchViewResponse),
+        (status = 401, description = "Missing / invalid token", body = crate::transport::http::error::ErrorBody),
+        (status = 404, description = "Project or branch not found", body = crate::transport::http::error::ErrorBody),
+        (status = 500, description = "Repository failure", body = crate::transport::http::error::ErrorBody),
+    ),
+    security(("BearerAuth" = [])),
+)]
+pub async fn get_project_branch_by_id(
+    State(state): State<AppState>,
+    _claims: AuthClaims,
+    Path(PathProjectBranch { code, id }): Path<PathProjectBranch>,
+) -> Result<Json<dto::ProjectBranchViewResponse>, ApiError> {
+    let project_id = state.project.get_project_by_code(&code).await?.id;
+    let view = state.project.get_project_branch_by_id(id).await?;
+    if view.project_id != project_id {
+        return Err(apis::project::ProjectApiError::BranchNotFound(id).into());
+    }
+    Ok(Json(view.into()))
+}
+
+/// `PATCH /api/project/{code}/branches/{id}` — rename a branch and / or
+/// change whether it is the project's active branch.
+///
+/// Setting `active: true` switches: the branch becomes active and the
+/// project's other branches are deactivated.
+#[utoipa::path(
+    patch, path = "/{code}/branches/{id}", tag = "project",
+    operation_id = "project_branch_update",
+    params(
+        ("code" = String, Path, description = "Project code that owns the branch"),
+        ("id" = i32, Path, description = "Branch id"),
+    ),
+    request_body = dto::UpdateProjectBranchRequest,
+    responses(
+        (status = 200, description = "Branch updated", body = dto::ProjectBranchViewResponse),
+        (status = 400, description = "Validation failed", body = crate::transport::http::error::ErrorBody),
+        (status = 401, description = "Missing / invalid token", body = crate::transport::http::error::ErrorBody),
+        (status = 403, description = "Admin or root required", body = crate::transport::http::error::ErrorBody),
+        (status = 404, description = "Project or branch not found", body = crate::transport::http::error::ErrorBody),
+        (status = 409, description = "Branch name already used in this project", body = crate::transport::http::error::ErrorBody),
+        (status = 500, description = "Repository failure", body = crate::transport::http::error::ErrorBody),
+    ),
+    security(("BearerAuth" = [])),
+)]
+pub async fn update_project_branch(
+    State(state): State<AppState>,
+    claims: AuthClaims,
+    Path(PathProjectBranch { code, id }): Path<PathProjectBranch>,
+    Json(req): Json<dto::UpdateProjectBranchRequest>,
+) -> Result<Json<dto::ProjectBranchViewResponse>, ApiError> {
+    require_admin_or_root(&claims)?;
+    let project_id = state.project.get_project_by_code(&code).await?.id;
+    let view = state
+        .project
+        .update_project_branch(apis::project::UpdateProjectBranchRequest {
+            id,
+            project_id,
+            branch: req.branch,
+            active: req.active,
+        })
+        .await?;
+    Ok(Json(view.into()))
+}
+
 #[cfg(test)]
 mod tests {
     //! Handler tests for both `/api/product` and `/api/project`.
@@ -243,6 +385,25 @@ mod tests {
         }
     }
 
+    fn sample_branch_view(
+        id: i32,
+        project_id: i32,
+        branch: &str,
+    ) -> apis::project::ProjectBranchView {
+        apis::project::ProjectBranchView {
+            id,
+            project_id,
+            branch: branch.to_string(),
+            active: false,
+            created_at: chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc),
+            updated_at: chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
+                .unwrap()
+                .with_timezone(&chrono::Utc),
+        }
+    }
+
     #[derive(Clone, Default)]
     pub struct MockProjectService {
         pub create_project: Option<apis::project::ProjectView>,
@@ -255,6 +416,16 @@ mod tests {
         pub update_project_err: Option<apis::project::ProjectApiError>,
         pub last_create_project_args: Arc<Mutex<Option<apis::project::CreateProjectRequest>>>,
         pub last_update_project_args: Arc<Mutex<Option<apis::project::UpdateProjectRequest>>>,
+        pub create_project_branch: Option<apis::project::ProjectBranchView>,
+        pub create_project_branch_err: Option<apis::project::ProjectApiError>,
+        pub get_project_branch_by_id: Option<apis::project::ProjectBranchView>,
+        pub get_project_branch_by_id_err: Option<apis::project::ProjectApiError>,
+        pub list_project_branches: Option<Vec<apis::project::ProjectBranchView>>,
+        pub list_project_branches_err: Option<apis::project::ProjectApiError>,
+        pub update_project_branch: Option<apis::project::ProjectBranchView>,
+        pub update_project_branch_err: Option<apis::project::ProjectApiError>,
+        pub last_update_project_branch_args:
+            Arc<Mutex<Option<apis::project::UpdateProjectBranchRequest>>>,
     }
 
     #[async_trait]
@@ -318,25 +489,50 @@ mod tests {
             &self,
             _req: apis::project::CreateProjectBranchRequest,
         ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
-            unimplemented!()
+            if let Some(err) = self.create_project_branch_err.clone() {
+                return Err(err);
+            }
+            Ok(self
+                .create_project_branch
+                .clone()
+                .expect("create_project_branch result configured"))
         }
         async fn get_project_branch_by_id(
             &self,
             _id: i32,
         ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
-            unimplemented!()
+            if let Some(err) = self.get_project_branch_by_id_err.clone() {
+                return Err(err);
+            }
+            Ok(self
+                .get_project_branch_by_id
+                .clone()
+                .expect("get_project_branch_by_id result configured"))
         }
         async fn list_project_branches(
             &self,
             _project_id: i32,
         ) -> Result<Vec<apis::project::ProjectBranchView>, apis::project::ProjectApiError> {
-            unimplemented!()
+            if let Some(err) = self.list_project_branches_err.clone() {
+                return Err(err);
+            }
+            Ok(self
+                .list_project_branches
+                .clone()
+                .expect("list_project_branches result configured"))
         }
         async fn update_project_branch(
             &self,
-            _req: apis::project::UpdateProjectBranchRequest,
+            req: apis::project::UpdateProjectBranchRequest,
         ) -> Result<apis::project::ProjectBranchView, apis::project::ProjectApiError> {
-            unimplemented!()
+            *self.last_update_project_branch_args.lock().unwrap() = Some(req);
+            if let Some(err) = self.update_project_branch_err.clone() {
+                return Err(err);
+            }
+            Ok(self
+                .update_project_branch
+                .clone()
+                .expect("update_project_branch result configured"))
         }
     }
 
@@ -471,6 +667,14 @@ mod tests {
             .route(
                 "/api/project/{code}",
                 get(get_project_by_code).patch(update_project),
+            )
+            .route(
+                "/api/project/{code}/branches",
+                post(create_project_branch).get(list_project_branches),
+            )
+            .route(
+                "/api/project/{code}/branches/{id}",
+                get(get_project_branch_by_id).patch(update_project_branch),
             )
             .with_state(state)
     }
@@ -954,6 +1158,292 @@ mod tests {
                 "PATCH",
                 "/api/project/pr1",
                 Some(r#"{"description":""}"#.to_string()),
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        let (status, body) = read_json(response).await;
+        assert_eq!(status, AxStatus::BAD_REQUEST);
+        assert_eq!(body["code"], "validation_failed");
+    }
+
+    // ---- project branch handlers -------------------------------------------
+
+    #[tokio::test]
+    async fn create_project_branch_returns_201() {
+        let project = MockProjectService {
+            get_project_by_code: Some(sample_project_view(9, "pr1")),
+            create_project_branch: Some(sample_branch_view(4, 9, "2026Q1")),
+            ..Default::default()
+        };
+        let app = app(test_state(project.clone(), MockAuth::default()));
+        let response = app
+            .oneshot(build_request(
+                "POST",
+                "/api/project/pr1/branches",
+                Some(r#"{"branch":"2026Q1","active":true}"#.to_string()),
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        let (status, body) = read_json(response).await;
+        assert_eq!(status, AxStatus::CREATED);
+        assert_eq!(body["branch"], "2026Q1");
+        assert_eq!(body["projectId"], 9);
+    }
+
+    #[tokio::test]
+    async fn create_project_branch_general_returns_403() {
+        let project = MockProjectService {
+            get_project_by_code: Some(sample_project_view(9, "pr1")),
+            ..Default::default()
+        };
+        let auth = MockAuth {
+            role: apis::user::Role::General,
+        };
+        let app = app(test_state(project, auth));
+        let response = app
+            .oneshot(build_request(
+                "POST",
+                "/api/project/pr1/branches",
+                Some(r#"{"branch":"2026Q1"}"#.to_string()),
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        let (status, body) = read_json(response).await;
+        assert_eq!(status, AxStatus::FORBIDDEN);
+        assert_eq!(body["code"], "forbidden");
+    }
+
+    #[tokio::test]
+    async fn create_project_branch_without_authorization_returns_401() {
+        let app = app(test_state(
+            MockProjectService::default(),
+            MockAuth::default(),
+        ));
+        let response = app
+            .oneshot(build_request(
+                "POST",
+                "/api/project/pr1/branches",
+                Some(r#"{"branch":"2026Q1"}"#.to_string()),
+                None,
+            ))
+            .await
+            .unwrap();
+        let (status, body) = read_json(response).await;
+        assert_eq!(status, AxStatus::UNAUTHORIZED);
+        assert_eq!(body["code"], "token_verification_failed");
+    }
+
+    #[tokio::test]
+    async fn list_project_branches_returns_200_with_array() {
+        let project = MockProjectService {
+            get_project_by_code: Some(sample_project_view(9, "pr1")),
+            list_project_branches: Some(vec![sample_branch_view(4, 9, "2026Q1")]),
+            ..Default::default()
+        };
+        let app = app(test_state(project, MockAuth::default()));
+        let response = app
+            .oneshot(build_request(
+                "GET",
+                "/api/project/pr1/branches",
+                None,
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        let (status, body) = read_json(response).await;
+        assert_eq!(status, AxStatus::OK);
+        let branches = body["branches"].as_array().unwrap();
+        assert_eq!(branches.len(), 1);
+        assert_eq!(branches[0]["branch"], "2026Q1");
+    }
+
+    #[tokio::test]
+    async fn list_project_branches_general_reads_succeed() {
+        let project = MockProjectService {
+            get_project_by_code: Some(sample_project_view(9, "pr1")),
+            list_project_branches: Some(Vec::new()),
+            ..Default::default()
+        };
+        let auth = MockAuth {
+            role: apis::user::Role::General,
+        };
+        let app = app(test_state(project, auth));
+        let response = app
+            .oneshot(build_request(
+                "GET",
+                "/api/project/pr1/branches",
+                None,
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(read_json(response).await.0, AxStatus::OK);
+    }
+
+    #[tokio::test]
+    async fn get_project_branch_by_id_returns_200() {
+        let project = MockProjectService {
+            get_project_by_code: Some(sample_project_view(9, "pr1")),
+            get_project_branch_by_id: Some(sample_branch_view(4, 9, "2026Q1")),
+            ..Default::default()
+        };
+        let app = app(test_state(project, MockAuth::default()));
+        let response = app
+            .oneshot(build_request(
+                "GET",
+                "/api/project/pr1/branches/4",
+                None,
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        let (status, body) = read_json(response).await;
+        assert_eq!(status, AxStatus::OK);
+        assert_eq!(body["branch"], "2026Q1");
+    }
+
+    #[tokio::test]
+    async fn get_project_branch_of_another_project_returns_404() {
+        // The branch exists, but it belongs to project 12 while the URL
+        // names project 9. The handler must not leak it.
+        let project = MockProjectService {
+            get_project_by_code: Some(sample_project_view(9, "pr1")),
+            get_project_branch_by_id: Some(sample_branch_view(4, 12, "2026Q1")),
+            ..Default::default()
+        };
+        let app = app(test_state(project, MockAuth::default()));
+        let response = app
+            .oneshot(build_request(
+                "GET",
+                "/api/project/pr1/branches/4",
+                None,
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        let (status, body) = read_json(response).await;
+        assert_eq!(status, AxStatus::NOT_FOUND);
+        assert_eq!(body["code"], "branch_not_found");
+    }
+
+    #[tokio::test]
+    async fn update_project_branch_resolves_the_project_and_forwards_the_flag() {
+        let project = MockProjectService {
+            get_project_by_code: Some(sample_project_view(9, "pr1")),
+            update_project_branch: Some(sample_branch_view(4, 9, "2026Q1")),
+            ..Default::default()
+        };
+        let app = app(test_state(project.clone(), MockAuth::default()));
+        let response = app
+            .oneshot(build_request(
+                "PATCH",
+                "/api/project/pr1/branches/4",
+                Some(r#"{"active":true}"#.to_string()),
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        let (status, _body) = read_json(response).await;
+        assert_eq!(status, AxStatus::OK);
+        let captured = project
+            .last_update_project_branch_args
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap();
+        assert_eq!(captured.id, 4);
+        assert_eq!(captured.project_id, 9);
+        assert_eq!(captured.active, Some(true));
+        assert!(captured.branch.is_none());
+    }
+
+    #[tokio::test]
+    async fn update_project_branch_general_returns_403() {
+        let project = MockProjectService {
+            get_project_by_code: Some(sample_project_view(9, "pr1")),
+            ..Default::default()
+        };
+        let auth = MockAuth {
+            role: apis::user::Role::General,
+        };
+        let app = app(test_state(project, auth));
+        let response = app
+            .oneshot(build_request(
+                "PATCH",
+                "/api/project/pr1/branches/4",
+                Some(r#"{"active":true}"#.to_string()),
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        let (status, body) = read_json(response).await;
+        assert_eq!(status, AxStatus::FORBIDDEN);
+        assert_eq!(body["code"], "forbidden");
+    }
+
+    #[tokio::test]
+    async fn create_project_branch_duplicate_maps_to_409() {
+        let project = MockProjectService {
+            get_project_by_code: Some(sample_project_view(9, "pr1")),
+            create_project_branch_err: Some(apis::project::ProjectApiError::DuplicateBranch(
+                "2026Q1".into(),
+            )),
+            ..Default::default()
+        };
+        let app = app(test_state(project, MockAuth::default()));
+        let response = app
+            .oneshot(build_request(
+                "POST",
+                "/api/project/pr1/branches",
+                Some(r#"{"branch":"2026Q1"}"#.to_string()),
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        let (status, body) = read_json(response).await;
+        assert_eq!(status, AxStatus::CONFLICT);
+        assert_eq!(body["code"], "duplicate_branch");
+    }
+
+    #[tokio::test]
+    async fn create_project_branch_unknown_project_returns_404() {
+        let project = MockProjectService {
+            get_project_by_code_err: Some(apis::project::ProjectApiError::NotFound),
+            ..Default::default()
+        };
+        let app = app(test_state(project, MockAuth::default()));
+        let response = app
+            .oneshot(build_request(
+                "POST",
+                "/api/project/nope/branches",
+                Some(r#"{"branch":"2026Q1"}"#.to_string()),
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        let (status, body) = read_json(response).await;
+        assert_eq!(status, AxStatus::NOT_FOUND);
+        assert_eq!(body["code"], "not_found");
+    }
+
+    #[tokio::test]
+    async fn create_project_branch_validation_maps_to_400() {
+        let project = MockProjectService {
+            get_project_by_code: Some(sample_project_view(9, "pr1")),
+            create_project_branch_err: Some(apis::project::ProjectApiError::Validation(
+                "bad".into(),
+            )),
+            ..Default::default()
+        };
+        let app = app(test_state(project, MockAuth::default()));
+        let response = app
+            .oneshot(build_request(
+                "POST",
+                "/api/project/pr1/branches",
+                Some(r#"{"branch":""}"#.to_string()),
                 Some("Bearer good"),
             ))
             .await
