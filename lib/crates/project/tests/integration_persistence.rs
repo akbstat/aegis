@@ -16,7 +16,10 @@ use project::domain::{
     DomainError, ProjectBranch, ProjectBranchNew, ProjectBranchRepository, ProjectBranchUpdate,
     ProjectConfiguration, ProjectMember, ProjectNew, ProjectTag, ProjectUpdate,
 };
-use project::{ProjectBranchRepo, ProjectRepo, ProjectRepository};
+use project::usecase::CreateProjectBranch;
+use project::{
+    ProjectBranchRepo, ProjectBranchUsecase, ProjectRepo, ProjectRepository, UsecaseError,
+};
 
 async fn with_pool<F, Fut, T>(f: F) -> T
 where
@@ -464,8 +467,8 @@ async fn branch_name_is_unique_within_a_project_but_free_across_projects() {
             .await
             .expect_err("duplicate branch name");
         assert!(
-            matches!(err, DomainError::DuplicateBranch(_)),
-            "expected DuplicateBranch, got {err:?}"
+            matches!(err, DomainError::DuplicateBranch(ref name) if name == "shared"),
+            "expected DuplicateBranch naming the branch, got {err:?}"
         );
     })
     .await;
@@ -537,8 +540,55 @@ async fn branch_for_an_unknown_project_is_rejected() {
             .await
             .expect_err("foreign key violation");
         assert!(
-            !matches!(err, DomainError::DuplicateBranch(_)),
-            "expected a foreign-key failure, got {err:?}"
+            matches!(err, DomainError::BranchProjectNotFound(ref pid) if *pid == 999_999_999),
+            "expected BranchProjectNotFound naming the project, got {err:?}"
+        );
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+async fn a_name_that_collides_only_after_trimming_is_a_duplicate() {
+    with_pool(|pool| async move {
+        let projects = ProjectRepo::new(pool.clone());
+        let usecase = ProjectBranchUsecase::new(ProjectBranchRepo::new(pool.clone()));
+        let project = projects
+            .create(ProjectNew {
+                code: unique_code("proj-trim"),
+                description: "".into(),
+                members: None,
+                unblind_members: None,
+                configuration: None,
+            })
+            .await
+            .expect("create project");
+
+        usecase
+            .create_branch(CreateProjectBranch {
+                project_id: project.id,
+                branch: "2026Q1".into(),
+                active: false,
+            })
+            .await
+            .expect("create branch");
+
+        // The usecase trims the name, so this collides with the row
+        // above once the real unique constraint sees the stored value.
+        let err = usecase
+            .create_branch(CreateProjectBranch {
+                project_id: project.id,
+                branch: "  2026Q1  ".into(),
+                active: false,
+            })
+            .await
+            .expect_err("trimmed duplicate");
+        assert!(
+            matches!(
+                err,
+                UsecaseError::Repository(DomainError::DuplicateBranch(_))
+            ),
+            "expected a duplicate branch, got {err:?}"
         );
     })
     .await;

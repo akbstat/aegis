@@ -226,6 +226,7 @@ fn map_error(err: crate::usecase::UsecaseError) -> ProjectApiError {
             DomainError::DuplicateCode(code) => ProjectApiError::DuplicateCode(code),
             DomainError::DuplicateBranch(name) => ProjectApiError::DuplicateBranch(name),
             DomainError::BranchNotFound(id) => ProjectApiError::BranchNotFound(id),
+            DomainError::BranchProjectNotFound(id) => ProjectApiError::BranchProjectNotFound(id),
             other => ProjectApiError::Repository(other.to_string()),
         },
     }

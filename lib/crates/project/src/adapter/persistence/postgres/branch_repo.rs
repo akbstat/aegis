@@ -10,6 +10,9 @@ use super::row::ProjectBranchRow;
 /// PostgreSQL SQLSTATE for unique-violation.
 const SQLSTATE_UNIQUE_VIOLATION: &str = "23505";
 
+/// PostgreSQL SQLSTATE for foreign-key violation.
+const SQLSTATE_FOREIGN_KEY_VIOLATION: &str = "23503";
+
 /// The name of the constraint that enforces branch-name uniqueness
 /// within a project.
 const BRANCH_UNIQUE_CONSTRAINT: &str = "project_branches_branch_unique";
@@ -47,7 +50,7 @@ impl ProjectBranchRepository for ProjectBranchRepo {
             .bind(input.project_id)
             .execute(&mut *tx)
             .await
-            .map_err(map_db_error)?;
+            .map_err(|e| map_write_error(e, input.project_id, None))?;
         }
 
         let row: ProjectBranchRow = sqlx::QueryBuilder::new(
@@ -62,7 +65,7 @@ impl ProjectBranchRepository for ProjectBranchRepo {
         .build_query_as::<ProjectBranchRow>()
         .fetch_one(&mut *tx)
         .await
-        .map_err(map_db_error)?;
+        .map_err(|e| map_write_error(e, input.project_id, Some(&input.branch)))?;
 
         tx.commit().await.map_err(map_db_error)?;
 
@@ -155,7 +158,7 @@ impl ProjectBranchRepository for ProjectBranchRepo {
                 .build_query_as::<ProjectBranchRow>()
                 .fetch_optional(&mut *tx)
                 .await
-                .map_err(map_db_error)?
+                .map_err(|e| map_write_error(e, input.project_id, input.branch.as_deref()))?
                 .ok_or(DomainError::BranchNotFound(input.id))?;
             tx.commit().await.map_err(map_db_error)?;
             return row.try_into();
@@ -177,18 +180,38 @@ fn map_db_error(err: sqlx::Error) -> DomainError {
         sqlx::Error::RowNotFound => DomainError::NotFound,
         sqlx::Error::Database(db_err) => {
             if db_err.code().as_deref() == Some(SQLSTATE_UNIQUE_VIOLATION) {
-                if db_err.constraint() == Some(BRANCH_UNIQUE_CONSTRAINT) {
-                    DomainError::DuplicateBranch(db_err.message().to_string())
-                } else {
-                    DomainError::DuplicateCode(format!(
-                        "(constraint {})",
-                        db_err.constraint().unwrap_or("code")
-                    ))
-                }
+                DomainError::DuplicateCode(format!(
+                    "(constraint {})",
+                    db_err.constraint().unwrap_or("code")
+                ))
             } else {
                 DomainError::Repository(db_err.message().to_string())
             }
         }
         other => DomainError::Repository(other.to_string()),
     }
+}
+
+/// Translate a driver error from a branch write into a domain error.
+///
+/// Two cases get a message that names what the caller asked for,
+/// rather than the driver's wording:
+///
+/// - a unique violation on the branch-name constraint becomes
+///   [`DomainError::DuplicateBranch`] carrying the attempted name -
+///   the driver's own message only names the constraint;
+/// - a foreign-key violation becomes
+///   [`DomainError::BranchProjectNotFound`] carrying the project id.
+fn map_write_error(err: sqlx::Error, project_id: i32, branch: Option<&str>) -> DomainError {
+    if let sqlx::Error::Database(ref db_err) = err {
+        if db_err.code().as_deref() == Some(SQLSTATE_UNIQUE_VIOLATION)
+            && db_err.constraint() == Some(BRANCH_UNIQUE_CONSTRAINT)
+        {
+            return DomainError::DuplicateBranch(branch.unwrap_or_default().to_string());
+        }
+        if db_err.code().as_deref() == Some(SQLSTATE_FOREIGN_KEY_VIOLATION) {
+            return DomainError::BranchProjectNotFound(project_id);
+        }
+    }
+    map_db_error(err)
 }

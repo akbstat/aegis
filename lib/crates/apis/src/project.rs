@@ -26,6 +26,9 @@ pub enum ProjectApiError {
     #[error("branch not found: {0}")]
     BranchNotFound(i32),
 
+    #[error("branch project not found: {0}")]
+    BranchProjectNotFound(i32),
+
     #[error("user not found: {0}")]
     UserNotFound(String),
 

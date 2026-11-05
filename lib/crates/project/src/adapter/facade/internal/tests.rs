@@ -170,6 +170,15 @@ impl ProjectBranchRepository for InMemBranchRepo {
         }
         let id = s.next_id.fetch_add(1, Ordering::SeqCst);
         let now = mock_now();
+        // The switch: a branch created as active deactivates the
+        // project's other active branches.
+        if input.active {
+            for b in s.branches.values_mut() {
+                if b.project_id == input.project_id {
+                    b.active = false;
+                }
+            }
+        }
         let branch = ProjectBranch::for_repository(
             id,
             input.project_id,
@@ -212,6 +221,15 @@ impl ProjectBranchRepository for InMemBranchRepo {
                 .any(|o| o.project_id == input.project_id && o.branch == *name && o.id != input.id);
             if dup {
                 return Err(DomainError::DuplicateBranch(name.clone()));
+            }
+        }
+        // The switch: activating this branch deactivates the project's
+        // other active branches.
+        if input.active == Some(true) {
+            for o in s.branches.values_mut() {
+                if o.project_id == input.project_id && o.id != input.id {
+                    o.active = false;
+                }
             }
         }
         let b = s
@@ -613,4 +631,45 @@ async fn get_project_branch_by_id_reports_an_unknown_branch_as_not_found() {
     let service = make_service();
     let err = service.get_project_branch_by_id(42).await.unwrap_err();
     assert!(matches!(err, ProjectApiError::BranchNotFound(42)));
+}
+
+#[tokio::test]
+async fn activating_a_branch_through_the_port_switches_the_active_branch() {
+    let service = make_service();
+    let first = service
+        .create_project_branch(apis::project::CreateProjectBranchRequest {
+            project_id: 1,
+            branch: "a".into(),
+            active: true,
+        })
+        .await
+        .expect("create a");
+    let second = service
+        .create_project_branch(apis::project::CreateProjectBranchRequest {
+            project_id: 1,
+            branch: "b".into(),
+            active: false,
+        })
+        .await
+        .expect("create b");
+
+    service
+        .update_project_branch(apis::project::UpdateProjectBranchRequest {
+            id: second.id,
+            project_id: 1,
+            branch: None,
+            active: Some(true),
+        })
+        .await
+        .expect("activate b");
+
+    let views = service.list_project_branches(1).await.expect("list");
+    let active: Vec<_> = views.iter().filter(|b| b.active).collect();
+    assert_eq!(active.len(), 1, "exactly one branch may be active");
+    assert_eq!(active[0].id, second.id);
+    let first_after = views.iter().find(|b| b.id == first.id).expect("a");
+    assert!(
+        !first_after.active,
+        "the previous active branch is deactivated"
+    );
 }

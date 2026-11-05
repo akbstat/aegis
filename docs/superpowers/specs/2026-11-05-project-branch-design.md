@@ -141,6 +141,7 @@ pub struct ProjectBranchNew {
 
 pub struct ProjectBranchUpdate {
     pub id: i32,
+    pub project_id: i32,
     pub branch: Option<String>,
     pub active: Option<bool>,
 }
@@ -179,8 +180,11 @@ Added to `DomainError`:
 
 - `EmptyBranchName` — "branch name must not be empty".
 - `DuplicateBranch(String)` — "branch already exists: {0}" (unique violation
-  on `(project_id, branch)`).
+  on `(project_id, branch)`). The payload is the **branch name the caller
+  asked for**, not the driver's wording.
 - `BranchNotFound(i32)` — "branch not found: {0}".
+- `BranchProjectNotFound(i32)` — "branch project not found: {0}" (the
+  branch's owning project does not exist; a foreign-key violation).
 
 ## Usecase layer
 
@@ -301,6 +305,7 @@ pub struct CreateProjectBranchRequest {
 
 pub struct UpdateProjectBranchRequest {
     pub id: i32,
+    pub project_id: i32,
     pub branch: Option<String>,
     pub active: Option<bool>,
 }
@@ -338,6 +343,7 @@ New `ProjectApiError` variants:
 
 - `DuplicateBranch(String)` — 409, wire code `duplicate_branch`.
 - `BranchNotFound(i32)` — 404, wire code `branch_not_found`.
+- `BranchProjectNotFound(i32)` — 404, wire code `branch_project_not_found`.
 
 Adding methods to `ProjectService` is a breaking change for every
 implementation of the trait. In this repository that means updating:
@@ -372,8 +378,11 @@ Handler behaviour:
 - `PATCH` accepts `{"branch": "...", "active": true}` and applies both.
 - The wire DTOs (`CreateProjectBranchRequest`, `UpdateProjectBranchRequest`,
   `ProjectBranchViewResponse`, `ProjectBranchListResponse`) are added to
-  `transport/http/dto.rs` with `camelCase` JSON names, mirroring the apis
-  types field-for-field.
+  `transport/http/dto.rs` with `camelCase` JSON names. The response DTOs
+  mirror the apis view field-for-field; the *request* DTOs deliberately
+  do not — the project and branch ids arrive in the URL, so the wire
+  create body carries only `branch` and `active`, and the wire update
+  body only `branch` and `active`. The handler fills the ids in.
 
 The `OpenAPI` document gains the four routes; the router-level test asserts
 each advertises `BearerAuth`, that the two writes advertise a 403 and the
@@ -386,6 +395,7 @@ two reads do not.
 | Blank branch name | `EmptyBranchName` | `Validation` | 400 | `validation_failed` |
 | Name collides in the project | `DuplicateBranch` | `DuplicateBranch` | 409 | `duplicate_branch` |
 | Unknown branch id | `BranchNotFound` | `BranchNotFound` | 404 | `branch_not_found` |
+| Unknown owning project | `BranchProjectNotFound` | `BranchProjectNotFound` | 404 | `branch_project_not_found` |
 | Unknown project code | `NotFound` | `NotFound` | 404 | `not_found` |
 | Caller is not admin/root | — | — | 403 | `forbidden` |
 | No bearer | — | — | 401 | `token_verification_failed` |
@@ -465,6 +475,10 @@ so they can be overridden.
 - **A dedicated `BranchNotFound` error** rather than reusing the generic
   `NotFound`, so the wire code says which resource was missing — matching the
   `crf` / `sdtm_project` / `structures` crates.
+- **A dedicated `BranchProjectNotFound` error** for a branch whose owning
+  project does not exist, also matching the `crf` / `sdtm_project` crates'
+  typed foreign-key errors. The `DuplicateBranch` payload is the branch name
+  the caller asked for, not the driver's message.
 - **Routes nested under `/api/project/{code}/branches`** rather than a
   top-level `/api/project-branch` namespace, because a branch is always
   reached through its project.

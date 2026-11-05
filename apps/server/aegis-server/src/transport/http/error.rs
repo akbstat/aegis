@@ -167,7 +167,8 @@ fn project_status(e: &apis::project::ProjectApiError) -> StatusCode {
         ProjectApiError::Validation(_) => StatusCode::BAD_REQUEST,
         ProjectApiError::NotFound
         | ProjectApiError::UserNotFound(_)
-        | ProjectApiError::BranchNotFound(_) => StatusCode::NOT_FOUND,
+        | ProjectApiError::BranchNotFound(_)
+        | ProjectApiError::BranchProjectNotFound(_) => StatusCode::NOT_FOUND,
         ProjectApiError::DuplicateCode(_) | ProjectApiError::DuplicateBranch(_) => {
             StatusCode::CONFLICT
         }
@@ -182,6 +183,7 @@ fn project_code(e: &apis::project::ProjectApiError) -> &'static str {
         ProjectApiError::NotFound => "not_found",
         ProjectApiError::UserNotFound(_) => "user_not_found",
         ProjectApiError::BranchNotFound(_) => "branch_not_found",
+        ProjectApiError::BranchProjectNotFound(_) => "branch_project_not_found",
         ProjectApiError::DuplicateCode(_) => "duplicate_code",
         ProjectApiError::DuplicateBranch(_) => "duplicate_branch",
         ProjectApiError::Repository(_) => "repository_error",
@@ -683,6 +685,14 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(body.code, "duplicate_branch");
+    }
+
+    #[tokio::test]
+    async fn project_branch_project_not_found_maps_to_404() {
+        let (status, body) =
+            render_project(apis::project::ProjectApiError::BranchProjectNotFound(9)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body.code, "branch_project_not_found");
     }
 
     // ---- Forbidden (authorization) -----

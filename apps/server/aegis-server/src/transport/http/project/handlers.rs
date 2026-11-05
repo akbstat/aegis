@@ -1452,4 +1452,48 @@ mod tests {
         assert_eq!(status, AxStatus::BAD_REQUEST);
         assert_eq!(body["code"], "validation_failed");
     }
+
+    #[tokio::test]
+    async fn get_project_branch_by_id_unknown_id_returns_404() {
+        let project = MockProjectService {
+            get_project_by_code: Some(sample_project_view(9, "pr1")),
+            get_project_branch_by_id_err: Some(apis::project::ProjectApiError::BranchNotFound(4)),
+            ..Default::default()
+        };
+        let app = app(test_state(project, MockAuth::default()));
+        let response = app
+            .oneshot(build_request(
+                "GET",
+                "/api/project/pr1/branches/4",
+                None,
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        let (status, body) = read_json(response).await;
+        assert_eq!(status, AxStatus::NOT_FOUND);
+        assert_eq!(body["code"], "branch_not_found");
+    }
+
+    #[tokio::test]
+    async fn update_project_branch_unknown_id_returns_404() {
+        let project = MockProjectService {
+            get_project_by_code: Some(sample_project_view(9, "pr1")),
+            update_project_branch_err: Some(apis::project::ProjectApiError::BranchNotFound(4)),
+            ..Default::default()
+        };
+        let app = app(test_state(project, MockAuth::default()));
+        let response = app
+            .oneshot(build_request(
+                "PATCH",
+                "/api/project/pr1/branches/4",
+                Some(r#"{"active":true}"#.to_string()),
+                Some("Bearer good"),
+            ))
+            .await
+            .unwrap();
+        let (status, body) = read_json(response).await;
+        assert_eq!(status, AxStatus::NOT_FOUND);
+        assert_eq!(body["code"], "branch_not_found");
+    }
 }
