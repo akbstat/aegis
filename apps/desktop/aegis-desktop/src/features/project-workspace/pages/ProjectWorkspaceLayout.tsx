@@ -1,6 +1,6 @@
 import React from "react";
 import { Outlet, useNavigate, useParams } from "@tanstack/react-router";
-import { Box, Button, IconButton } from "@aegis/ui/mui";
+import { Box, Button, Chip, IconButton } from "@aegis/ui/mui";
 import { Sidebar, type MenuItem, type SidebarProps } from "@aegis/ui";
 import {
   Assignment as AssignmentIcon,
@@ -10,6 +10,8 @@ import {
 } from "@aegis/ui/icons";
 import { useI18n } from "@aegis/ui/i18n";
 import { getAllWebviewWindows } from "@tauri-apps/api/webviewWindow";
+
+import { useActiveBranchId, useProjectBranches } from "../data/project-branches";
 
 const DashboardMenuIcon = () => <DashboardIcon />;
 const ConfigMenuIcon = () => <SettingsIcon />;
@@ -28,6 +30,13 @@ export function ProjectWorkspaceLayout() {
     projectCode: string;
   };
   const [sidebarOpen, setSidebarOpen] = React.useState(true);
+
+  // The active branch is desktop-local state — the server does not
+  // model one — so the chip is resolved from the settings store plus
+  // the project's branch list.
+  const { data: branches } = useProjectBranches(projectCode);
+  const { data: activeBranchId } = useActiveBranchId(projectCode);
+  const activeBranch = branches?.find((b) => b.id === activeBranchId);
 
   const menu: MenuItem[] = [
     {
@@ -58,6 +67,9 @@ export function ProjectWorkspaceLayout() {
 
   const sidebarProps: SidebarProps = {
     title: projectCode,
+    titleAdornment: activeBranch ? (
+      <Chip size="small" label={activeBranch.branch} />
+    ) : undefined,
     menu,
     open: sidebarOpen,
     onToggle: () => setSidebarOpen((o) => !o),

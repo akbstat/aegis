@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   createMemoryHistory,
@@ -18,15 +18,54 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
   getAllWebviewWindows: (...args: unknown[]) => mockGetAll(...args),
 }));
 
+// The layout lists the project's branches to resolve the active branch
+// name, and reads the active branch id out of the settings store.
+const mockInvoke = vi.fn();
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (...args: unknown[]) => mockInvoke(...args),
+}));
+
+const store = new Map<string, unknown>();
+vi.mock("@tauri-apps/plugin-store", () => ({
+  load: () =>
+    Promise.resolve({
+      get: (k: string) => Promise.resolve(store.get(k)),
+      set: (k: string, v: unknown) => {
+        store.set(k, v);
+        return Promise.resolve();
+      },
+      save: () => Promise.resolve(),
+    }),
+}));
+
 import { AegisThemeProvider } from "@aegis/ui/theme";
 import { AegisI18nProvider } from "@aegis/ui/i18n";
 import { ProjectWorkspaceLayout } from "../../../features/project-workspace/pages/ProjectWorkspaceLayout";
+import { renderWithQueryClient } from "../../helpers/render-with-query-client";
+
+const BRANCH = {
+  id: 4,
+  projectId: 9,
+  branch: "2026Q1",
+  createdAt: "2026-01-02T03:04:05Z",
+  updatedAt: "2026-01-02T03:04:05Z",
+};
+
+function mockBranches(branches: unknown[]) {
+  mockInvoke.mockImplementation((cmd: string) => {
+    if (cmd === "list_project_branches") return Promise.resolve(branches);
+    return Promise.resolve([]);
+  });
+}
 
 afterEach(() => cleanup());
 beforeEach(() => {
   mockGetAll.mockReset();
   mockFocus.mockReset();
   mockShow.mockReset();
+  mockInvoke.mockReset();
+  store.clear();
+  mockBranches([]);
   mockFocus.mockResolvedValue(undefined);
   mockShow.mockResolvedValue(undefined);
   vi.stubGlobal("localStorage", {
@@ -78,7 +117,7 @@ async function renderLayout(initialPath: string) {
     await router.load();
   });
 
-  const result = render(
+  const result = renderWithQueryClient(
     <AegisThemeProvider>
       <AegisI18nProvider>
         <RouterProvider router={router} />
@@ -136,6 +175,43 @@ describe("ProjectWorkspaceLayout", () => {
     await waitFor(() => expect(mockGetAll).toHaveBeenCalled());
     expect(mockFocus).not.toHaveBeenCalled();
     expect(mockShow).not.toHaveBeenCalled();
+  });
+
+  it("shows the active branch name next to the project code", async () => {
+    mockBranches([BRANCH]);
+    store.set("activeBranch.DEMO-001", 4);
+    await renderLayout("/project/DEMO-001/dashboard");
+    expect(await screen.findByText("2026Q1")).toBeInTheDocument();
+  });
+
+  it("shows no chip when the project has no active branch", async () => {
+    mockBranches([BRANCH]);
+    await renderLayout("/project/DEMO-001/dashboard");
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalled());
+    expect(screen.queryByText("2026Q1")).not.toBeInTheDocument();
+  });
+
+  it("shows no chip when the project has no branches", async () => {
+    mockBranches([]);
+    store.set("activeBranch.DEMO-001", 4);
+    await renderLayout("/project/DEMO-001/dashboard");
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalled());
+    expect(screen.queryByText("2026Q1")).not.toBeInTheDocument();
+  });
+
+  it("shows no chip for a stale active branch id", async () => {
+    mockBranches([BRANCH]);
+    store.set("activeBranch.DEMO-001", 999);
+    await renderLayout("/project/DEMO-001/dashboard");
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalled());
+    expect(screen.queryByText("2026Q1")).not.toBeInTheDocument();
+  });
+
+  it("shows the renamed branch, because the chip reads the branch list", async () => {
+    mockBranches([{ ...BRANCH, branch: "2026Q2" }]);
+    store.set("activeBranch.DEMO-001", 4);
+    await renderLayout("/project/DEMO-001/dashboard");
+    expect(await screen.findByText("2026Q2")).toBeInTheDocument();
   });
 
   it("renders an icon-only footer button when the sidebar is collapsed", async () => {
