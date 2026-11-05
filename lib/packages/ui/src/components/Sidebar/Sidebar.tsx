@@ -18,6 +18,7 @@ import type { SidebarProps, MenuItem } from './types';
 
 export function Sidebar({
   title,
+  titleAdornment,
   menu,
   open,
   onToggle,
@@ -62,6 +63,7 @@ export function Sidebar({
             {title}
           </Typography>
         )}
+        {open && titleAdornment}
       </Box>
       <Divider />
       <List>

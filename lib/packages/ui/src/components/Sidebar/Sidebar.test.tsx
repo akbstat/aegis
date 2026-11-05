@@ -35,6 +35,20 @@ describe('Sidebar', () => {
     expect(screen.queryByText('My App')).not.toBeInTheDocument();
   });
 
+  it('renders the title adornment next to the title', () => {
+    renderWithTheme(
+      <Sidebar {...defaultProps} titleAdornment={<span>2026Q1</span>} />,
+    );
+    expect(screen.getByText('2026Q1')).toBeInTheDocument();
+  });
+
+  it('hides the title adornment when open=false', () => {
+    renderWithTheme(
+      <Sidebar {...defaultProps} open={false} titleAdornment={<span>2026Q1</span>} />,
+    );
+    expect(screen.queryByText('2026Q1')).not.toBeInTheDocument();
+  });
+
   it('toggle button calls onToggle when clicked', async () => {
     const onToggle = vi.fn();
     renderWithTheme(<Sidebar {...defaultProps} onToggle={onToggle} />);

@@ -12,6 +12,10 @@ export interface MenuItem extends SubMenuItem {
 
 export interface SidebarProps {
   title: string;
+  /** Rendered next to the title in the header row — a chip, a badge,
+   *  anything the caller wants beside the title. Only shown while the
+   *  sidebar is expanded, alongside the title itself. */
+  titleAdornment?: ReactNode;
   menu: MenuItem[];
   open: boolean;
   onToggle: () => void;
