@@ -59,7 +59,7 @@ export function Sidebar({
           {open ? <FormatIndentDecrease /> : <FormatIndentIncrease />}
         </IconButton>
         {open && (
-          <Typography variant="h6" sx={{ ml: 1 }} noWrap>
+          <Typography variant="h6" sx={{ ml: 0.5, mr: 0.5 }} noWrap>
             {title}
           </Typography>
         )}
