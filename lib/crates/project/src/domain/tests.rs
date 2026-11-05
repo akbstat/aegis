@@ -258,6 +258,33 @@ fn project_configuration_default_has_no_sdtm_terminology() {
 }
 
 #[test]
+fn project_branch_new_rejects_an_empty_name() {
+    let err = ProjectBranch::new(1, 1, "".into(), false, test_now(), test_now()).unwrap_err();
+    assert!(matches!(err, DomainError::EmptyBranchName));
+}
+
+#[test]
+fn project_branch_new_rejects_a_whitespace_only_name() {
+    let err = ProjectBranch::new(1, 1, "   ".into(), false, test_now(), test_now()).unwrap_err();
+    assert!(matches!(err, DomainError::EmptyBranchName));
+}
+
+#[test]
+fn project_branch_new_accepts_a_valid_name() {
+    let b = ProjectBranch::new(7, 3, "2026Q1".into(), true, test_now(), test_now()).unwrap();
+    assert_eq!(b.id, 7);
+    assert_eq!(b.project_id, 3);
+    assert_eq!(b.branch, "2026Q1");
+    assert!(b.active);
+}
+
+#[test]
+fn project_branch_for_repository_bypasses_validation() {
+    let b = ProjectBranch::for_repository(1, 1, "".into(), false, test_now(), test_now());
+    assert_eq!(b.branch, "");
+}
+
+#[test]
 fn project_configuration_for_repository_carries_sdtm_terminology() {
     let c = ProjectConfiguration::for_repository(
         None,
