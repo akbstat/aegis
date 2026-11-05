@@ -11,3 +11,6 @@ pub mod terminology;
 pub mod user;
 pub mod user_credential;
 pub mod webview_log;
+
+#[cfg(test)]
+pub mod test_support;

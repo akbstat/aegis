@@ -45,6 +45,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             commands::project::list_projects,
             commands::project::get_project_by_code,
             commands::project::update_project,
+            commands::project::list_project_branches,
+            commands::project::create_project_branch,
+            commands::project::update_project_branch,
             // terminology
             commands::terminology::version::create_terminology_version,
             commands::terminology::version::list_terminology_versions,
