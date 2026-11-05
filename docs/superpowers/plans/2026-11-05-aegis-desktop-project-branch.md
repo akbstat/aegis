@@ -544,7 +544,8 @@ Cover:
 - A **stale** active-branch id (a store id that matches no branch) leaves every switch unchecked and does not throw.
 - Opening the rename dialog pre-fills the name field with the current branch name.
 - A **whitespace-only** name leaves Confirm disabled; a trimmed non-empty name enables it.
-- A **duplicate** name (the mock throws `{ kind: "http", status: 409, code: "duplicate_branch", message: "…" }`) renders that message in the dialog.
+- A **duplicate** name (the mock throws `{ kind: "http", status: 409, code: "duplicate_branch", message: "…" }`) renders that message in the dialog and the dialog stays open.
+- A **`403 forbidden`** (the server's admin/root gate — the common case for a project leader who is not an admin) renders in the dialog too, and the dialog stays open.
 - Opening the initialize dialog and confirming shows the success snackbar with `t("project.branches.initialize.success")`.
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -558,7 +559,7 @@ A MUI `Dialog` with a `TextField` bound to local state, seeded from `branch?.bra
 
 The Confirm button is disabled when the trimmed value is empty or when `pending` is true. Confirm calls `onSubmit(trimmedValue)`.
 
-When `error` is not null, render it in an `Alert severity="error"` inside the dialog, using `errorMessage(error)` — the server's `duplicate_branch` / `validation_failed` message reaches the user verbatim.
+When `error` is not null, render it in an `Alert severity="error"` inside the dialog, using `errorMessage(error)` — the server's `duplicate_branch` / `forbidden` / `validation_failed` message reaches the user verbatim. The dialog stays open on error, so the message appears where the user clicked; the parent closes it only on success.
 
 - [ ] **Step 4: Implement `ProjectBranchesSection`**
 

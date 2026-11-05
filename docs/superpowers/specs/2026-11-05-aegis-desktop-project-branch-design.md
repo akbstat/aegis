@@ -396,14 +396,23 @@ The desktop surfaces the server's typed error codes verbatim. Only the
 create / rename paths talk to the server; the switch and the chip are
 local and cannot fail against it.
 
+Every create / rename error renders **inside the dialog that triggered
+it**, and the dialog stays open so the message is visible where the
+user clicked. That matters because the `403 forbidden` case is common,
+not exceptional: the server gates branch writes behind admin/root, so a
+project leader who is not an admin gets `403` on every create and
+rename. The section's own alert is only for the branch *list* failing
+to load.
+
 | Situation | HTTP | wire code | On screen |
 | --- | --- | --- | --- |
 | Branch name is blank | 400 | `validation_failed` | Alert in the name dialog |
 | Name collides in the project | 409 | `duplicate_branch` | Alert in the name dialog |
-| Unknown branch / project | 404 | `branch_not_found`, `not_found` | Alert in the section |
-| Caller is not admin/root | 403 | `forbidden` | Alert in the section or the dialog |
-| No bearer | 401 | `token_verification_failed` | Alert in the section |
-| Driver failure | 500 | `repository_error` | Alert in the section |
+| Caller is not admin/root | 403 | `forbidden` | Alert in the name dialog |
+| Unknown branch / project | 404 | `branch_not_found`, `not_found` | Alert in the name dialog |
+| No bearer | 401 | `token_verification_failed` | Alert in the name dialog |
+| Driver failure | 500 | `repository_error` | Alert in the name dialog |
+| The branch list fails to load | 4xx / 5xx | any | Alert in the section |
 
 The frontend narrows with `errorMessage(error)` from
 `src/shared/api/error.ts`; the `kind === "http"` dance is never
