@@ -9,9 +9,11 @@
 //!
 //! `row` is `pub(crate)` and is NOT re-exported at the crate root.
 
+pub(crate) mod branch_repo;
 pub(crate) mod project_repo;
 pub(crate) mod row;
 #[cfg(test)]
 mod tests;
 
+pub use branch_repo::ProjectBranchRepo;
 pub use project_repo::ProjectRepo;

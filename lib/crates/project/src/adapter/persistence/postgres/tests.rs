@@ -266,7 +266,7 @@ fn project_branches_migration_has_updated_at_trigger() {
 mod row_tests {
     use chrono::{TimeZone, Utc};
 
-    use super::super::row::{ProjectMemberRow, ProjectRow};
+    use super::super::row::{ProjectBranchRow, ProjectMemberRow, ProjectRow};
     use crate::domain::{
         ProjectConfiguration, ProjectLanguage, ProjectMember, ProjectTag, RoleType, TeamType,
     };
@@ -336,5 +336,22 @@ mod row_tests {
             RoleType::try_from(row.role_type.as_str()).unwrap(),
             RoleType::Leader
         );
+    }
+
+    #[test]
+    fn project_branch_row_converts_to_a_project_branch() {
+        let row = ProjectBranchRow {
+            id: 5,
+            project_id: 2,
+            branch: "2026Q1".into(),
+            active: true,
+            created_at: ts(),
+            updated_at: ts(),
+        };
+        let b: crate::domain::ProjectBranch = row.try_into().expect("convert");
+        assert_eq!(b.id, 5);
+        assert_eq!(b.project_id, 2);
+        assert_eq!(b.branch, "2026Q1");
+        assert!(b.active);
     }
 }
