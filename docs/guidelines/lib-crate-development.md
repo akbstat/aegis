@@ -199,11 +199,13 @@ the adapter translates driver errors into domain errors.
    - `tests/integration_persistence.rs` — live-database round-trips,
      `#[ignore]`-gated.
 
-Live-DB tests load `.env` via `dotenvy::dotenv()`, read
-`AEGIS_<CRATE>_DATABASE_URL` (panic with a clear message if missing), apply
+Live-DB tests load `.env` via `dotenvy::dotenv()`, read the single
+`AEGIS_TEST_DATABASE_URL` (panic with a clear message if missing), apply
 the migrations, then **drop the live table and the `_sqlx_migrations`
-bookkeeping table** so each run starts clean. This is destructive against
-a real production database; that is intentional. Run ignored tests with
+bookkeeping table** so each run starts clean. That URL must point at a
+disposable test database — never the server's `AEGIS_DATABASE_URL`. This is
+destructive against whatever database it is pointed at; that is intentional.
+Run ignored tests with
 `cargo test -p <crate> -- --ignored --test-threads=1`.
 
 Generate a per-run unique value (atomic counter + wall-clock nanoseconds)
@@ -219,7 +221,8 @@ Every business lib crate gets a `README.md` covering:
   `adapter/facade/internal/`).
 - Database setup if the crate owns a schema: the `sqlx migrate run --source
   lib/crates/<crate>/migrations` command, the env var
-  (`AEGIS_<CRATE>_DATABASE_URL`), and a small constructor snippet.
+  (`AEGIS_TEST_DATABASE_URL` for the live-DB tests), and a small constructor
+  snippet.
 - How to add a migration: `sqlx migrate add --source
   lib/crates/<crate>/migrations --timestamp <description>`, then write the
   DDL into the file the CLI created (see §8).
@@ -234,7 +237,7 @@ cargo fmt --all -- --check
 cargo clippy -p <crate> --all-targets --all-features -- -D warnings
 cargo test -p <crate>
 cargo doc -p <crate> --no-deps
-cargo test -p <crate> -- --ignored --test-threads=1   # when AEGIS_<CRATE>_DATABASE_URL is set
+cargo test -p <crate> -- --ignored --test-threads=1   # when AEGIS_TEST_DATABASE_URL is set
 ```
 
 Run `cargo check --workspace` / `cargo clippy --workspace` /

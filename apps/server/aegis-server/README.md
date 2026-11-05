@@ -102,13 +102,13 @@ cargo test -p aegis-server
 cargo clippy -p aegis-server --all-targets -- -D warnings
 
 # 3. Live-DB integration test (requires a real Postgres).
-export AEGIS_DATABASE_URL=postgres://user:pass@localhost/aegis_test
+export AEGIS_TEST_DATABASE_URL=postgres://user:pass@localhost/aegis_test
 cargo test -p aegis-server --test integration_auth -- --ignored
 ```
 
 The live-DB test creates a per-run user row, runs the full
 login → refresh → logout → wrong-password flow, and cleans up. If
-`AEGIS_DATABASE_URL` is unset, the test skips itself.
+`AEGIS_TEST_DATABASE_URL` is unset, the test skips itself.
 
 ## Errors
 

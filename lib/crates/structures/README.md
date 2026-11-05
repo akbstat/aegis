@@ -100,7 +100,7 @@ database of its own for the live tests.
 > `structures.rootpath`, so a binary deployed ahead of the migration fails
 > every structures request with "column rootpath does not exist".
 
-> **The URL must point at a dedicated database.** SQLx keeps a single
+> **The URL must point at a disposable test database.** SQLx keeps a single
 > `_sqlx_migrations` table *per database*, shared by every crate that migrates
 > it. The live test below drops that table, so pointing it at the server's
 > database would erase the applied-migration record for every other crate.
@@ -141,8 +141,9 @@ cargo test -p structures                                  # unit + compile-only
 cargo test -p structures -- --ignored --test-threads=1    # live PostgreSQL
 ```
 
-The live tests need `AEGIS_STRUCTURES_DATABASE_URL` set (or present in `.env` at
-the workspace root) and a **dedicated** database. Each run drops the live tables
+The live tests need `AEGIS_TEST_DATABASE_URL` set (or present in `.env` at
+the workspace root) and a **disposable** database, shared with the other crates'
+live-DB tests. Each run drops the live tables
 and the `_sqlx_migrations` table before re-applying the migrations — destructive
 against a real database on purpose.
 

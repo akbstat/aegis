@@ -11,7 +11,7 @@
 //! cargo test -p auth -- --ignored
 //! ```
 //!
-//! The connection URL is read from the `AEGIS_DATABASE_URL`
+//! The connection URL is read from the `AEGIS_TEST_DATABASE_URL`
 //! environment variable. If unset, the test loads `.env` from the
 //! workspace root via `dotenvy`.
 
@@ -35,15 +35,15 @@ where
     Fut: std::future::Future<Output = T>,
 {
     let _ = dotenvy::dotenv();
-    let url = std::env::var("AEGIS_DATABASE_URL").unwrap_or_else(|_| {
+    let url = std::env::var("AEGIS_TEST_DATABASE_URL").unwrap_or_else(|_| {
         panic!(
-            "AEGIS_DATABASE_URL must be set (or present in .env at the workspace root) \
+            "AEGIS_TEST_DATABASE_URL must be set (or present in .env at the workspace root) \
              to run --ignored tests"
         )
     });
     let pool = PgPool::connect(&url)
         .await
-        .expect("connect to PostgreSQL via AEGIS_DATABASE_URL");
+        .expect("connect to PostgreSQL via AEGIS_TEST_DATABASE_URL");
 
     sqlx::query("DROP TABLE IF EXISTS auth_user_domain_identities CASCADE")
         .execute(&pool)
@@ -77,7 +77,7 @@ fn unique_code(prefix: &str) -> String {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn create_then_find_credentials_round_trip() {
     with_pool(|pool| async move {
         let repo = UserCredentialsRepo::new(pool.clone());
@@ -105,7 +105,7 @@ async fn create_then_find_credentials_round_trip() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn bump_token_version_returns_incremented_value() {
     with_pool(|pool| async move {
         let repo = UserCredentialsRepo::new(pool.clone());
@@ -131,7 +131,7 @@ async fn bump_token_version_returns_incremented_value() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn find_credentials_unknown_code_returns_not_found() {
     with_pool(|pool| async move {
         let repo = UserCredentialsRepo::new(pool);
@@ -145,7 +145,7 @@ async fn find_credentials_unknown_code_returns_not_found() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn bump_token_version_unknown_code_returns_not_found() {
     with_pool(|pool| async move {
         let repo = UserCredentialsRepo::new(pool);
@@ -159,7 +159,7 @@ async fn bump_token_version_unknown_code_returns_not_found() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn create_then_find_domain_identity_round_trip() {
     with_pool(|pool| async move {
         let repo = DomainIdentityRepo::new(pool.clone());
@@ -190,7 +190,7 @@ async fn create_then_find_domain_identity_round_trip() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn find_domain_identity_unmatched_triple_returns_not_found() {
     with_pool(|pool| async move {
         let repo = DomainIdentityRepo::new(pool);
@@ -205,7 +205,7 @@ async fn find_domain_identity_unmatched_triple_returns_not_found() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn usecase_can_be_constructed_from_real_repos() {
     with_pool(|pool| async move {
         // Construct a real `AuthUsecase` wired to the Postgres repos and

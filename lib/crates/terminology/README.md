@@ -53,9 +53,9 @@ timestamp prefix is the migration's version.
 sqlx migrate add --source lib/crates/terminology/migrations --timestamp <description>
 ```
 
-The live-DB URL comes from the
-`AEGIS_TERMINOLOGY_DATABASE_URL` environment variable (or
-`.env` at the workspace root).
+The runtime URL comes from the server's `AEGIS_DATABASE_URL`. The
+live-DB integration tests use the disposable `AEGIS_TEST_DATABASE_URL`
+(or `.env` at the workspace root).
 
 ```rust
 use sqlx::postgres::PgPoolOptions;
@@ -65,7 +65,7 @@ use terminology::{
 };
 
 let pool = PgPoolOptions::new()
-    .connect(&std::env::var("AEGIS_TERMINOLOGY_DATABASE_URL")?)
+    .connect(&std::env::var("AEGIS_DATABASE_URL")?)
     .await?;
 
 let v_repo = TerminologyVersionRepo::new(pool.clone());
@@ -83,7 +83,7 @@ let usecase = TerminologyUsecase::new(TerminologyUsecaseConfig {
 
 ```bash
 cargo test -p terminology                                # cargo unit + ignored-free tests
-cargo test -p terminology -- --ignored --test-threads=1  # when AEGIS_TERMINOLOGY_DATABASE_URL is set
+cargo test -p terminology -- --ignored --test-threads=1  # when AEGIS_TEST_DATABASE_URL is set
 ```
 
 ## Guideline

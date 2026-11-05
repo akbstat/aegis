@@ -1,6 +1,6 @@
 //! Live-database integration tests for the PostgreSQL adapter.
 //!
-//! `#[ignore]`-gated; opt in with `AEGIS_SDTM_PROJECT_DATABASE_URL` set:
+//! `#[ignore]`-gated; opt in with `AEGIS_TEST_DATABASE_URL` set:
 //!
 //! ```text
 //! cargo test -p sdtm-project -- --ignored --test-threads=1
@@ -40,9 +40,9 @@ where
     Fut: std::future::Future<Output = T>,
 {
     let _ = dotenvy::dotenv();
-    let url = std::env::var("AEGIS_SDTM_PROJECT_DATABASE_URL").unwrap_or_else(|_| {
+    let url = std::env::var("AEGIS_TEST_DATABASE_URL").unwrap_or_else(|_| {
         panic!(
-            "AEGIS_SDTM_PROJECT_DATABASE_URL must be set (or present in .env \
+            "AEGIS_TEST_DATABASE_URL must be set (or present in .env \
              at the workspace root) to run --ignored tests. It must point at a \
              DEDICATED database: the test drops the _sqlx_migrations table, \
              which sqlx shares across every crate that migrates that database."
@@ -51,7 +51,7 @@ where
 
     let pool = PgPool::connect(&url)
         .await
-        .expect("connect to PostgreSQL via AEGIS_SDTM_PROJECT_DATABASE_URL");
+        .expect("connect to PostgreSQL via AEGIS_TEST_DATABASE_URL");
 
     // Drop in reverse FK order so cascading rules never matter. The
     // statements are literals rather than a formatted list: sqlx
@@ -93,7 +93,7 @@ fn unique(prefix: &str) -> String {
 // ---- SdtmProjectVersion ---------------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn version_create_then_list_round_trips() {
     with_pool(|pool| async move {
         let repo = SdtmProjectVersionRepoPg::new(pool);
@@ -122,7 +122,7 @@ async fn version_create_then_list_round_trips() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn version_update_changes_name() {
     with_pool(|pool| async move {
         let repo = SdtmProjectVersionRepoPg::new(pool);
@@ -148,7 +148,7 @@ async fn version_update_changes_name() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn version_update_of_missing_row_is_not_found() {
     with_pool(|pool| async move {
         let repo = SdtmProjectVersionRepoPg::new(pool);
@@ -168,7 +168,7 @@ async fn version_update_of_missing_row_is_not_found() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn version_delete_of_missing_row_is_not_found() {
     with_pool(|pool| async move {
         let repo = SdtmProjectVersionRepoPg::new(pool);
@@ -182,7 +182,7 @@ async fn version_delete_of_missing_row_is_not_found() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn version_unique_is_enforced_per_project() {
     with_pool(|pool| async move {
         let repo = SdtmProjectVersionRepoPg::new(pool);
@@ -220,7 +220,7 @@ async fn version_unique_is_enforced_per_project() {
 // ---- SdtmProjectDomain ----------------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_create_then_list_round_trips() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -255,7 +255,7 @@ async fn domain_create_then_list_round_trips() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_key_variables_preserve_caller_order() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -293,7 +293,7 @@ async fn domain_key_variables_preserve_caller_order() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_update_changes_code_and_key_variables() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -343,7 +343,7 @@ async fn domain_update_changes_code_and_key_variables() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_update_of_missing_row_is_not_found() {
     with_pool(|pool| async move {
         let domains = SdtmProjectDomainRepoPg::new(pool);
@@ -364,7 +364,7 @@ async fn domain_update_of_missing_row_is_not_found() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_delete_of_missing_row_is_not_found() {
     with_pool(|pool| async move {
         let domains = SdtmProjectDomainRepoPg::new(pool);
@@ -378,7 +378,7 @@ async fn domain_delete_of_missing_row_is_not_found() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_create_when_version_vanished_maps_to_fk_not_found() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -421,7 +421,7 @@ async fn domain_create_when_version_vanished_maps_to_fk_not_found() {
 // ---- SdtmProjectDomainOverride --------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_override_create_then_get_round_trips() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -462,7 +462,7 @@ async fn domain_override_create_then_get_round_trips() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_override_is_unique_per_domain() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -509,7 +509,7 @@ async fn domain_override_is_unique_per_domain() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_override_update_changes_category() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -553,7 +553,7 @@ async fn domain_override_update_changes_category() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_override_delete_of_missing_row_is_not_found() {
     with_pool(|pool| async move {
         let overrides = SdtmProjectDomainOverrideRepoPg::new(pool);
@@ -572,7 +572,7 @@ async fn domain_override_delete_of_missing_row_is_not_found() {
 /// it as a not-found rather than some other error, or the usecase's
 /// "no override" arm would never fire.
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_override_read_of_a_domain_without_one_is_not_found() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -604,7 +604,7 @@ async fn domain_override_read_of_a_domain_without_one_is_not_found() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_read_carries_the_override() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -651,7 +651,7 @@ async fn domain_read_carries_the_override() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_update_carries_the_override() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -700,7 +700,7 @@ async fn domain_update_carries_the_override() {
 // ---- cascade --------------------------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn version_delete_cascades_to_the_whole_subtree() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -767,7 +767,7 @@ async fn version_delete_cascades_to_the_whole_subtree() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn domain_delete_cascades_to_override_and_variables() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -818,7 +818,7 @@ async fn domain_delete_cascades_to_override_and_variables() {
 // ---- SdtmProjectVariable --------------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_create_then_list_orders_by_sequence() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -866,7 +866,7 @@ async fn variable_create_then_list_orders_by_sequence() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_update_changes_sequence() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -911,7 +911,7 @@ async fn variable_update_changes_sequence() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_update_of_missing_row_is_not_found() {
     with_pool(|pool| async move {
         let variables = SdtmProjectVariableRepoPg::new(pool);
@@ -932,7 +932,7 @@ async fn variable_update_of_missing_row_is_not_found() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_delete_of_missing_row_is_not_found() {
     with_pool(|pool| async move {
         let variables = SdtmProjectVariableRepoPg::new(pool);
@@ -946,7 +946,7 @@ async fn variable_delete_of_missing_row_is_not_found() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_delete_cascades_to_override() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -1001,7 +1001,7 @@ async fn variable_delete_cascades_to_override() {
 // ---- SdtmProjectVariableOverride ------------------------------------------
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_override_create_then_get_round_trips() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -1055,7 +1055,7 @@ async fn variable_override_create_then_get_round_trips() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_override_role_can_be_cleared() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());
@@ -1138,7 +1138,7 @@ async fn variable_override_role_can_be_cleared() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_override_delete_of_missing_row_is_not_found() {
     with_pool(|pool| async move {
         let overrides = SdtmProjectVariableOverrideRepoPg::new(pool);
@@ -1154,7 +1154,7 @@ async fn variable_override_delete_of_missing_row_is_not_found() {
 /// The variable-side twin of
 /// `domain_override_read_of_a_domain_without_one_is_not_found`.
 #[tokio::test]
-#[ignore = "requires AEGIS_SDTM_PROJECT_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn variable_override_read_of_a_variable_without_one_is_not_found() {
     with_pool(|pool| async move {
         let versions = SdtmProjectVersionRepoPg::new(pool.clone());

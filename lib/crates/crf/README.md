@@ -72,7 +72,7 @@ cargo doc -p crf --no-deps
 ```
 
 Live-DB integration tests (gated with `#[ignore]`) require
-the workspace-shared `AEGIS_DATABASE_URL` (same convention as
+the workspace-shared `AEGIS_TEST_DATABASE_URL` (same convention as
 the `auth` and `project` crate tests):
 
 ```bash

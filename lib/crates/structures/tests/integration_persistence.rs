@@ -1,6 +1,6 @@
 //! Live-database integration tests for the PostgreSQL adapter.
 //!
-//! `#[ignore]`-gated; opt in with `AEGIS_STRUCTURES_DATABASE_URL` set:
+//! `#[ignore]`-gated; opt in with `AEGIS_TEST_DATABASE_URL` set:
 //!
 //! ```text
 //! cargo test -p structures -- --ignored --test-threads=1
@@ -35,9 +35,9 @@ where
     Fut: std::future::Future<Output = T>,
 {
     let _ = dotenvy::dotenv();
-    let url = std::env::var("AEGIS_STRUCTURES_DATABASE_URL").unwrap_or_else(|_| {
+    let url = std::env::var("AEGIS_TEST_DATABASE_URL").unwrap_or_else(|_| {
         panic!(
-            "AEGIS_STRUCTURES_DATABASE_URL must be set (or present in .env \
+            "AEGIS_TEST_DATABASE_URL must be set (or present in .env \
              at the workspace root) to run --ignored tests. It must point at a \
              DEDICATED database: the test drops the _sqlx_migrations table, \
              which sqlx shares across every crate that migrates that database."
@@ -46,7 +46,7 @@ where
 
     let pool = PgPool::connect(&url)
         .await
-        .expect("connect to PostgreSQL via AEGIS_STRUCTURES_DATABASE_URL");
+        .expect("connect to PostgreSQL via AEGIS_TEST_DATABASE_URL");
 
     // Drop in reverse FK order so cascading rules never matter. The
     // statements are literals rather than a formatted list: sqlx
@@ -116,7 +116,7 @@ fn usecase(pool: PgPool) -> StructureUsecase<StructureRepoPg, NodeRepoPg, AnyPro
 }
 
 #[tokio::test]
-#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+#[ignore = "needs AEGIS_TEST_DATABASE_URL"]
 async fn a_template_structure_round_trips_through_postgres() {
     with_pool(|pool| async move {
         let uc = usecase(pool.clone());
@@ -161,7 +161,7 @@ async fn a_template_structure_round_trips_through_postgres() {
 }
 
 #[tokio::test]
-#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+#[ignore = "needs AEGIS_TEST_DATABASE_URL"]
 async fn a_migration_and_a_reference_survive_the_jsonb_round_trip() {
     with_pool(|pool| async move {
         let uc = usecase(pool.clone());
@@ -237,7 +237,7 @@ async fn a_migration_and_a_reference_survive_the_jsonb_round_trip() {
 }
 
 #[tokio::test]
-#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+#[ignore = "needs AEGIS_TEST_DATABASE_URL"]
 async fn a_project_structure_merges_over_its_template() {
     with_pool(|pool| async move {
         let uc = usecase(pool.clone());
@@ -293,7 +293,7 @@ async fn a_project_structure_merges_over_its_template() {
 }
 
 #[tokio::test]
-#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+#[ignore = "needs AEGIS_TEST_DATABASE_URL"]
 async fn overriding_a_template_node_drops_the_template_children() {
     with_pool(|pool| async move {
         let uc = usecase(pool.clone());
@@ -353,7 +353,7 @@ async fn overriding_a_template_node_drops_the_template_children() {
 }
 
 #[tokio::test]
-#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+#[ignore = "needs AEGIS_TEST_DATABASE_URL"]
 async fn hiding_a_template_node_removes_it_from_the_tree() {
     with_pool(|pool| async move {
         let uc = usecase(pool.clone());
@@ -404,7 +404,7 @@ async fn hiding_a_template_node_removes_it_from_the_tree() {
 }
 
 #[tokio::test]
-#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+#[ignore = "needs AEGIS_TEST_DATABASE_URL"]
 async fn deleting_a_structure_cascades_to_its_nodes() {
     with_pool(|pool| async move {
         let uc = usecase(pool.clone());
@@ -431,7 +431,7 @@ async fn deleting_a_structure_cascades_to_its_nodes() {
 }
 
 #[tokio::test]
-#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+#[ignore = "needs AEGIS_TEST_DATABASE_URL"]
 async fn the_database_refuses_two_siblings_with_the_same_name() {
     with_pool(|pool| async move {
         let uc = usecase(pool.clone());
@@ -489,7 +489,7 @@ async fn the_database_refuses_two_siblings_with_the_same_name() {
 }
 
 #[tokio::test]
-#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+#[ignore = "needs AEGIS_TEST_DATABASE_URL"]
 async fn a_project_can_only_have_one_structure() {
     with_pool(|pool| async move {
         let uc = usecase(pool.clone());
@@ -534,7 +534,7 @@ async fn a_project_can_only_have_one_structure() {
 }
 
 #[tokio::test]
-#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+#[ignore = "needs AEGIS_TEST_DATABASE_URL"]
 async fn a_structure_written_before_the_rootpath_reads_back_empty() {
     with_pool(|pool| async move {
         // A row that predates the rootpath column: the column is NOT
@@ -555,7 +555,7 @@ async fn a_structure_written_before_the_rootpath_reads_back_empty() {
 }
 
 #[tokio::test]
-#[ignore = "needs AEGIS_STRUCTURES_DATABASE_URL"]
+#[ignore = "needs AEGIS_TEST_DATABASE_URL"]
 async fn updating_a_structure_stores_a_new_rootpath_and_keeps_the_old_one() {
     with_pool(|pool| async move {
         let uc = usecase(pool.clone());

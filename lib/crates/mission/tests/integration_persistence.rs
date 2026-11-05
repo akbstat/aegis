@@ -1,7 +1,7 @@
 //! Live-database integration tests for the PostgreSQL adapter.
 //!
 //! `#[ignore]`-gated; opt in with `cargo test -p mission -- --ignored`.
-//! Reads `AEGIS_MISSION_DATABASE_URL`; loads `.env` at the workspace
+//! Reads `AEGIS_TEST_DATABASE_URL`; loads `.env` at the workspace
 //! root via `dotenvy`. Drops the live tables + `_sqlx_migrations`
 //! before each run so the migration starts fresh.
 
@@ -22,15 +22,15 @@ where
     Fut: std::future::Future<Output = T>,
 {
     let _ = dotenvy::dotenv();
-    let url = std::env::var("AEGIS_MISSION_DATABASE_URL").unwrap_or_else(|_| {
+    let url = std::env::var("AEGIS_TEST_DATABASE_URL").unwrap_or_else(|_| {
         panic!(
-            "AEGIS_MISSION_DATABASE_URL must be set (or present in .env at the \
+            "AEGIS_TEST_DATABASE_URL must be set (or present in .env at the \
              workspace root) to run --ignored tests"
         )
     });
     let pool = PgPool::connect(&url)
         .await
-        .expect("connect to PostgreSQL via AEGIS_MISSION_DATABASE_URL");
+        .expect("connect to PostgreSQL via AEGIS_TEST_DATABASE_URL");
 
     // Destructive cleanup. The integration tests own the schema; if
     // you point them at production by mistake you will lose data.
@@ -70,7 +70,7 @@ fn unique_code(prefix: &str) -> String {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_MISSION_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn mission_create_and_find_round_trip() {
     with_pool(|pool| async move {
         let missions = MissionRepo::new(pool.clone());
@@ -100,7 +100,7 @@ async fn mission_create_and_find_round_trip() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_MISSION_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn mission_create_duplicate_rejects() {
     with_pool(|pool| async move {
         let missions = MissionRepo::new(pool.clone());
@@ -122,7 +122,7 @@ async fn mission_create_duplicate_rejects() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_MISSION_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn mission_delete_cascades_to_assignees() {
     with_pool(|pool| async move {
         let missions = MissionRepo::new(pool.clone());
@@ -162,7 +162,7 @@ async fn mission_delete_cascades_to_assignees() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_MISSION_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn assignee_per_mission_user_role_uniqueness_holds() {
     with_pool(|pool| async move {
         let missions = MissionRepo::new(pool.clone());
@@ -212,7 +212,7 @@ async fn assignee_per_mission_user_role_uniqueness_holds() {
 // ===========================================================================
 
 #[tokio::test]
-#[ignore = "requires AEGIS_MISSION_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn issue_create_find_list_close_open_round_trip() {
     use mission::domain::{IssueState, MissionIssueNew};
 
@@ -272,7 +272,7 @@ async fn issue_create_find_list_close_open_round_trip() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_MISSION_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn issue_update_description_persists() {
     use mission::domain::MissionIssueNew;
 
@@ -318,7 +318,7 @@ async fn issue_update_description_persists() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_MISSION_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn issue_append_comment_round_trips_jsonb() {
     use chrono::Utc;
     use mission::domain::{IssueComment, MissionIssueNew};
@@ -378,7 +378,7 @@ async fn issue_append_comment_round_trips_jsonb() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_MISSION_DATABASE_URL pointing at a live PostgreSQL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL pointing at a live PostgreSQL"]
 async fn mission_delete_cascades_to_issues() {
     use mission::domain::MissionIssueNew;
 

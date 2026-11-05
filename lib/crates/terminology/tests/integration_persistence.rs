@@ -1,7 +1,7 @@
 //! Live-database integration tests for the PostgreSQL adapter.
 //!
 //! `#[ignore]`-gated; opt in with
-//! `AEGIS_TERMINOLOGY_DATABASE_URL` set:
+//! `AEGIS_TEST_DATABASE_URL` set:
 //!
 //! ```text
 //! cargo test -p terminology -- --ignored --test-threads=1
@@ -28,16 +28,16 @@ where
     Fut: std::future::Future<Output = T>,
 {
     let _ = dotenvy::dotenv();
-    let url = std::env::var("AEGIS_TERMINOLOGY_DATABASE_URL").unwrap_or_else(|_| {
+    let url = std::env::var("AEGIS_TEST_DATABASE_URL").unwrap_or_else(|_| {
         panic!(
-            "AEGIS_TERMINOLOGY_DATABASE_URL must be set (or present in .env \
+            "AEGIS_TEST_DATABASE_URL must be set (or present in .env \
              at the workspace root) to run --ignored tests"
         )
     });
 
     let pool = PgPool::connect(&url)
         .await
-        .expect("connect to PostgreSQL via AEGIS_TERMINOLOGY_DATABASE_URL");
+        .expect("connect to PostgreSQL via AEGIS_TEST_DATABASE_URL");
 
     sqlx::query("DROP TABLE IF EXISTS code_items CASCADE")
         .execute(&pool)
@@ -75,7 +75,7 @@ fn unique(prefix: &str) -> String {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_TERMINOLOGY_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn create_then_find_round_trip_for_all_three_levels() {
     with_pool(|pool| async move {
         let v_repo = TerminologyVersionRepo::new(pool.clone());
@@ -127,7 +127,7 @@ async fn create_then_find_round_trip_for_all_three_levels() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_TERMINOLOGY_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn delete_version_cascades_to_children() {
     with_pool(|pool| async move {
         let v_repo = TerminologyVersionRepo::new(pool.clone());
@@ -181,7 +181,7 @@ async fn delete_version_cascades_to_children() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_TERMINOLOGY_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn list_code_lists_paginates_across_multiple_pages() {
     with_pool(|pool| async move {
         let v_repo = TerminologyVersionRepo::new(pool.clone());
@@ -267,7 +267,7 @@ async fn list_code_lists_paginates_across_multiple_pages() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_TERMINOLOGY_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn usecase_wires_through_all_three_repos() {
     with_pool(|pool| async move {
         let v = TerminologyVersionRepo::new(pool.clone());
@@ -297,7 +297,7 @@ async fn usecase_wires_through_all_three_repos() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_TERMINOLOGY_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn list_code_items_by_version_and_code_end_to_end() {
     with_pool(|pool| async move {
         let v_repo = TerminologyVersionRepo::new(pool.clone());
@@ -434,7 +434,7 @@ async fn list_code_items_by_version_and_code_end_to_end() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_TERMINOLOGY_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn list_code_items_paginates_across_multiple_pages() {
     use terminology::CodeItemListQuery;
     with_pool(|pool| async move {
@@ -524,7 +524,7 @@ async fn list_code_items_paginates_across_multiple_pages() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_TERMINOLOGY_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn list_code_lists_with_fragment_uses_full_text_search() {
     use terminology::CodeListListQuery;
     with_pool(|pool| async move {
@@ -614,7 +614,7 @@ async fn list_code_lists_with_fragment_uses_full_text_search() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_TERMINOLOGY_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn multi_word_fragment_matches_every_term_in_postgres() {
     // Regression for the `syntax error in tsquery: "vital sign"`
     // crash: `to_tsquery` parses a tsquery *expression*, so a
@@ -738,7 +738,7 @@ async fn multi_word_fragment_matches_every_term_in_postgres() {
 }
 
 #[tokio::test]
-#[ignore = "requires AEGIS_TERMINOLOGY_DATABASE_URL"]
+#[ignore = "requires AEGIS_TEST_DATABASE_URL"]
 async fn list_code_items_filters_by_version_id_in_postgres() {
     // Regression for `CodeItemListQuery::version_id: Option<i64>`
     // on the Postgres path: when the caller supplies

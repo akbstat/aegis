@@ -7,7 +7,7 @@
 //! that targets a sidecar database) runs them with
 //! `cargo test --test integration_auth -- --ignored`.
 //!
-//! First, the test reads `AEGIS_DATABASE_URL` from the environment
+//! First, the test reads `AEGIS_TEST_DATABASE_URL` from the environment
 //! and aborts early with a helpful message if it is missing. The
 //! schema is brought up via `sqlx::migrate!` against the migration
 //! directories of the `auth` and `user` crates. Fixtures (a user
@@ -72,17 +72,17 @@ fn build_unused_log_ingestor() -> Arc<LogIngestor> {
     Arc::new(LogIngestor::new(cfg).expect("ingestor init"))
 }
 
-/// Build a fresh `PgPool` from `AEGIS_DATABASE_URL`. Aborts the test
+/// Build a fresh `PgPool` from `AEGIS_TEST_DATABASE_URL`. Aborts the test
 /// with a helpful message if the env var is missing, so devs running
 /// `cargo test -- --ignored` without a database see a clear failure
 /// rather than a stack trace.
 async fn pool_or_skip() -> PgPool {
     let _ = dotenvy::dotenv();
-    let url = match std::env::var("AEGIS_DATABASE_URL") {
+    let url = match std::env::var("AEGIS_TEST_DATABASE_URL") {
         Ok(v) => v,
         Err(_) => {
             eprintln!(
-                "AEGIS_DATABASE_URL is not set; skipping live-DB integration test. \
+                "AEGIS_TEST_DATABASE_URL is not set; skipping live-DB integration test. \
                  Set it to a Postgres URL (e.g. postgres://localhost/aegis_test) \
                  and re-run with `cargo test -- --ignored`."
             );
@@ -98,7 +98,7 @@ async fn pool_or_skip() -> PgPool {
         .acquire_timeout(Duration::from_secs(5))
         .connect(&url)
         .await
-        .expect("connect to AEGIS_DATABASE_URL")
+        .expect("connect to AEGIS_TEST_DATABASE_URL")
 }
 
 /// Run migrations from both the `user` and `auth` crates so the
