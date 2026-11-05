@@ -171,6 +171,46 @@ pub struct UpdateProjectRequest {
     pub unblind_members: Option<ProjectMemberDataRequest>,
 }
 
+/// Wire-level projection of a project branch.
+///
+/// The server dropped the `active` flag from the branch row, so the wire
+/// carries no such field and the desktop models none: which branch is
+/// active is desktop-local state, not something the server knows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectBranchViewResponse {
+    pub id: i32,
+    pub project_id: i32,
+    pub branch: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Wire-level request body for `POST /api/project/{code}/branches`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateProjectBranchRequest {
+    pub branch: String,
+}
+
+/// Wire-level request body for `PATCH /api/project/{code}/branches/{id}`.
+///
+/// An absent `branch` leaves the name alone.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProjectBranchRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+}
+
+/// Server wire shape for the branch list. The envelope is unwrapped by
+/// [`list_branches`], exactly as the project list is.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectBranchListWire {
+    branches: Vec<ProjectBranchViewResponse>,
+}
+
 pub async fn create(
     c: &HttpClient,
     body: CreateProjectRequest,
@@ -208,11 +248,59 @@ pub async fn update(
     .await
 }
 
+/// `GET /api/project/{code}/branches` — the project's branches.
+///
+/// The server wraps the list in a `{ "branches": [...] }` envelope; this
+/// unwraps it so the caller sees a plain `Vec`, the same shape the
+/// project list is returned in.
+pub async fn list_branches(
+    c: &HttpClient,
+    code: &str,
+) -> Result<Vec<ProjectBranchViewResponse>, ApiError> {
+    let wire: ProjectBranchListWire = c
+        .request(
+            reqwest::Method::GET,
+            &format!("/api/project/{code}/branches"),
+            None::<&()>,
+        )
+        .await?;
+    Ok(wire.branches)
+}
+
+/// `POST /api/project/{code}/branches` — create a branch.
+pub async fn create_branch(
+    c: &HttpClient,
+    code: &str,
+    body: CreateProjectBranchRequest,
+) -> Result<ProjectBranchViewResponse, ApiError> {
+    c.request(
+        reqwest::Method::POST,
+        &format!("/api/project/{code}/branches"),
+        Some(&body),
+    )
+    .await
+}
+
+/// `PATCH /api/project/{code}/branches/{id}` — rename a branch.
+pub async fn update_branch(
+    c: &HttpClient,
+    code: &str,
+    id: i32,
+    body: UpdateProjectBranchRequest,
+) -> Result<ProjectBranchViewResponse, ApiError> {
+    c.request(
+        reqwest::Method::PATCH,
+        &format!("/api/project/{code}/branches/{id}"),
+        Some(&body),
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::super::client::{HttpClient, MemoryStore, TokenStore};
@@ -393,5 +481,138 @@ mod tests {
         assert_eq!(j, r#"{"key":"Product","value":"DEMO-001"}"#);
         let parsed: TagDataRequest = serde_json::from_str(&j).unwrap();
         assert_eq!(parsed, body);
+    }
+
+    // -- project branches ------------------------------------------------
+
+    /// A branch view parses the server's wire shape. The server dropped
+    /// the `active` flag from the branch row (commit `1ab41d2`), so the
+    /// wire carries no such field and the desktop models none.
+    #[test]
+    fn project_branch_view_parses_the_server_wire_shape() {
+        let raw = r#"{
+            "id": 4,
+            "projectId": 9,
+            "branch": "2026Q1",
+            "createdAt": "2026-01-02T03:04:05Z",
+            "updatedAt": "2026-01-02T03:04:05Z"
+        }"#;
+        let view: ProjectBranchViewResponse = serde_json::from_str(raw).unwrap();
+        assert_eq!(view.id, 4);
+        assert_eq!(view.project_id, 9);
+        assert_eq!(view.branch, "2026Q1");
+    }
+
+    /// An absent name is skipped on the wire rather than sent as null.
+    #[test]
+    fn update_project_branch_request_skips_absent_fields() {
+        let body = UpdateProjectBranchRequest {
+            branch: Some("2026Q2".into()),
+        };
+        let j = serde_json::to_string(&body).unwrap();
+        assert_eq!(j, r#"{"branch":"2026Q2"}"#);
+
+        let body = UpdateProjectBranchRequest { branch: None };
+        let j = serde_json::to_string(&body).unwrap();
+        assert_eq!(j, "{}");
+    }
+
+    /// The server wraps the list in a `{ "branches": [...] }` envelope;
+    /// the desktop unwraps it, exactly as `list` does for projects.
+    #[tokio::test]
+    async fn list_branches_unwraps_the_envelope() {
+        let server = MockServer::start().await;
+        let store = Arc::new(MemoryStore::default());
+        store.set_access_token("AT").await.unwrap();
+        store.set_refresh_token("RT").await.unwrap();
+        server
+            .register(
+                Mock::given(method("GET"))
+                    .and(path("/api/project/pr1/branches"))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "branches": [{
+                            "id": 4,
+                            "projectId": 9,
+                            "branch": "2026Q1",
+                            "createdAt": "2026-01-02T03:04:05Z",
+                            "updatedAt": "2026-01-02T03:04:05Z"
+                        }]
+                    }))),
+            )
+            .await;
+        let c = HttpClient::new(server.uri(), store);
+        let branches = list_branches(&c, "pr1").await.unwrap();
+        assert_eq!(branches.len(), 1);
+        assert_eq!(branches[0].branch, "2026Q1");
+        assert_eq!(branches[0].project_id, 9);
+    }
+
+    #[tokio::test]
+    async fn create_branch_posts_the_branch_name() {
+        let server = MockServer::start().await;
+        let store = Arc::new(MemoryStore::default());
+        store.set_access_token("AT").await.unwrap();
+        store.set_refresh_token("RT").await.unwrap();
+        server
+            .register(
+                Mock::given(method("POST"))
+                    .and(path("/api/project/pr1/branches"))
+                    .and(body_json(serde_json::json!({ "branch": "2026Q1" })))
+                    .respond_with(ResponseTemplate::new(201).set_body_json(serde_json::json!({
+                        "id": 4,
+                        "projectId": 9,
+                        "branch": "2026Q1",
+                        "createdAt": "2026-01-02T03:04:05Z",
+                        "updatedAt": "2026-01-02T03:04:05Z"
+                    }))),
+            )
+            .await;
+        let c = HttpClient::new(server.uri(), store);
+        let view = create_branch(
+            &c,
+            "pr1",
+            CreateProjectBranchRequest {
+                branch: "2026Q1".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(view.id, 4);
+        assert_eq!(view.branch, "2026Q1");
+    }
+
+    #[tokio::test]
+    async fn update_branch_patches_the_branch_name() {
+        let server = MockServer::start().await;
+        let store = Arc::new(MemoryStore::default());
+        store.set_access_token("AT").await.unwrap();
+        store.set_refresh_token("RT").await.unwrap();
+        server
+            .register(
+                Mock::given(method("PATCH"))
+                    .and(path("/api/project/pr1/branches/4"))
+                    .and(body_json(serde_json::json!({ "branch": "2026Q2" })))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "id": 4,
+                        "projectId": 9,
+                        "branch": "2026Q2",
+                        "createdAt": "2026-01-02T03:04:05Z",
+                        "updatedAt": "2026-01-02T03:04:05Z"
+                    }))),
+            )
+            .await;
+        let c = HttpClient::new(server.uri(), store);
+        let view = update_branch(
+            &c,
+            "pr1",
+            4,
+            UpdateProjectBranchRequest {
+                branch: Some("2026Q2".into()),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(view.id, 4);
+        assert_eq!(view.branch, "2026Q2");
     }
 }
