@@ -5,15 +5,18 @@
 //! `cargo test -p project` time.
 
 use apis::project::{
-    CreateProjectRequest, ProjectApiError, ProjectConfigurationData, ProjectConfigurationView,
+    CreateProjectBranchRequest, CreateProjectRequest, ProjectApiError,
+    ProjectBranchView as ApiProjectBranchView, ProjectConfigurationData, ProjectConfigurationView,
     ProjectMemberData, ProjectMemberView as ApiProjectMemberView, ProjectService, TagData, TagView,
-    UpdateProjectRequest, UserSummaryView as ApiUserSummaryView,
+    UpdateProjectBranchRequest, UpdateProjectRequest, UserSummaryView as ApiUserSummaryView,
 };
 use project::{
-    CreateProject, DomainError, ModelVersion, ProjectConfiguration, ProjectLanguage, ProjectMember,
-    ProjectNew, ProjectRepo, ProjectRepository, ProjectServiceImpl, ProjectTag, ProjectUpdate,
-    ProjectUsecaseConfig, ProjectView, RoleType, TeamType, UpdateProject, UsecaseError,
-    UserService, UserServiceImpl, UserSummary, UserSummaryView,
+    CreateProject, CreateProjectBranch, DomainError, ModelVersion, ProjectBranch, ProjectBranchNew,
+    ProjectBranchRepo, ProjectBranchRepository, ProjectBranchUpdate, ProjectBranchUsecase,
+    ProjectBranchView, ProjectConfiguration, ProjectLanguage, ProjectMember, ProjectNew,
+    ProjectRepo, ProjectRepository, ProjectServiceImpl, ProjectTag, ProjectUpdate,
+    ProjectUsecaseConfig, ProjectView, RoleType, TeamType, UpdateProject, UpdateProjectBranch,
+    UsecaseError, UserService, UserServiceImpl, UserSummary, UserSummaryView,
 };
 use sqlx::PgPool;
 
@@ -126,6 +129,8 @@ fn project_usecase_config_has_expected_field_shape() {
 fn repo_constructors_accept_a_pg_pool() {
     let ctor: fn(PgPool) -> ProjectRepo = ProjectRepo::new;
     let _ = ctor;
+    let branch_ctor: fn(PgPool) -> ProjectBranchRepo = ProjectBranchRepo::new;
+    let _ = branch_ctor;
 }
 
 #[test]
@@ -138,6 +143,9 @@ fn domain_error_variants_are_nameable() {
     assert_dom(DomainError::DuplicateCode("p1".into()));
     assert_dom(DomainError::UserNotFound("u1".into()));
     assert_dom(DomainError::UnknownLanguage("ja".into()));
+    assert_dom(DomainError::EmptyBranchName);
+    assert_dom(DomainError::DuplicateBranch("2026Q1".into()));
+    assert_dom(DomainError::BranchNotFound(7));
 }
 
 #[test]
@@ -148,11 +156,91 @@ fn usecase_error_wraps_domain_error() {
 }
 
 #[test]
+fn project_branch_public_types_are_nameable() {
+    // `ProjectBranch` is an aggregate root, so its constructors are
+    // `pub(crate)` — the type is named by pinning it, not by building
+    // one.
+    fn assert_branch_type<T>() {}
+    fn assert_branch_new(_: ProjectBranchNew) {}
+    fn assert_branch_update(_: ProjectBranchUpdate) {}
+    fn assert_branch_usecase_type<T>() {}
+    fn assert_branch_repo_impls_port<T: ProjectBranchRepository>() {}
+    fn assert_branch_view(_: ProjectBranchView) {}
+    fn assert_branch_api_view(_: ApiProjectBranchView) {}
+    fn assert_create_cmd(_: CreateProjectBranch) {}
+    fn assert_update_cmd(_: UpdateProjectBranch) {}
+    fn assert_create_req(_: CreateProjectBranchRequest) {}
+    fn assert_update_req(_: UpdateProjectBranchRequest) {}
+
+    assert_branch_type::<ProjectBranch>();
+    assert_branch_new(ProjectBranchNew {
+        project_id: 2,
+        branch: "2026Q1".into(),
+        active: true,
+    });
+    assert_branch_update(ProjectBranchUpdate {
+        id: 1,
+        project_id: 2,
+        branch: Some("2026Q2".into()),
+        active: Some(true),
+    });
+    assert_branch_usecase_type::<ProjectBranchUsecase<ProjectBranchRepo>>();
+    assert_branch_repo_impls_port::<ProjectBranchRepo>();
+    assert_branch_view(ProjectBranchView {
+        id: 1,
+        project_id: 2,
+        branch: "2026Q1".into(),
+        active: true,
+        created_at: chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc),
+        updated_at: chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc),
+    });
+    assert_branch_api_view(ApiProjectBranchView {
+        id: 1,
+        project_id: 2,
+        branch: "2026Q1".into(),
+        active: true,
+        created_at: chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc),
+        updated_at: chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc),
+    });
+    assert_create_cmd(CreateProjectBranch {
+        project_id: 2,
+        branch: "2026Q1".into(),
+        active: true,
+    });
+    assert_update_cmd(UpdateProjectBranch {
+        id: 1,
+        project_id: 2,
+        branch: None,
+        active: Some(true),
+    });
+    assert_create_req(CreateProjectBranchRequest {
+        project_id: 2,
+        branch: "2026Q1".into(),
+        active: true,
+    });
+    assert_update_req(UpdateProjectBranchRequest {
+        id: 1,
+        project_id: 2,
+        branch: None,
+        active: Some(true),
+    });
+}
+
+#[test]
 fn project_service_impl_is_object_safe() {
     // Pin the trait surface through a function pointer so object-safety
     // is checked at compile time without ever constructing an instance.
-    let _: fn(ProjectServiceImpl<ProjectRepo, UserServiceImpl>) -> Box<dyn ProjectService> =
-        |s| Box::new(s);
+    let _: fn(
+        ProjectServiceImpl<ProjectRepo, UserServiceImpl, ProjectBranchRepo>,
+    ) -> Box<dyn ProjectService> = |s| Box::new(s);
 }
 
 #[test]
@@ -207,6 +295,8 @@ fn apis_error_variants_are_nameable() {
     assert_err(ProjectApiError::NotFound);
     assert_err(ProjectApiError::UserNotFound("u1".into()));
     assert_err(ProjectApiError::DuplicateCode("p1".into()));
+    assert_err(ProjectApiError::DuplicateBranch("2026Q1".into()));
+    assert_err(ProjectApiError::BranchNotFound(7));
 }
 
 #[test]

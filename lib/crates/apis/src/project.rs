@@ -262,4 +262,29 @@ pub trait ProjectService: Send + Sync {
         &self,
         req: UpdateProjectRequest,
     ) -> Result<ProjectView, ProjectApiError>;
+
+    /// Creates a branch of a project. When `req.active` is true the new
+    /// branch becomes the project's active one and the project's other
+    /// active branches are deactivated.
+    async fn create_project_branch(
+        &self,
+        req: CreateProjectBranchRequest,
+    ) -> Result<ProjectBranchView, ProjectApiError>;
+
+    /// Fetches one branch by its id.
+    async fn get_project_branch_by_id(&self, id: i32)
+    -> Result<ProjectBranchView, ProjectApiError>;
+
+    /// Lists every branch of one project.
+    async fn list_project_branches(
+        &self,
+        project_id: i32,
+    ) -> Result<Vec<ProjectBranchView>, ProjectApiError>;
+
+    /// Renames a branch and / or changes whether it is the project's
+    /// active branch.
+    async fn update_project_branch(
+        &self,
+        req: UpdateProjectBranchRequest,
+    ) -> Result<ProjectBranchView, ProjectApiError>;
 }

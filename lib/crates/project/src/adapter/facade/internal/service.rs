@@ -1,48 +1,58 @@
 use async_trait::async_trait;
 
 use apis::project::{
-    CreateProjectRequest, ModelVersionData, ModelVersionView as ApiModelVersionView,
-    ProjectApiError, ProjectConfigurationData, ProjectLanguage as ApiProjectLanguage,
-    ProjectMemberData, ProjectMemberView as ApiProjectMemberView, ProjectService, ProjectView,
-    TagData, UpdateProjectRequest, UserSummaryView as ApiUserSummaryView,
+    CreateProjectBranchRequest, CreateProjectRequest, ModelVersionData,
+    ModelVersionView as ApiModelVersionView, ProjectApiError,
+    ProjectBranchView as ApiProjectBranchView, ProjectConfigurationData,
+    ProjectLanguage as ApiProjectLanguage, ProjectMemberData,
+    ProjectMemberView as ApiProjectMemberView, ProjectService, ProjectView, TagData,
+    UpdateProjectBranchRequest, UpdateProjectRequest, UserSummaryView as ApiUserSummaryView,
 };
 
 use crate::domain::{
-    ModelVersion, ProjectConfiguration, ProjectLanguage, ProjectMember, ProjectRepository,
-    ProjectTag, TerminologyVersionData, UserService,
+    ModelVersion, ProjectBranchRepository, ProjectConfiguration, ProjectLanguage, ProjectMember,
+    ProjectRepository, ProjectTag, TerminologyVersionData, UserService,
 };
 use crate::usecase::{
-    CreateProject, ModelVersionView, ProjectConfigurationView, ProjectUsecase,
-    TerminologyVersionView, UpdateProject, UserSummaryView as DomainUserSummaryView,
+    CreateProject, CreateProjectBranch, ModelVersionView, ProjectBranchUsecase, ProjectBranchView,
+    ProjectConfigurationView, ProjectUsecase, TerminologyVersionView, UpdateProject,
+    UpdateProjectBranch, UserSummaryView as DomainUserSummaryView,
 };
 
-/// Facade adapting `ProjectUsecase<R, U>` to
-/// `apis::project::ProjectService`. The construction is the same
-/// regardless of the underlying storage: the generic `R / U`
-/// arguments stay concrete in the caller.
-pub struct ProjectServiceImpl<R, U>
+/// Facade adapting `ProjectUsecase<R, U>` and
+/// `ProjectBranchUsecase<B>` to `apis::project::ProjectService`. The
+/// construction is the same regardless of the underlying storage: the
+/// generic `R / U / B` arguments stay concrete in the caller.
+pub struct ProjectServiceImpl<R, U, B>
 where
     R: ProjectRepository,
     U: UserService,
+    B: ProjectBranchRepository,
 {
     usecase: ProjectUsecase<R, U>,
+    branch_usecase: ProjectBranchUsecase<B>,
 }
 
-impl<R, U> ProjectServiceImpl<R, U>
+impl<R, U, B> ProjectServiceImpl<R, U, B>
 where
     R: ProjectRepository,
     U: UserService,
+    B: ProjectBranchRepository,
 {
-    pub fn new(usecase: ProjectUsecase<R, U>) -> Self {
-        Self { usecase }
+    pub fn new(usecase: ProjectUsecase<R, U>, branch_usecase: ProjectBranchUsecase<B>) -> Self {
+        Self {
+            usecase,
+            branch_usecase,
+        }
     }
 }
 
 #[async_trait]
-impl<R, U> ProjectService for ProjectServiceImpl<R, U>
+impl<R, U, B> ProjectService for ProjectServiceImpl<R, U, B>
 where
     R: ProjectRepository + 'static,
     U: UserService + 'static,
+    B: ProjectBranchRepository + 'static,
 {
     async fn create_project(
         &self,
@@ -104,6 +114,63 @@ where
             .map_err(map_error)?;
         Ok(view.into())
     }
+
+    async fn create_project_branch(
+        &self,
+        req: CreateProjectBranchRequest,
+    ) -> Result<ApiProjectBranchView, ProjectApiError> {
+        let view = self
+            .branch_usecase
+            .create_branch(CreateProjectBranch {
+                project_id: req.project_id,
+                branch: req.branch,
+                active: req.active,
+            })
+            .await
+            .map_err(map_error)?;
+        Ok(view.into())
+    }
+
+    async fn get_project_branch_by_id(
+        &self,
+        id: i32,
+    ) -> Result<ApiProjectBranchView, ProjectApiError> {
+        let view = self
+            .branch_usecase
+            .get_branch_by_id(id)
+            .await
+            .map_err(map_error)?;
+        Ok(view.into())
+    }
+
+    async fn list_project_branches(
+        &self,
+        project_id: i32,
+    ) -> Result<Vec<ApiProjectBranchView>, ProjectApiError> {
+        let views = self
+            .branch_usecase
+            .list_branches(project_id)
+            .await
+            .map_err(map_error)?;
+        Ok(views.into_iter().map(Into::into).collect())
+    }
+
+    async fn update_project_branch(
+        &self,
+        req: UpdateProjectBranchRequest,
+    ) -> Result<ApiProjectBranchView, ProjectApiError> {
+        let view = self
+            .branch_usecase
+            .update_branch(UpdateProjectBranch {
+                id: req.id,
+                project_id: req.project_id,
+                branch: req.branch,
+                active: req.active,
+            })
+            .await
+            .map_err(map_error)?;
+        Ok(view.into())
+    }
 }
 
 fn member_data_to_domain(d: ProjectMemberData) -> ProjectMember {
@@ -157,6 +224,8 @@ fn map_error(err: crate::usecase::UsecaseError) -> ProjectApiError {
             DomainError::NotFound => ProjectApiError::NotFound,
             DomainError::UserNotFound(code) => ProjectApiError::UserNotFound(code),
             DomainError::DuplicateCode(code) => ProjectApiError::DuplicateCode(code),
+            DomainError::DuplicateBranch(name) => ProjectApiError::DuplicateBranch(name),
+            DomainError::BranchNotFound(id) => ProjectApiError::BranchNotFound(id),
             other => ProjectApiError::Repository(other.to_string()),
         },
     }
@@ -173,6 +242,19 @@ impl From<crate::usecase::ProjectView> for ProjectView {
             members: v.members.into(),
             unblind_members: v.unblind_members.into(),
             configurations: v.configurations.into(),
+            active: v.active,
+            created_at: v.created_at,
+            updated_at: v.updated_at,
+        }
+    }
+}
+
+impl From<ProjectBranchView> for ApiProjectBranchView {
+    fn from(v: ProjectBranchView) -> Self {
+        Self {
+            id: v.id,
+            project_id: v.project_id,
+            branch: v.branch,
             active: v.active,
             created_at: v.created_at,
             updated_at: v.updated_at,

@@ -165,8 +165,12 @@ fn project_status(e: &apis::project::ProjectApiError) -> StatusCode {
     use apis::project::ProjectApiError;
     match e {
         ProjectApiError::Validation(_) => StatusCode::BAD_REQUEST,
-        ProjectApiError::NotFound | ProjectApiError::UserNotFound(_) => StatusCode::NOT_FOUND,
-        ProjectApiError::DuplicateCode(_) => StatusCode::CONFLICT,
+        ProjectApiError::NotFound
+        | ProjectApiError::UserNotFound(_)
+        | ProjectApiError::BranchNotFound(_) => StatusCode::NOT_FOUND,
+        ProjectApiError::DuplicateCode(_) | ProjectApiError::DuplicateBranch(_) => {
+            StatusCode::CONFLICT
+        }
         ProjectApiError::Repository(_) => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
@@ -177,7 +181,9 @@ fn project_code(e: &apis::project::ProjectApiError) -> &'static str {
         ProjectApiError::Validation(_) => "validation_failed",
         ProjectApiError::NotFound => "not_found",
         ProjectApiError::UserNotFound(_) => "user_not_found",
+        ProjectApiError::BranchNotFound(_) => "branch_not_found",
         ProjectApiError::DuplicateCode(_) => "duplicate_code",
+        ProjectApiError::DuplicateBranch(_) => "duplicate_branch",
         ProjectApiError::Repository(_) => "repository_error",
     }
 }

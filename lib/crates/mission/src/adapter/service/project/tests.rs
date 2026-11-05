@@ -3,8 +3,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use apis::project::{
-    ProjectApiError, ProjectConfigurationView, ProjectMemberView, ProjectService, ProjectView,
-    UserSummaryView,
+    ProjectApiError, ProjectBranchView, ProjectConfigurationView, ProjectMemberView,
+    ProjectService, ProjectView, UserSummaryView,
 };
 
 use crate::domain::{DomainError, ProjectLookup};
@@ -37,6 +37,27 @@ impl ProjectService for FakeProject {
         &self,
         _req: apis::project::UpdateProjectRequest,
     ) -> Result<ProjectView, ProjectApiError> {
+        unimplemented!()
+    }
+    async fn create_project_branch(
+        &self,
+        _: apis::project::CreateProjectBranchRequest,
+    ) -> Result<ProjectBranchView, ProjectApiError> {
+        unimplemented!()
+    }
+    async fn get_project_branch_by_id(&self, _: i32) -> Result<ProjectBranchView, ProjectApiError> {
+        unimplemented!()
+    }
+    async fn list_project_branches(
+        &self,
+        _: i32,
+    ) -> Result<Vec<ProjectBranchView>, ProjectApiError> {
+        unimplemented!()
+    }
+    async fn update_project_branch(
+        &self,
+        _: apis::project::UpdateProjectBranchRequest,
+    ) -> Result<ProjectBranchView, ProjectApiError> {
         unimplemented!()
     }
 }
@@ -106,6 +127,30 @@ async fn get_by_code_maps_not_found() {
             &self,
             _: apis::project::UpdateProjectRequest,
         ) -> Result<ProjectView, ProjectApiError> {
+            unimplemented!()
+        }
+        async fn create_project_branch(
+            &self,
+            _: apis::project::CreateProjectBranchRequest,
+        ) -> Result<ProjectBranchView, ProjectApiError> {
+            unimplemented!()
+        }
+        async fn get_project_branch_by_id(
+            &self,
+            _: i32,
+        ) -> Result<ProjectBranchView, ProjectApiError> {
+            unimplemented!()
+        }
+        async fn list_project_branches(
+            &self,
+            _: i32,
+        ) -> Result<Vec<ProjectBranchView>, ProjectApiError> {
+            unimplemented!()
+        }
+        async fn update_project_branch(
+            &self,
+            _: apis::project::UpdateProjectBranchRequest,
+        ) -> Result<ProjectBranchView, ProjectApiError> {
             unimplemented!()
         }
     }
