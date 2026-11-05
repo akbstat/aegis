@@ -31,7 +31,6 @@ impl<B: ProjectBranchRepository> ProjectBranchUsecase<B> {
             .create(ProjectBranchNew {
                 project_id: cmd.project_id,
                 branch: branch.to_string(),
-                active: cmd.active,
             })
             .await?;
         Ok(created.into())
@@ -52,8 +51,7 @@ impl<B: ProjectBranchRepository> ProjectBranchUsecase<B> {
         Ok(branches.into_iter().map(Into::into).collect())
     }
 
-    /// Renames a branch and / or changes whether it is the project's
-    /// active branch.
+    /// Renames a branch.
     pub async fn update_branch(
         &self,
         cmd: UpdateProjectBranch,
@@ -74,7 +72,6 @@ impl<B: ProjectBranchRepository> ProjectBranchUsecase<B> {
                 id: cmd.id,
                 project_id: cmd.project_id,
                 branch,
-                active: cmd.active,
             })
             .await?;
         Ok(updated.into())

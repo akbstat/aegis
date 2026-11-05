@@ -55,7 +55,6 @@ pub struct ProjectBranchRow {
     pub id: i32,
     pub project_id: i32,
     pub branch: String,
-    pub active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -68,7 +67,6 @@ impl TryFrom<ProjectBranchRow> for ProjectBranch {
             row.id,
             row.project_id,
             row.branch,
-            row.active,
             row.created_at,
             row.updated_at,
         ))

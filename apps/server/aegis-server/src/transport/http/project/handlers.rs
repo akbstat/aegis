@@ -214,7 +214,6 @@ pub async fn create_project_branch(
         .create_project_branch(apis::project::CreateProjectBranchRequest {
             project_id,
             branch: req.branch,
-            active: req.active,
         })
         .await?;
     Ok((StatusCode::CREATED, Json(view.into())))
@@ -278,11 +277,7 @@ pub async fn get_project_branch_by_id(
     Ok(Json(view.into()))
 }
 
-/// `PATCH /api/project/{code}/branches/{id}` — rename a branch and / or
-/// change whether it is the project's active branch.
-///
-/// Setting `active: true` switches: the branch becomes active and the
-/// project's other branches are deactivated.
+/// `PATCH /api/project/{code}/branches/{id}` — rename a branch.
 #[utoipa::path(
     patch, path = "/{code}/branches/{id}", tag = "project",
     operation_id = "project_branch_update",
@@ -316,7 +311,6 @@ pub async fn update_project_branch(
             id,
             project_id,
             branch: req.branch,
-            active: req.active,
         })
         .await?;
     Ok(Json(view.into()))
@@ -394,7 +388,6 @@ mod tests {
             id,
             project_id,
             branch: branch.to_string(),
-            active: false,
             created_at: chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
                 .unwrap()
                 .with_timezone(&chrono::Utc),
@@ -1181,7 +1174,7 @@ mod tests {
             .oneshot(build_request(
                 "POST",
                 "/api/project/pr1/branches",
-                Some(r#"{"branch":"2026Q1","active":true}"#.to_string()),
+                Some(r#"{"branch":"2026Q1"}"#.to_string()),
                 Some("Bearer good"),
             ))
             .await
@@ -1330,7 +1323,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_project_branch_resolves_the_project_and_forwards_the_flag() {
+    async fn update_project_branch_resolves_the_project_and_forwards_the_name() {
         let project = MockProjectService {
             get_project_by_code: Some(sample_project_view(9, "pr1")),
             update_project_branch: Some(sample_branch_view(4, 9, "2026Q1")),
@@ -1341,7 +1334,7 @@ mod tests {
             .oneshot(build_request(
                 "PATCH",
                 "/api/project/pr1/branches/4",
-                Some(r#"{"active":true}"#.to_string()),
+                Some(r#"{"branch":"2026Q2"}"#.to_string()),
                 Some("Bearer good"),
             ))
             .await
@@ -1356,8 +1349,7 @@ mod tests {
             .unwrap();
         assert_eq!(captured.id, 4);
         assert_eq!(captured.project_id, 9);
-        assert_eq!(captured.active, Some(true));
-        assert!(captured.branch.is_none());
+        assert_eq!(captured.branch.as_deref(), Some("2026Q2"));
     }
 
     #[tokio::test]
@@ -1374,7 +1366,7 @@ mod tests {
             .oneshot(build_request(
                 "PATCH",
                 "/api/project/pr1/branches/4",
-                Some(r#"{"active":true}"#.to_string()),
+                Some(r#"{"branch":"2026Q2"}"#.to_string()),
                 Some("Bearer good"),
             ))
             .await
@@ -1487,7 +1479,7 @@ mod tests {
             .oneshot(build_request(
                 "PATCH",
                 "/api/project/pr1/branches/4",
-                Some(r#"{"active":true}"#.to_string()),
+                Some(r#"{"branch":"2026Q2"}"#.to_string()),
                 Some("Bearer good"),
             ))
             .await

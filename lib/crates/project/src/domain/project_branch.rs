@@ -5,16 +5,13 @@ use super::error::DomainError;
 
 /// A named working branch of a project.
 ///
-/// At most one branch of a project is active at a time. The switch is
-/// performed by the repository (which can deactivate the project's other
-/// branches in the same transaction), so the domain type itself only
-/// carries the flag.
+/// A project may own any number of branches; they are plain named
+/// rows, and the name is unique within the owning project.
 #[derive(Clone, PartialEq, Eq)]
 pub struct ProjectBranch {
     pub id: i32,
     pub project_id: i32,
     pub branch: String,
-    pub active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -31,7 +28,6 @@ impl ProjectBranch {
         id: i32,
         project_id: i32,
         branch: String,
-        active: bool,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
     ) -> Result<Self, DomainError> {
@@ -42,7 +38,6 @@ impl ProjectBranch {
             id,
             project_id,
             branch,
-            active,
             created_at,
             updated_at,
         })
@@ -55,7 +50,6 @@ impl ProjectBranch {
         id: i32,
         project_id: i32,
         branch: String,
-        active: bool,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
     ) -> Self {
@@ -63,7 +57,6 @@ impl ProjectBranch {
             id,
             project_id,
             branch,
-            active,
             created_at,
             updated_at,
         }
@@ -76,7 +69,6 @@ impl std::fmt::Debug for ProjectBranch {
             .field("id", &self.id)
             .field("project_id", &self.project_id)
             .field("branch", &self.branch)
-            .field("active", &self.active)
             .field("created_at", &self.created_at)
             .field("updated_at", &self.updated_at)
             .finish()
@@ -88,9 +80,6 @@ impl std::fmt::Debug for ProjectBranch {
 pub struct ProjectBranchNew {
     pub project_id: i32,
     pub branch: String,
-    /// When true, the repository deactivates the project's other
-    /// branches before inserting this one as active.
-    pub active: bool,
 }
 
 /// Input DTO for `ProjectBranchRepository::update`. Every field is
@@ -104,21 +93,12 @@ pub struct ProjectBranchUpdate {
     pub id: i32,
     pub project_id: i32,
     pub branch: Option<String>,
-    pub active: Option<bool>,
 }
 
 /// Outbound port for persistence of project branches.
-///
-/// The switch rule — "at most one active branch per project" — lives
-/// in this contract rather than in the domain type, because making
-/// branch B active requires deactivating the project's other branches,
-/// which is a multi-row operation only the adapter can perform
-/// atomically.
 #[async_trait]
 pub trait ProjectBranchRepository: Send + Sync {
-    /// Creates a branch. When `input.active` is true, every currently
-    /// active branch of `input.project_id` is deactivated first, in the
-    /// same transaction.
+    /// Creates a branch.
     async fn create(&self, input: ProjectBranchNew) -> Result<ProjectBranch, DomainError>;
 
     /// Fetches one branch by its id. Returns
@@ -133,12 +113,7 @@ pub trait ProjectBranchRepository: Send + Sync {
     /// - `branch: Some(name)` renames it. A name that collides with
     ///   another branch of the same project surfaces as
     ///   [`DomainError::DuplicateBranch`].
-    /// - `active: Some(true)` makes this branch the project's active
-    ///   one and deactivates the project's other branches, in the same
-    ///   transaction.
-    /// - `active: Some(false)` deactivates this branch only; the
-    ///   project is then left with no active branch.
-    /// - `active: None` leaves the flag alone.
+    /// - `branch: None` leaves the name alone.
     ///
     /// The update is scoped to `input.project_id`: a branch belonging to
     /// another project is reported as

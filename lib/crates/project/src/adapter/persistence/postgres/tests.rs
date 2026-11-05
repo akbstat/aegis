@@ -243,15 +243,15 @@ fn project_branches_migration_rejects_a_blank_name() {
 }
 
 #[test]
-fn project_branches_migration_allows_at_most_one_active_branch_per_project() {
-    let sql = load_migration("20261105024632_create_project_branches.sql");
+fn project_branches_migration_drops_the_active_flag_and_its_index() {
+    let sql = load_migration("20261105030000_drop_project_branch_active.sql");
     assert!(
-        sql.contains("CREATE UNIQUE INDEX project_branches_one_active_per_project"),
-        "the partial unique index is the database backstop for the switch rule; got:\n{sql}"
+        sql.contains("DROP INDEX IF EXISTS project_branches_one_active_per_project"),
+        "the partial unique index backed the switch rule and must go with it; got:\n{sql}"
     );
     assert!(
-        sql.contains("ON project_branches (project_id) WHERE active"),
-        "the partial unique index must be scoped to active rows of one project; got:\n{sql}"
+        sql.contains("ALTER TABLE project_branches DROP COLUMN IF EXISTS active"),
+        "the `active` column must be dropped; got:\n{sql}"
     );
 }
 
@@ -344,7 +344,6 @@ mod row_tests {
             id: 5,
             project_id: 2,
             branch: "2026Q1".into(),
-            active: true,
             created_at: ts(),
             updated_at: ts(),
         };
@@ -352,6 +351,5 @@ mod row_tests {
         assert_eq!(b.id, 5);
         assert_eq!(b.project_id, 2);
         assert_eq!(b.branch, "2026Q1");
-        assert!(b.active);
     }
 }
