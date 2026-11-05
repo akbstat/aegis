@@ -36,7 +36,6 @@ pub fn get_user_info() -> Result<DomainUserInfo, WindowsUtilsError> {
 
     let userid = userid_domain
         .split("@")
-        .into_iter()
         .next()
         .unwrap_or_default()
         .to_owned();
