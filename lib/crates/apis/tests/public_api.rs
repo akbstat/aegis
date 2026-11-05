@@ -534,3 +534,59 @@ fn domain_model_variable_controlled_serialises_only_the_lists_that_are_set() {
     let json = serde_json::to_value(&vc).unwrap();
     assert_eq!(json, serde_json::json!({ "code": ["C66731"] }));
 }
+
+// ---- project ----------------------------------------------------------
+
+use apis::project::{
+    CreateProjectBranchRequest, ProjectApiError, ProjectBranchView, ProjectService,
+    UpdateProjectBranchRequest,
+};
+
+/// Every new branch type in `apis::project` is nameable from the test.
+#[test]
+fn project_branch_public_types_are_nameable() {
+    fn assert_view(_: ProjectBranchView) {}
+    fn assert_create(_: CreateProjectBranchRequest) {}
+    fn assert_update(_: UpdateProjectBranchRequest) {}
+    fn assert_err(_: ProjectApiError) {}
+
+    assert_view(ProjectBranchView {
+        id: 1,
+        project_id: 2,
+        branch: "2026Q1".into(),
+        active: true,
+        created_at: chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc),
+        updated_at: chrono::DateTime::parse_from_rfc3339("2026-01-02T03:04:05Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc),
+    });
+    assert_create(CreateProjectBranchRequest {
+        project_id: 2,
+        branch: "2026Q1".into(),
+        active: false,
+    });
+    assert_update(UpdateProjectBranchRequest {
+        id: 1,
+        project_id: 2,
+        branch: Some("2026Q2".into()),
+        active: Some(true),
+    });
+    assert_err(ProjectApiError::DuplicateBranch("2026Q1".into()));
+    assert_err(ProjectApiError::BranchNotFound(7));
+}
+
+/// The branch methods do not break the trait's object safety: it can
+/// still be held behind a `Box<dyn …>`.
+#[test]
+fn project_service_with_branch_methods_is_object_safe() {
+    let _boxed: Option<Box<dyn ProjectService>> = None;
+}
+
+/// The branch methods do not break the trait's `Send + Sync` bound.
+#[test]
+fn project_service_with_branch_methods_is_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<Box<dyn ProjectService>>();
+}

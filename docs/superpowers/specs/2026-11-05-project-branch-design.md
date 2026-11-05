@@ -296,7 +296,7 @@ pub struct ProjectBranchView {
 pub struct CreateProjectBranchRequest {
     pub project_id: i32,
     pub branch: String,
-    pub active: Option<bool>,
+    pub active: bool,
 }
 
 pub struct UpdateProjectBranchRequest {
@@ -306,10 +306,9 @@ pub struct UpdateProjectBranchRequest {
 }
 ```
 
-`CreateProjectBranchRequest.active` is `Option<bool>` so an absent field
-means "not active" while an explicit `false` is also "not active" — the
-distinction carries no information here, but `Option` keeps the wire shape
-aligned with the other create requests in this module.
+`CreateProjectBranchRequest.active` is a plain `bool`. An absent field on
+the wire means "not active"; there is no third state to express, so the
+`Option` would carry no information.
 
 The port gains four methods:
 
